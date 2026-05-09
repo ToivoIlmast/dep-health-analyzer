@@ -1,0 +1,58 @@
+{
+    "name": "dep-health",
+    "version": "0.1.0",
+    "license": "MIT",
+    "type": "commonjs",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ToivoIlmast/dep-health.git"
+    },
+    "author": {
+        "name": "Toivo Ilmast",
+        "url": "https://github.com/ToivoIlmast"
+    },
+    "description": "Architecture and dependency analysis tool for JS/TS projects",
+    "private": true,
+    "scripts": {
+        "dev": "tsx src/cli.ts",
+        "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
+        "build": "tsc",
+        "postbuild": "chmod +x dist/cli.js",
+        "jest": "jest --coverage --silent --runInBand --detectOpenHandles --colors",
+        "jest:watch": "jest --watch",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix"
+    },
+    "bin": {
+        "dep-health": "dist/cli.js"
+    },
+    "keywords": [
+        "architecture",
+        "dependency-graph",
+        "circular-dependency",
+        "typescript",
+        "javascript",
+        "static-analysis",
+        "code-analysis",
+        "dependency-analysis"
+    ],
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/jest": "^30.0.0",
+        "@types/node": "^25.6.0",
+        "eslint": "^10.3.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.5",
+        "jest": "^30.3.0",
+        "prettier": "^3.8.3",
+        "ts-jest": "^29.4.9",
+        "ts-node": "^10.9.2",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.59.2"
+    },
+    "dependencies": {
+        "fast-glob": "^3.3.3",
+        "ts-morph": "^28.0.0"
+    }
+}
