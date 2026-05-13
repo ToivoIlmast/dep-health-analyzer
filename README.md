@@ -15,14 +15,11 @@ The long-term goal is to provide practical architecture intelligence for enginee
 
 ## Features
 
-### Current (v0.1)
+### Current (v0.2)
 
-- Dependency graph generation
-- Circular dependency detection
-- Import/export analysis
-- Relative import resolution
-- CLI support
-- Basic tests and fixtures
+- Ca/Ce metrics
+- Instability metrics
+- Strongly connected components analysis (SCC)
 
 ---
 
@@ -63,7 +60,7 @@ a.ts -> b.ts -> c.ts -> a.ts
 - maintainability;
 - architectural boundaries;
 - coupling analysis;
-- semantic code analysis;
+- structural code insights;
 - CI/CD architecture validation;
 - engineering insights.
 
@@ -80,21 +77,39 @@ Basic project dependency analyzer.
 - [x] Dependency graph generation
 - [x] CLI support
 - [x] Cycle detection
+
+### Quality
+
 - [x] Basic tests and fixtures
 
 ---
 
-## v0.2 — Architecture Metrics
+## v0.2 — Architecture Metrics & Visualization
 
-Module stability and coupling metrics.
+Module stability analysis and architectural dependency insights.
 
 ### Features
 
-- [ ] Ca (Afferent Coupling)
-- [ ] Ce (Efferent Coupling)
-- [ ] Instability metrics
+- [x] Ca (Afferent Coupling)
+- [x] Ce (Efferent Coupling)
+- [x] Instability metrics
+- [x] Strongly connected components analysis
+
+### Reports & Visualization
+
+- [ ] HTML reports
+- [ ] Mermaid export
+- [ ] Dependency graph visualization
+- [ ] SCC cluster highlighting
+- [ ] Basic visualization: HTML, Mermaid, SCC highlight
+
+### Quality
+
+- [ ] Tests and fixtures
+
+### Planned
+
 - [ ] SDP violation detection
-- [ ] Strongly connected components analysis
 
 ---
 
@@ -109,6 +124,10 @@ Architecture rules and policy system.
 - [ ] Forbidden dependency rules
 - [ ] Severity levels (warn/error)
 - [ ] CI-friendly exit codes
+
+### Quality
+
+- [ ] Tests and fixtures
 
 Example:
 
@@ -127,7 +146,7 @@ Project architecture visualization and reporting.
 - [ ] HTML reports
 - [ ] Mermaid export
 - [ ] JSON export
-- [ ] SVG/Graph visualization
+- [ ] Advanced visualization: interactive graph, heatmaps, architecture explorer, onboarding mode
 - [ ] Dependency heatmaps
 
 ---
@@ -182,7 +201,7 @@ Full architecture analysis and engineering intelligence platform.
 - [ ] Trend analysis
 - [ ] Blast radius analysis
 - [ ] Organization-wide policies
-- [ ] AI-powered recommendations
+- [ ] Architecture recommendations
 - [ ] Architecture review assistant
 - [ ] Pull Request architecture analysis
 - [ ] Team ownership insights
