@@ -2,6 +2,8 @@
 
 import { scanProject } from './index.js';
 import path from 'node:path';
+import { calculate } from './metrics/calculate.js';
+import { printMetrics } from './metrics/report.js';
 
 async function main() {
     const [, , command, target = '.'] = process.argv;
@@ -37,6 +39,9 @@ Example:
 
         console.log(pretty.join(' -> '));
     }
+
+    const instabilityMetrics = calculate(result.graph.edges);
+    printMetrics(instabilityMetrics);
 }
 
 main().catch((err) => {
