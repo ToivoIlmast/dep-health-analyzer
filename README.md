@@ -17,9 +17,24 @@ The long-term goal is to provide practical architecture intelligence for enginee
 
 ### Current (v0.2)
 
-- Ca/Ce metrics
-- Instability metrics
+Architecture metrics:
+
+- Ca (Afferent Coupling)
+- Ce (Efferent Coupling)
+- Instability analysis
+
+Dependency analysis:
+
+- Circular dependency detection
 - Strongly connected components analysis (SCC)
+
+Visualization:
+
+- Interactive HTML dependency graph
+- SCC cluster highlighting
+- Node sizing based on dependency weight
+- Module tooltips with metrics
+- Connected dependency highlighting
 
 ---
 
@@ -38,31 +53,61 @@ npm install -D dep-health
 
 ## Usage
 
+Run dependency analysis:
+
 ```bash
 npx dep-health scan ./src
 ```
 
-### Example output:
+Generate interactive HTML report:
 
 ```bash
-Scanned files: 40
-Nodes: 40
-Edges: 30
-Cycles: 1
+npx dep-health scan ./src
+```
 
-a.ts -> b.ts -> c.ts -> a.ts
+### Example output
+
+```bash
+dep-health v0.2.0
+
+Project: ./src
+
+Files scanned: 40
+Modules: 40
+Dependencies: 30
+
+Architecture
+
+Cycles detected: 1
+Largest SCC: 4 modules
+
+Most unstable modules
+
+auth-api.ts        I=1.00
+session-store.ts   I=0.91
+
+Most stable modules
+
+core.ts            I=0.05
+shared-types.ts    I=0.10
+
+Generate interactive HTML report:
+dep-health-report.html
 ```
 
 ## Vision
 
-`dep-health` is evolving from a dependency analyzer into an architecture intelligence tool focused on:
+`dep-health` aims to help developers understand and maintain dependency architecture in growing codebases.
 
-- maintainability;
+The project focuses on:
+
+- dependency visibility;
 - architectural boundaries;
 - coupling analysis;
-- structural code insights;
-- CI/CD architecture validation;
-- engineering insights.
+- cycle detection;
+- long-term maintainability.
+
+The long-term direction is practical architecture tooling for engineering teams and large-scale applications.
 
 # Roadmap
 
@@ -86,7 +131,7 @@ Basic project dependency analyzer.
 
 ## v0.2 — Architecture Metrics & Visualization
 
-Module stability analysis and architectural dependency insights.
+Module stability analysis and dependency architecture visualization.
 
 ### Features
 
@@ -94,18 +139,20 @@ Module stability analysis and architectural dependency insights.
 - [x] Ce (Efferent Coupling)
 - [x] Instability metrics
 - [x] Strongly connected components analysis
+- [x] Circular dependency detection
 
-### Reports & Visualization
+### Visualization
 
-- [ ] HTML reports
-- [ ] Mermaid export
-- [ ] Dependency graph visualization
-- [ ] SCC cluster highlighting
-- [ ] Basic visualization: HTML, Mermaid, SCC highlight
+- [x] Interactive HTML report
+- [x] Dependency graph visualization
+- [x] SCC cluster highlighting
+- [x] Node sizing based on dependency weight
+- [x] Module metrics tooltips
+- [x] Connected dependency highlighting
 
 ### Quality
 
-- [ ] Tests and fixtures
+- [ ] Extended tests and fixtures
 
 ### Planned
 
@@ -115,27 +162,27 @@ Module stability analysis and architectural dependency insights.
 
 ## v0.3 — Rules Engine
 
-Architecture rules and policy system.
+Architecture rules and dependency policy validation.
 
 ### Features
 
-- [ ] YAML/JSON configuration
+- [ ] YAML / JSON configuration
 - [ ] Layer boundary validation
 - [ ] Forbidden dependency rules
-- [ ] Severity levels (warn/error)
+- [ ] Severity levels (warn / error)
 - [ ] CI-friendly exit codes
 
-### Quality
-
-- [ ] Tests and fixtures
-
-Example:
+### Example
 
 ```yaml
 rules:
     no-cycle: error
     no-domain-to-infra: error
 ```
+
+### Quality
+
+- [ ] Tests and fixtures
 
 ## v0.4 — Reports & Visualization
 
