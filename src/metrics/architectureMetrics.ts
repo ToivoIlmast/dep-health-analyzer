@@ -1,4 +1,4 @@
-import { NodeId } from '../graph/types';
+import { DependencyGraph, NodeId } from '../graph/types';
 
 export interface ModuleMetrics {
     ca: number;
@@ -18,12 +18,12 @@ function instability(ce: number, ca: number): number {
     return Number((ce / (ca + ce)).toFixed(2));
 }
 
-export function calculate(edges: Map<NodeId, Set<NodeId>>): Map<string, ModuleMetrics> {
+export function calculateArchitectureMetrics(graph: DependencyGraph): Map<string, ModuleMetrics> {
     const metrics = new Map<string, ModuleMetrics>();
 
-    for (const [file, dependencies] of edges) {
+    for (const [file, dependencies] of graph.edges) {
         const outgoingEdges = ce(dependencies);
-        const incomingEdges = ca(edges, file);
+        const incomingEdges = ca(graph.edges, file);
 
         metrics.set(file, {
             ca: incomingEdges,

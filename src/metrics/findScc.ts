@@ -1,3 +1,4 @@
+import { DependencyGraph } from '../graph/types';
 import { depthFirstSearch } from './dfs';
 import { reverseGraph } from './reverseGraph';
 
@@ -17,11 +18,11 @@ function buildFinishOrder(graph: Graph): string[] {
                 result: reachableRegion,
                 order: finishOrder,
             });
-            console.log('Reachable Region:', reachableRegion);
+            // console.log('Reachable Region:', reachableRegion);
         }
     }
     finishOrder.reverse();
-    console.log('Finish Order:', finishOrder);
+    // console.log('Finish Order:', finishOrder);
 
     return finishOrder;
 }
@@ -39,7 +40,7 @@ function collectSCCs(graph: Graph, finishOrder: string[]): string[][] {
                 visited: sccVisited,
                 result: scc,
             });
-            console.log('Strongly Connected Component (SCC):', scc);
+            // console.log('Strongly Connected Component (SCC):', scc);
             sccs.push(scc);
         }
     }
@@ -52,7 +53,12 @@ function algorithmKosaraju(graph: Graph): string[][] {
     return collectSCCs(graph, finishOrder);
 }
 
-export function findSCCs(graph: Graph): string[][] {
+/* export function findSCCs(graph: Graph): string[][] {
     const sccs = algorithmKosaraju(graph);
+    return sccs;
+} */
+
+export function findSCCs(graph: DependencyGraph): string[][] {
+    const sccs = algorithmKosaraju(graph.edges);
     return sccs;
 }

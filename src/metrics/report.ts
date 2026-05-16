@@ -1,6 +1,6 @@
 import path from 'node:path';
 import chalk from 'chalk';
-import { ModuleMetrics } from './calculate';
+import { ModuleMetrics } from './architectureMetrics';
 
 export function printMetrics(metrics: Map<string, ModuleMetrics>): void {
     console.log('\nArchitecture Metrics');
@@ -34,5 +34,37 @@ export function printMetrics(metrics: Map<string, ModuleMetrics>): void {
             String(metric.ce).padEnd(15),
             instabilityColor
         );
+    }
+}
+
+function formatInstability(value: number): string {
+    if (value >= 0.8) {
+        return chalk.red(value.toFixed(2));
+    }
+
+    if (value >= 0.6) {
+        return chalk.yellow(value.toFixed(2));
+    }
+
+    return chalk.green(value.toFixed(2));
+}
+
+export function printMetricsSummary(metrics: Map<string, ModuleMetrics>, limit = 3): void {
+    const sorted = [...metrics.entries()].sort((a, b) => b[1].instability - a[1].instability);
+
+    const unstable = sorted.slice(0, limit);
+
+    const stable = [...sorted].reverse().slice(0, limit);
+
+    console.log('\nMost unstable modules\n');
+
+    for (const [file, metric] of unstable) {
+        console.log(path.basename(file).padEnd(20), `I=${formatInstability(metric.instability)}`);
+    }
+
+    console.log('\nMost stable modules\n');
+
+    for (const [file, metric] of stable) {
+        console.log(path.basename(file).padEnd(20), `I=${formatInstability(metric.instability)}`);
     }
 }
