@@ -184,71 +184,15 @@ rules:
 
 - [ ] Tests and fixtures
 
-## v0.4 — Reports & Visualization
+## Future Directions
 
-Project architecture visualization and reporting.
+Possible future areas of development:
 
-### Features
-
-- [ ] HTML reports
-- [ ] Mermaid export
-- [ ] JSON export
-- [ ] Advanced visualization: interactive graph, heatmaps, architecture explorer, onboarding mode
-- [ ] Dependency heatmaps
-
----
-
-## v0.5 — CI/CD Integration
-
-Pipeline integration and automated architecture checks.
-
-### Features
-
-- [ ] `dep-health check`
-- [ ] GitHub Actions integration
-- [ ] GitLab CI integration
-- [ ] Pull Request checks
-- [ ] Build blocking on violations
-
-## v0.6 — Semantic Analysis
-
-Semantic architecture and code quality analysis.
-
-### Features
-
-- [ ] God Component detection
-- [ ] Responsibility analysis
-- [ ] Complexity analysis
-- [ ] Multiple sources of truth detection
-- [ ] State flow analysis
-- [ ] Anti-pattern detection
-
----
-
-## v0.7 — Multi-language Support
-
-Multi-language architecture analysis support.
-
-### Planned adapters
-
-- [ ] Python
-- [ ] Rust
-- [ ] Java
-- [ ] Go
-- [ ] Language adapter API
-- [ ] Universal dependency graph support
-
-## v1.0 — Architecture Intelligence Platform
-
-Full architecture analysis and engineering intelligence platform.
-
-### Features
-
-- [ ] Architecture score
-- [ ] Trend analysis
-- [ ] Blast radius analysis
-- [ ] Organization-wide policies
-- [ ] Architecture recommendations
-- [ ] Architecture review assistant
-- [ ] Pull Request architecture analysis
-- [ ] Team ownership insights
+- advanced architecture visualization;
+- CI/CD integration;
+- JSON and Mermaid export;
+- historical dependency analysis;
+- architectural hotspot detection;
+- dependency heatmaps;
+- multi-language support;
+- semantic architecture analysis.
