@@ -152,11 +152,7 @@ Module stability analysis and dependency architecture visualization.
 
 ### Quality
 
-- [ ] Extended tests and fixtures
-
-### Planned
-
-- [ ] SDP violation detection
+- [x] Extended tests and fixtures
 
 ---
 
@@ -171,6 +167,11 @@ Architecture rules and dependency policy validation.
 - [ ] Forbidden dependency rules
 - [ ] Severity levels (warn / error)
 - [ ] CI-friendly exit codes
+- [ ] Stable Dependencies Principle (SDP) validation
+
+### Quality
+
+- [ ] Extended tests and fixtures
 
 ### Example
 
