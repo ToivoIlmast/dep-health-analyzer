@@ -1,9 +1,4 @@
 import { detectCycles } from './analyze/cycles';
-import {
-    createRealisticProjectGraph,
-    createRealisticProjectGraphWithFullPaths,
-    createSimpleSccGraph,
-} from './fixtures/graph/graphs';
 import { createGraph, addEdge } from './graph/build';
 import type { ScanResult } from './graph/types';
 import { discoverFiles } from './scanner/discover';
