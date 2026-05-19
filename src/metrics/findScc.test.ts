@@ -1,287 +1,277 @@
-/* const graph = new Map<string, Set<string>>([
-        ['A', new Set(['B'])],
-        ['B', new Set(['C'])],
-        ['C', new Set(['A', 'D', 'E'])],
-        ['D', new Set(['B'])],
-        ['E', new Set(['F'])],
-        ['F', new Set([])],
-        ['G', new Set(['H'])],
-        ['H', new Set(['I'])],
-        ['I', new Set(['G'])],
-        ['J', new Set([])],
-    ]); */
-/* const graph = new Map<string, Set<string>>([
-        ['A', new Set(['B'])],
-        ['B', new Set(['C', 'E'])],
-        ['C', new Set(['A', 'D'])],
-        ['D', new Set(['E'])],
-        ['E', new Set(['F'])],
-        ['F', new Set(['D', 'G'])],
-        ['G', new Set(['H'])],
-        ['H', new Set(['I'])],
-        ['I', new Set(['G', 'J'])],
-        ['J', new Set([])],
-    ]); */
-/* const graph = new Map<string, Set<string>>([
-        ['A', new Set(['B'])],
-        ['B', new Set(['C', 'E'])],
-        ['C', new Set(['A', 'D'])],
+import { DependencyGraph } from '../graph/types';
+import { findSCCs } from './findScc';
 
-        ['D', new Set(['E'])],
-        ['E', new Set(['F', 'H'])],
-        ['F', new Set(['D', 'G'])],
+describe('findSCCs', () => {
+    it('returns separate SCCs for an acyclic graph', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['C'])],
+                ['C', new Set()],
+            ]),
+        };
 
-        ['G', new Set(['H'])],
-        ['H', new Set(['I'])],
-        ['I', new Set(['G', 'J'])],
+        const sccs = [['A'], ['B'], ['C']];
+        const result = findSCCs(graph);
+        expect(result).toEqual(sccs);
+    });
 
-        ['J', new Set(['K'])],
-        ['K', new Set(['L'])],
-        ['L', new Set(['J', 'M'])],
+    it('detects a single strongly connected component', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['C'])],
+                ['C', new Set(['A'])],
+            ]),
+        };
 
-        ['M', new Set([])],
-    ]); */
+        const expected = [['A', 'B', 'C']].map((scc) => scc.sort()).sort();
 
-/* const graph1 = new Map<string, Set<string>>([
-        ['A', new Set(['B'])],
-        ['B', new Set(['C'])],
-        ['C', new Set(['A', 'D', 'E'])],
-        ['D', new Set(['B'])],
-        ['E', new Set(['F'])],
-        ['F', new Set([])],
-        ['G', new Set(['H'])],
-        ['H', new Set(['I'])],
-        ['I', new Set(['G'])],
-        ['J', new Set([])],
-    ]); */
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-/* const graph1 = new Map<string, Set<string>>();
+    it('detects multiple strongly connected components', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['A'])],
 
-    // Create 250 nodes
-    for (let i = 1; i <= 250; i++) {
-        graph1.set(`Module${i}`, new Set());
-    }
+                ['C', new Set(['D'])],
+                ['D', new Set(['C'])],
+            ]),
+        };
 
-    // Linear chains
-    for (let i = 1; i < 250; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+        const expected = [
+            ['A', 'B'],
+            ['C', 'D'],
+        ]
+            .map((scc) => scc.sort())
+            .sort();
 
-    // Large hidden SCC #1
-    graph1.get('Module34')?.add('Module12');
-    graph1.get('Module12')?.add('Module27');
-    graph1.get('Module27')?.add('Module34');
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // Hidden SCC #2
-    graph1.get('Module88')?.add('Module91');
-    graph1.get('Module91')?.add('Module95');
-    graph1.get('Module95')?.add('Module88');
+    it('detects SCCs with isolated nodes', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['A'])],
 
-    // Long-distance cycle
-    graph1.get('Module140')?.add('Module172');
-    graph1.get('Module172')?.add('Module199');
-    graph1.get('Module199')?.add('Module140');
+                ['C', new Set()],
+                ['D', new Set()],
+            ]),
+        };
 
-    // Architecture decay cluster
-    graph1.get('Module210')?.add('Module211');
-    graph1.get('Module211')?.add('Module212');
-    graph1.get('Module212')?.add('Module213');
-    graph1.get('Module213')?.add('Module214');
-    graph1.get('Module214')?.add('Module210');
+        const expected = [['A', 'B'], ['C'], ['D']].map((scc) => scc.sort()).sort();
 
-    // Random cross-dependencies
-    graph1.get('Module15')?.add('Module180');
-    graph1.get('Module45')?.add('Module132');
-    graph1.get('Module78')?.add('Module34');
-    graph1.get('Module101')?.add('Module56');
-    graph1.get('Module160')?.add('Module42');
-    graph1.get('Module220')?.add('Module70');
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // Fake "god module"
-    for (let i = 1; i <= 40; i++) {
-        graph1.get('Module125')?.add(`Module${i}`);
-    }
+    it('detects nested SCC regions correctly', () => {
+        // `A` -> `B` -> `C` -> `A`
+        //                |
+        //                v
+        //               `D`
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['C'])],
+                ['C', new Set(['A', 'D'])],
+                ['D', new Set()],
+            ]),
+        };
 
-    // Shared utility dependency
-    for (let i = 130; i <= 180; i++) {
-        graph1.get(`Module${i}`)?.add('Module5');
-    }
-    
-    // Mini SCCs scattered
-    graph1.get('Module50')?.add('Module51');
-    graph1.get('Module51')?.add('Module50');
+        const expected = [['A', 'B', 'C'], ['D']].map((scc) => scc.sort()).sort();
 
-    graph1.get('Module73')?.add('Module74');
-    graph1.get('Module74')?.add('Module75');
-    graph1.get('Module75')?.add('Module73');
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    graph1.get('Module166')?.add('Module167');
-    graph1.get('Module167')?.add('Module166');
+    it('returns an empty array for an empty graph', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(),
+            edges: new Map<string, Set<string>>(),
+        };
 
-    graph1.get('Module240')?.add('Module241');
-    graph1.get('Module241')?.add('Module242');
-    graph1.get('Module242')?.add('Module243');
-    graph1.get('Module243')?.add('Module240');
-    */
+        const expected: string[][] = [];
 
-/* const graph1 = new Map<string, Set<string>>();
+        const result = findSCCs(graph);
+        expect(result).toEqual(expected);
+    });
 
-    // Create 250 modules
-    for (let i = 1; i <= 250; i++) {
-        graph1.set(`Module${i}`, new Set());
-    }
+    it('returns single-node SCCs for disconnected nodes', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set()],
+                ['B', new Set()],
+                ['C', new Set()],
+            ]),
+        };
 
-    // Main linear flow
-    for (let i = 1; i < 250; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+        const expected = [['A'], ['B'], ['C']].map((scc) => scc.sort()).sort();
 
-    // Small isolated SCCs scattered around
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // SCC #1
-    graph1.get('Module12')?.add('Module15');
-    graph1.get('Module15')?.add('Module18');
-    graph1.get('Module18')?.add('Module12');
+    it('does not merge one-way reachable nodes into the same SCC', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['C'])],
+                ['C', new Set()],
+            ]),
+        };
 
-    // SCC #2
-    graph1.get('Module33')?.add('Module34');
-    graph1.get('Module34')?.add('Module33');
+        const expected = [['A'], ['B'], ['C']].map((scc) => scc.sort()).sort();
 
-    // SCC #3
-    graph1.get('Module47')?.add('Module52');
-    graph1.get('Module52')?.add('Module55');
-    graph1.get('Module55')?.add('Module47');
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // SCC #4
-    graph1.get('Module70')?.add('Module71');
-    graph1.get('Module71')?.add('Module72');
-    graph1.get('Module72')?.add('Module70');
+    it('detects SCCs in graphs with multiple cycles', () => {
+        // A -> B -> A
+        // C -> D -> E -> C
+        // F isolated
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D', 'E', 'F']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['A'])],
 
-    // SCC #5
-    graph1.get('Module88')?.add('Module90');
-    graph1.get('Module90')?.add('Module88');
+                ['C', new Set(['D'])],
+                ['D', new Set(['E'])],
+                ['E', new Set(['C'])],
 
-    // SCC #6
-    graph1.get('Module101')?.add('Module103');
-    graph1.get('Module103')?.add('Module105');
-    graph1.get('Module105')?.add('Module101');
+                ['F', new Set()],
+            ]),
+        };
 
-    // SCC #7
-    graph1.get('Module122')?.add('Module123');
-    graph1.get('Module123')?.add('Module122');
+        const expected = [['A', 'B'], ['C', 'D', 'E'], ['F']].map((scc) => scc.sort()).sort();
 
-    // SCC #8
-    graph1.get('Module140')?.add('Module145');
-    graph1.get('Module145')?.add('Module148');
-    graph1.get('Module148')?.add('Module140');
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // SCC #9
-    graph1.get('Module166')?.add('Module167');
-    graph1.get('Module167')?.add('Module168');
-    graph1.get('Module168')?.add('Module166');
+    it('handles complex graphs with cycles and linear chains', () => {
+        // `A` -> `B` -> `C` -> `A`
+        //                |
+        //                v
+        //               `D` -> `E` -> `F`
+        //
+        // `G` isolated
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['C'])],
+                ['C', new Set(['A', 'D'])],
 
-    // SCC #10
-    graph1.get('Module190')?.add('Module192');
-    graph1.get('Module192')?.add('Module194');
-    graph1.get('Module194')?.add('Module190');
+                ['D', new Set(['E'])],
+                ['E', new Set(['F'])],
+                ['F', new Set()],
 
-    // SCC #11
-    graph1.get('Module220')?.add('Module221');
-    graph1.get('Module221')?.add('Module220');
+                ['G', new Set()],
+            ]),
+        };
 
-    // SCC #12
-    graph1.get('Module235')?.add('Module240');
-    graph1.get('Module240')?.add('Module244');
-    graph1.get('Module244')?.add('Module235');
+        const expected = [['A', 'B', 'C'], ['D'], ['E'], ['F'], ['G']]
+            .map((scc) => scc.sort())
+            .sort();
 
-    // Random cross-links (non-cyclic)
-    graph1.get('Module10')?.add('Module80');
-    graph1.get('Module25')?.add('Module140');
-    graph1.get('Module61')?.add('Module200');
-    graph1.get('Module99')?.add('Module170');
-    graph1.get('Module130')?.add('Module210');
-    graph1.get('Module175')?.add('Module240');
-    graph1.get('Module205')?.add('Module50');
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // Utility-style shared dependencies
-    for (let i = 150; i <= 180; i++) {
-        graph1.get(`Module${i}`)?.add('Module5');
-    }
+    it('correctly returns SCCs for mixed graph structures', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D', 'E']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['A'])],
 
-    for (let i = 181; i <= 210; i++) {
-        graph1.get(`Module${i}`)?.add('Module42');
-    }
-    */
+                ['C', new Set(['D'])],
+                ['D', new Set()],
 
-/*
-    const graph1 = new Map<string, Set<string>>();
+                ['E', new Set()],
+            ]),
+        };
 
-    // Create 100 nodes
-    for (let i = 1; i <= 100; i++) {
-        graph1.set(`Module${i}`, new Set());
-    }
+        const expected = [['A', 'B'], ['C'], ['D'], ['E']].map((scc) => scc.sort()).sort();
 
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
 
-    // Region 1
-    for (let i = 1; i < 20; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+    it('does not duplicate nodes across SCCs', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['A'])],
 
-    // Region 2
-    for (let i = 21; i < 40; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+                ['C', new Set(['D'])],
+                ['D', new Set()],
+            ]),
+        };
 
-    // Region 3
-    for (let i = 41; i < 60; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+        const expected = [['A', 'B'], ['C'], ['D']].map((scc) => scc.sort()).sort();
 
-    // Region 4
-    for (let i = 61; i < 80; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+        const result = findSCCs(graph);
 
-    // Region 5
-    for (let i = 81; i < 100; i++) {
-        graph1.get(`Module${i}`)?.add(`Module${i + 1}`);
-    }
+        const normalized = result.map((scc) => scc.sort()).sort();
 
-    graph1.get('Module5')?.add('Module8');
-    graph1.get('Module8')?.add('Module11');
-    graph1.get('Module11')?.add('Module5');
+        const flatNodes = result.flat();
+        const uniqueNodes = new Set(flatNodes);
 
+        expect(normalized).toEqual(expected);
+        expect(flatNodes.length).toBe(uniqueNodes.size);
+    });
 
-    graph1.get('Module25')?.add('Module27');
-    graph1.get('Module27')?.add('Module30');
-    graph1.get('Module30')?.add('Module33');
-    graph1.get('Module33')?.add('Module25');
+    it('correctly detects SCCs connected by one-way edges', () => {
+        // `A` -> `B` -> `A`
+        //         |
+        //         v
+        // `C` -> `D` -> `C`
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B', 'C', 'D']),
+            edges: new Map<string, Set<string>>([
+                ['A', new Set(['B'])],
+                ['B', new Set(['A', 'C'])],
 
-    graph1.get('Module45')?.add('Module47');
-    graph1.get('Module47')?.add('Module49');
-    graph1.get('Module49')?.add('Module51');
-    graph1.get('Module51')?.add('Module53');
-    graph1.get('Module53')?.add('Module45');
+                ['C', new Set(['D'])],
+                ['D', new Set(['C'])],
+            ]),
+        };
 
-    graph1.get('Module66')?.add('Module68');
-    graph1.get('Module68')?.add('Module70');
-    graph1.get('Module70')?.add('Module66');
+        const expected = [
+            ['A', 'B'],
+            ['C', 'D'],
+        ]
+            .map((scc) => scc.sort())
+            .sort();
 
-    graph1.get('Module84')?.add('Module86');
-    graph1.get('Module86')?.add('Module88');
-    graph1.get('Module88')?.add('Module90');
-    graph1.get('Module90')?.add('Module92');
-    graph1.get('Module92')?.add('Module94');
-    graph1.get('Module94')?.add('Module84');
-
-    graph1.get('Module12')?.add('Module45');
-    graph1.get('Module18')?.add('Module65');
-
-    graph1.get('Module35')?.add('Module85');
-
-    graph1.get('Module58')?.add('Module22');
-
-    graph1.get('Module72')?.add('Module10');
-
-    graph1.get('Module95')?.add('Module40');
-    */
+        const result = findSCCs(graph);
+        const normalized = result.map((scc) => scc.sort()).sort();
+        expect(normalized).toEqual(expected);
+    });
+});

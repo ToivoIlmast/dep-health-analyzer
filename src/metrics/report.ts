@@ -1,7 +1,8 @@
 import path from 'node:path';
 import chalk from 'chalk';
-import { ModuleMetrics } from './architectureMetrics';
+import { ModuleMetrics } from './types';
 
+/* 
 export function printMetrics(metrics: Map<string, ModuleMetrics>): void {
     console.log('\nArchitecture Metrics');
     console.log('(Internal project dependencies only)\n');
@@ -35,7 +36,8 @@ export function printMetrics(metrics: Map<string, ModuleMetrics>): void {
             instabilityColor
         );
     }
-}
+} 
+*/
 
 function formatInstability(value: number): string {
     if (value >= 0.8) {

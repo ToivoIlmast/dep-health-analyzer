@@ -1,10 +1,5 @@
-import { DependencyGraph, NodeId } from '../graph/types';
-
-export interface ModuleMetrics {
-    ca: number;
-    ce: number;
-    instability: number;
-}
+import { DependencyGraph } from '../graph/types';
+import { ModuleMetrics } from './types';
 
 function ce(dependencies: Set<string>): number {
     return dependencies.size;

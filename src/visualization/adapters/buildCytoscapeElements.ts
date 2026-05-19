@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { ModuleMetrics } from '../../metrics/architectureMetrics';
 import { DependencyGraph } from '../../graph/types';
+import { ModuleMetrics } from '../../metrics/types';
 
 export type CytoscapeNode = {
     data: {
