@@ -169,10 +169,6 @@ Architecture rules and dependency policy validation.
 - [ ] CI-friendly exit codes
 - [ ] Stable Dependencies Principle (SDP) validation
 
-### Quality
-
-- [ ] Extended tests and fixtures
-
 ### Example
 
 ```yaml
@@ -183,7 +179,7 @@ rules:
 
 ### Quality
 
-- [ ] Tests and fixtures
+- [ ] Extended tests and fixtures
 
 ## Future Directions
 
