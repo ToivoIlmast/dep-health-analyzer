@@ -41,29 +41,14 @@ Example:
     const prettyLength: number[] = [];
     for (const cycle of result.cycles) {
         const pretty = cycle.map((file) => path.basename(file));
-        // console.log(pretty.join(' -> '));
         prettyLength.push(pretty.length);
     }
-    console.log(`Largest SCC: ${Math.max(...prettyLength)} module(s)`);
+    const largestScc = prettyLength.length > 0 ? Math.max(...prettyLength) : 0;
+    console.log(`Largest SCC: ${largestScc} module(s)`);
     const instabilityMetrics = calculateArchitectureMetrics(result.graph);
     printMetricsSummary(instabilityMetrics);
 
-    /* const graph1 = new Map<string, Set<string>>([
-        ['A', new Set(['B'])],
-        ['B', new Set(['C'])],
-        ['C', new Set(['A', 'D'])],
-
-        ['D', new Set(['E'])],
-        ['E', new Set(['F'])],
-        ['F', new Set(['D'])],
-
-        ['G', new Set(['H'])],
-        ['H', new Set([])],
-    ]); */
-
-    // console.log('Graph', result.graph.edges);
     const sccs = findSCCs(result.graph);
-    // console.log('Strongly Connected Component (SCCs):', sccs);
     const elements = buildCytoscapeElements({
         graph: result.graph,
         metrics: instabilityMetrics,

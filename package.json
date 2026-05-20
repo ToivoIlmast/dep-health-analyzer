@@ -12,7 +12,7 @@
         "url": "https://github.com/ToivoIlmast"
     },
     "description": "Architecture and dependency analysis tool for JS/TS projects",
-    "private": true,
+    "private": false,
     "scripts": {
         "dev": "tsx src/cli.ts",
         "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
@@ -26,6 +26,9 @@
     "bin": {
         "dep-health": "dist/cli.js"
     },
+    "files": [
+        "dist"
+    ],
     "keywords": [
         "architecture",
         "dependency-graph",
