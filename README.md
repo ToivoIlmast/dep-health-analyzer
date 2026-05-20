@@ -15,14 +15,26 @@ The long-term goal is to provide practical architecture intelligence for enginee
 
 ## Features
 
-### Current (v0.1)
+### Current (v0.2)
 
-- Dependency graph generation
+Architecture metrics:
+
+- Ca (Afferent Coupling)
+- Ce (Efferent Coupling)
+- Instability analysis
+
+Dependency analysis:
+
 - Circular dependency detection
-- Import/export analysis
-- Relative import resolution
-- CLI support
-- Basic tests and fixtures
+- Strongly connected components analysis (SCC)
+
+Visualization:
+
+- Interactive HTML dependency graph
+- SCC cluster highlighting
+- Node sizing based on dependency weight
+- Module tooltips with metrics
+- Connected dependency highlighting
 
 ---
 
@@ -41,31 +53,61 @@ npm install -D dep-health
 
 ## Usage
 
+Run dependency analysis:
+
 ```bash
 npx dep-health scan ./src
 ```
 
-### Example output:
+Generate interactive HTML report:
 
 ```bash
-Scanned files: 40
-Nodes: 40
-Edges: 30
-Cycles: 1
+npx dep-health scan ./src
+```
 
-a.ts -> b.ts -> c.ts -> a.ts
+### Example output
+
+```bash
+dep-health v0.2.0
+
+Project: ./src
+
+Files scanned: 40
+Modules: 40
+Dependencies: 30
+
+Architecture
+
+Cycles detected: 1
+Largest SCC: 4 modules
+
+Most unstable modules
+
+auth-api.ts        I=1.00
+session-store.ts   I=0.91
+
+Most stable modules
+
+core.ts            I=0.05
+shared-types.ts    I=0.10
+
+Generate interactive HTML report:
+dep-health-report.html
 ```
 
 ## Vision
 
-`dep-health` is evolving from a dependency analyzer into an architecture intelligence tool focused on:
+`dep-health` aims to help developers understand and maintain dependency architecture in growing codebases.
 
-- maintainability;
+The project focuses on:
+
+- dependency visibility;
 - architectural boundaries;
 - coupling analysis;
-- semantic code analysis;
-- CI/CD architecture validation;
-- engineering insights.
+- cycle detection;
+- long-term maintainability.
+
+The long-term direction is practical architecture tooling for engineering teams and large-scale applications.
 
 # Roadmap
 
@@ -80,37 +122,54 @@ Basic project dependency analyzer.
 - [x] Dependency graph generation
 - [x] CLI support
 - [x] Cycle detection
+
+### Quality
+
 - [x] Basic tests and fixtures
 
 ---
 
-## v0.2 — Architecture Metrics
+## v0.2 — Architecture Metrics & Visualization
 
-Module stability and coupling metrics.
+Module stability analysis and dependency architecture visualization.
 
 ### Features
 
-- [ ] Ca (Afferent Coupling)
-- [ ] Ce (Efferent Coupling)
-- [ ] Instability metrics
-- [ ] SDP violation detection
-- [ ] Strongly connected components analysis
+- [x] Ca (Afferent Coupling)
+- [x] Ce (Efferent Coupling)
+- [x] Instability metrics
+- [x] Strongly connected components analysis
+- [x] Circular dependency detection
+
+### Visualization
+
+- [x] Interactive HTML report
+- [x] Dependency graph visualization
+- [x] SCC cluster highlighting
+- [x] Node sizing based on dependency weight
+- [x] Module metrics tooltips
+- [x] Connected dependency highlighting
+
+### Quality
+
+- [x] Extended tests and fixtures
 
 ---
 
 ## v0.3 — Rules Engine
 
-Architecture rules and policy system.
+Architecture rules and dependency policy validation.
 
 ### Features
 
-- [ ] YAML/JSON configuration
+- [ ] YAML / JSON configuration
 - [ ] Layer boundary validation
 - [ ] Forbidden dependency rules
-- [ ] Severity levels (warn/error)
+- [ ] Severity levels (warn / error)
 - [ ] CI-friendly exit codes
+- [ ] Stable Dependencies Principle (SDP) validation
 
-Example:
+### Example
 
 ```yaml
 rules:
@@ -118,71 +177,19 @@ rules:
     no-domain-to-infra: error
 ```
 
-## v0.4 — Reports & Visualization
+### Quality
 
-Project architecture visualization and reporting.
+- [ ] Extended tests and fixtures
 
-### Features
+## Future Directions
 
-- [ ] HTML reports
-- [ ] Mermaid export
-- [ ] JSON export
-- [ ] SVG/Graph visualization
-- [ ] Dependency heatmaps
+Possible future areas of development:
 
----
-
-## v0.5 — CI/CD Integration
-
-Pipeline integration and automated architecture checks.
-
-### Features
-
-- [ ] `dep-health check`
-- [ ] GitHub Actions integration
-- [ ] GitLab CI integration
-- [ ] Pull Request checks
-- [ ] Build blocking on violations
-
-## v0.6 — Semantic Analysis
-
-Semantic architecture and code quality analysis.
-
-### Features
-
-- [ ] God Component detection
-- [ ] Responsibility analysis
-- [ ] Complexity analysis
-- [ ] Multiple sources of truth detection
-- [ ] State flow analysis
-- [ ] Anti-pattern detection
-
----
-
-## v0.7 — Multi-language Support
-
-Multi-language architecture analysis support.
-
-### Planned adapters
-
-- [ ] Python
-- [ ] Rust
-- [ ] Java
-- [ ] Go
-- [ ] Language adapter API
-- [ ] Universal dependency graph support
-
-## v1.0 — Architecture Intelligence Platform
-
-Full architecture analysis and engineering intelligence platform.
-
-### Features
-
-- [ ] Architecture score
-- [ ] Trend analysis
-- [ ] Blast radius analysis
-- [ ] Organization-wide policies
-- [ ] AI-powered recommendations
-- [ ] Architecture review assistant
-- [ ] Pull Request architecture analysis
-- [ ] Team ownership insights
+- advanced architecture visualization;
+- CI/CD integration;
+- JSON and Mermaid export;
+- historical dependency analysis;
+- architectural hotspot detection;
+- dependency heatmaps;
+- multi-language support;
+- semantic architecture analysis.

@@ -22,3 +22,6 @@ Thumbs.db
 
 # Jest coverage
 coverage/
+
+# Dynamic and initial HTML report
+dep-health-report.html

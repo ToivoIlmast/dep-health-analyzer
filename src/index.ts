@@ -25,6 +25,8 @@ export async function scanProject(root: string): Promise<ScanResult> {
         }
     }
 
+    // const mockGraph = createRealisticProjectGraphWithFullPaths();
+
     const cycles = detectCycles(graph);
 
     return {
