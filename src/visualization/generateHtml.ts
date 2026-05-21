@@ -12,10 +12,10 @@ export function generateHtml(graph: GraphElements): void {
 
     const html = buildHtmlTemplate({ nodes, edges });
 
-    fs.writeFileSync('dep-health-report.html', html);
+    fs.writeFileSync('dep-health-analyzer-report.html', html);
 
-    const reportPath = path.resolve('dep-health-report.html');
+    const reportPath = path.resolve('dep-health-analyzer-report.html');
     console.log(
-        `\nHTML report:\n\u001B]8;;file://${reportPath}\u0007dep-health-report.html\u001B]8;;\u0007`
+        `\nHTML report:\n\u001B]8;;file://${reportPath}\u0007dep-health-analyzer-report.html\u001B]8;;\u0007`
     );
 }

@@ -12,7 +12,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     <html>
     <head>
         <meta charset="UTF-8" />
-        <title>dep-health graph</title>
+        <title>dep-health-analyzer graph</title>
     
         <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
     
@@ -68,7 +68,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         <div id="cy"></div>
         <div id="tooltip"></div>
         <div id="hint">
-            <strong>dep-health</strong><br /><br />
+            <strong>dep-health-analyzer</strong><br /><br />
     
             Hover over a module to see dependency metrics.<br />
             Click a module <strong>to pin</strong> the tooltip.<br /><br />
