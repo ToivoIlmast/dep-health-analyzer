@@ -1,8 +1,8 @@
-# dep-health
+# dep-health-analyzer
 
 Architecture and dependency analysis tool for JS/TS projects.
 
-`dep-health` helps detect architectural problems early:
+`dep-health-analyzer` helps detect architectural problems early:
 
 - circular dependencies;
 - unstable module boundaries;
@@ -48,7 +48,7 @@ Visualization:
 ## Install
 
 ```bash
-npm install -D dep-health
+npm install -D dep-health-analyzer
 ```
 
 ## Usage
@@ -56,19 +56,19 @@ npm install -D dep-health
 Run dependency analysis:
 
 ```bash
-npx dep-health scan ./src
+npx dep-health-analyzer scan ./src
 ```
 
 Generate interactive HTML report:
 
 ```bash
-npx dep-health scan ./src
+npx dep-health-analyzer scan ./src
 ```
 
 ### Example output
 
 ```bash
-dep-health v0.2.0
+dep-health-analyzer v0.2.0
 
 Project: ./src
 
@@ -92,12 +92,12 @@ core.ts            I=0.05
 shared-types.ts    I=0.10
 
 Generate interactive HTML report:
-dep-health-report.html
+dep-health-analyzer-report.html
 ```
 
 ## Vision
 
-`dep-health` aims to help developers understand and maintain dependency architecture in growing codebases.
+`dep-health-analyzer` aims to help developers understand and maintain dependency architecture in growing codebases.
 
 The project focuses on:
 

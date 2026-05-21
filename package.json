@@ -1,18 +1,17 @@
 {
-    "name": "dep-health",
+    "name": "dep-health-analyzer",
     "version": "0.2.0",
     "license": "MIT",
     "type": "commonjs",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/ToivoIlmast/dep-health.git"
+        "url": "git+https://github.com/ToivoIlmast/dep-health-analyzer.git"
     },
     "author": {
         "name": "Toivo Ilmast",
         "url": "https://github.com/ToivoIlmast"
     },
     "description": "Architecture and dependency analysis tool for JS/TS projects",
-    "private": false,
     "scripts": {
         "dev": "tsx src/cli.ts",
         "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
@@ -24,7 +23,7 @@
         "lint:fix": "eslint . --fix"
     },
     "bin": {
-        "dep-health": "dist/cli.js"
+        "dep-health-analyzer": "dist/cli.js"
     },
     "files": [
         "dist"

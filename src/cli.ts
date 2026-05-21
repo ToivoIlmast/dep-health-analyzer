@@ -13,20 +13,20 @@ async function main() {
 
     if (command !== 'scan') {
         console.log(`
-dep-health
+dep-health-analyzer
 
 Usage:
-  dep-health scan <path>
+  dep-health-analyzer scan <path>
 
 Example:
-  dep-health scan ./src
+  dep-health-analyzer scan ./src
 `);
         process.exit(1);
     }
 
     const result = await scanProject(target);
 
-    console.log(`dep-health v0.2.0\n`);
+    console.log(`dep-health-analyzer v0.2.0\n`);
     console.log(`Project: ${target}\n`);
     console.log(`Scanned files: ${result.scannedFiles}`);
     console.log(`Modules: ${result.graph.nodes.size}`);
