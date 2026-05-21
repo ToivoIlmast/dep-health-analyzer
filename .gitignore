@@ -26,3 +26,6 @@ coverage/
 # Dynamic and initial HTML report
 dep-health-report.html
 dep-health-analyzer-report.html
+
+# gzip-compressed tar archive
+*.tgz
