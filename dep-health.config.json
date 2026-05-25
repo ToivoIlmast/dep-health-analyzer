@@ -1,0 +1,47 @@
+{
+    "features": {
+        "regression": {
+            "enabled": true,
+            "ci": {
+                "enabled": true,
+                "failOn": "warning"
+            },
+            "reporting": {
+                "console": true,
+                "html": {
+                    "enabled": true,
+                    "outputPath": "./reports/regression.html"
+                }
+            },
+            "severity": {
+                "cross-boundary": "warning",
+                "deep-internal": "warning",
+                "sibling": "info",
+                "internal": "info"
+            },
+            "thresholds": {
+                "internalDepth": 3,
+                "deepInternalResidualDepth": 3
+            }
+        },
+
+        "scc": {
+            "enabled": true,
+            "ci": {
+                "enabled": true,
+                "failOn": "error"
+            },
+            "reporting": {
+                "console": true,
+
+                "html": {
+                    "enabled": true,
+                    "outputPath": "./reports/scc.html"
+                }
+            },
+            "severity": "error",
+            "maxSize": 10,
+            "failOnNewCycles": true
+        }
+    }
+}

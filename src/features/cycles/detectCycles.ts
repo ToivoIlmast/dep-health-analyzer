@@ -1,4 +1,4 @@
-import type { DependencyGraph } from '../graph/types';
+import type { DependencyGraph } from '../../core/graph/types';
 
 export function detectCycles(graph: DependencyGraph): string[][] {
     const visited = new Set<string>();

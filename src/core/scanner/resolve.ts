@@ -1,6 +1,6 @@
+import { debug } from '../logger/logger';
 import fs from 'node:fs';
 import path from 'node:path';
-import { debug } from '../logger';
 
 const extensions = ['.ts', '.tsx', '.js', '.jsx'];
 

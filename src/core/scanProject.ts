@@ -1,6 +1,5 @@
-import { detectCycles } from './analyze/cycles';
 import { createGraph, addEdge } from './graph/build';
-import type { ScanResult } from './graph/types';
+import { ScanResult } from './graph/types';
 import { discoverFiles } from './scanner/discover';
 import { extractImports } from './scanner/extract';
 import { resolveImport } from './scanner/resolve';
@@ -25,13 +24,8 @@ export async function scanProject(root: string): Promise<ScanResult> {
         }
     }
 
-    // const mockGraph = createRealisticProjectGraphWithFullPaths();
-
-    const cycles = detectCycles(graph);
-
     return {
         graph,
         scannedFiles: files.length,
-        cycles,
     };
 }

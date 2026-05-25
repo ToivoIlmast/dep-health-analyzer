@@ -12,7 +12,7 @@ export async function discoverFiles(root: string): Promise<string[]> {
             '**/.git/**',
             '**/*.test.ts',
             '**/*.spec.ts',
-            '**/fixtures/**',
+            '**/__fixtures__/**',
         ],
         dot: false,
     });

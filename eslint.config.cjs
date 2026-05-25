@@ -4,7 +4,15 @@ const prettier = require('eslint-config-prettier');
 
 module.exports = [
     {
-        ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'src/fixtures/**', '*.config.cjs'],
+        ignores: [
+            '.dep-health-analyzer',
+            '.tmp-dep-health',
+            'dist/**',
+            'coverage/**',
+            'node_modules/**',
+            'src/**/__fixtures__/**',
+            '*.config.cjs',
+        ],
     },
     js.configs.recommended,
     ...tseslint.configs.recommended,

@@ -1,6 +1,6 @@
-import { DependencyGraph } from '../../graph/types';
-import { ModuleMetrics } from '../../metrics/types';
+import { DependencyGraph } from '@core/graph/types';
 import { buildCytoscapeElements } from './buildCytoscapeElements';
+import { ModuleMetrics } from '@features/cycles/metrics/types';
 
 describe('buildCytoscapeElements', () => {
     it('builds both nodes and edges', () => {

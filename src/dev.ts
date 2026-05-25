@@ -1,4 +1,4 @@
-import { scanProject } from './index';
+import { scanProject } from '@core/scanProject';
 
 async function main() {
     const result = await scanProject('./src');

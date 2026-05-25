@@ -15,6 +15,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         <title>dep-health-analyzer graph</title>
     
         <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+        <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
+        <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
     
         <style>
             body {
@@ -91,6 +93,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         </div>
     
         <script>
+            cytoscape.use(cytoscapeDagre);
+
             const cy = cytoscape({
                 container: document.getElementById('cy'),
     
@@ -117,8 +121,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     {
                         selector: 'edge',
                         style: {
-                            'curve-style': 'bezier',
+                            'curve-style': 'straight',
                             'target-arrow-shape': 'triangle',
+                            'line-color': '#888',
+                            'target-arrow-color': '#888',
+                            'width': 1.5,
                         },
                     },
     
@@ -158,8 +165,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 ],
     
                 layout: {
-                    name: 'cose',
-                },
+                    name: 'dagre',
+                    rankDir: 'LR',
+                    nodeSep: 60,
+                    rankSep: 140,
+                    edgeSep: 30,
+                    padding: 40,
+                    spacingFactor: 1.3,
+                    fit: false,
+                    nodeDimensionsIncludeLabels: true,
+                }
             });
     
             const tooltip = document.getElementById('tooltip');

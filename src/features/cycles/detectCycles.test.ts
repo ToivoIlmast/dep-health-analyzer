@@ -1,5 +1,5 @@
-import { detectCycles } from './cycles';
-import { DependencyGraph } from '../graph/types';
+import { DependencyGraph } from '@core/graph/types';
+import { detectCycles } from './detectCycles';
 
 describe('detectCycles', () => {
     it('should return empty array when graph has no cycles', () => {

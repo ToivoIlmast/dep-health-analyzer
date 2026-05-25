@@ -1,4 +1,4 @@
-import { DependencyGraph } from '../graph/types';
+import { DependencyGraph } from '@core/graph/types';
 import { findSCCs } from './findScc';
 
 describe('findSCCs', () => {

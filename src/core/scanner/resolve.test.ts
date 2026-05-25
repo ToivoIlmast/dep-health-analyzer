@@ -8,14 +8,19 @@ describe('resolveImport', () => {
         ['js-import.js', './a3', 'a3.js'],
         ['jsx-import.jsx', './a4', 'a4.jsx'],
     ])('should resolve %s import', (fromFile, specifier, expected) => {
-        const result = resolveImport(path.resolve(`src/fixtures/resolve/${fromFile}`), specifier);
+        const result = resolveImport(
+            path.resolve(`src/core/scanner/__fixtures__/resolve/${fromFile}`),
+            specifier
+        );
 
         expect(result).not.toBeNull();
         expect(result!).toContain(expected);
     });
 
     it('should resolve index.ts file', () => {
-        const fromFile = path.resolve('src/fixtures/resolve/ts-index/index-import.ts');
+        const fromFile = path.resolve(
+            'src/core/scanner/__fixtures__/resolve/ts-index/index-import.ts'
+        );
 
         const result = resolveImport(fromFile, './a5');
 
@@ -24,7 +29,9 @@ describe('resolveImport', () => {
     });
 
     it('should return null for external package import', () => {
-        const fromFile = path.resolve('src/fixtures/resolve/external-package-import.ts');
+        const fromFile = path.resolve(
+            'src/core/scanner/__fixtures__/resolve/external-package-import.ts'
+        );
 
         const result = resolveImport(fromFile, 'node:path');
 
@@ -32,7 +39,7 @@ describe('resolveImport', () => {
     });
 
     it('should return null when file does not exist', () => {
-        const tsImports = 'src/fixtures/resolve/ts-import.ts';
+        const tsImports = 'src/core/scanner/__fixtures__/resolve/ts-import.ts';
         const result = resolveImport(path.resolve(tsImports), './b');
 
         expect(result).toBeNull();

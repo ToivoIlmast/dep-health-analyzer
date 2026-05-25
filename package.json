@@ -13,17 +13,18 @@
     },
     "description": "Architecture and dependency analysis tool for JS/TS projects",
     "scripts": {
-        "dev": "tsx src/cli.ts",
+        "dev": "tsx src/app/cli.ts",
         "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
         "build": "tsc",
-        "postbuild": "chmod +x dist/cli.js",
+        "postbuild": "chmod +x dist/app/cli.js",
         "jest": "jest --coverage --silent --runInBand --detectOpenHandles --colors",
         "jest:watch": "jest --watch",
         "lint": "eslint .",
-        "lint:fix": "eslint . --fix"
+        "lint:fix": "eslint . --fix",
+        "tff": "npm run jest && npm run lint:fix && npm run build"
     },
     "bin": {
-        "dep-health-analyzer": "dist/cli.js"
+        "dep-health-analyzer": "dist/app/cli.js"
     },
     "files": [
         "dist"

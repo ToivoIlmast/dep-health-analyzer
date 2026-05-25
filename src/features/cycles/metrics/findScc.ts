@@ -1,4 +1,4 @@
-import { DependencyGraph } from '../graph/types';
+import { DependencyGraph } from '@core/graph/types';
 import { depthFirstSearch } from './dfs';
 import { reverseGraph } from './reverseGraph';
 
