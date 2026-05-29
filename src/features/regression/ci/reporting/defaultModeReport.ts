@@ -65,15 +65,11 @@ function aggregation(arg: AggregationType): AggregatedFinding[] {
 }
 
 type DefaltReportType = {
-    isCi: boolean;
-    isHtml: boolean;
     delta: DependencyInsight[];
 };
 
 export function defaultModeReport(arg: DefaltReportType): void {
-    const { isCi, isHtml, delta } = arg;
-
-    if (isCi || isHtml) return;
+    const { delta } = arg;
 
     aggregation({ delta });
 }

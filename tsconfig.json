@@ -26,7 +26,8 @@
             "@scanner/*": ["scanner/*"],
             "@visualization/*": ["visualization/*"],
             "@core/*": ["core/*"],
-            "@features/*": ["features/*"]
+            "@features/*": ["features/*"],
+            "@shared/*": ["shared/*"]
         }
     },
     "include": ["src", "bin"],

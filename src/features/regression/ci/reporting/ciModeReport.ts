@@ -6,14 +6,11 @@ const GREEN = '\x1b[32m';
 const RESET = '\x1b[0m';
 
 type CiReportType = {
-    isCi: boolean;
     delta: DependencyInsight[];
 };
 
-export function ciModeReport(arg: CiReportType): boolean | null {
-    const { isCi, delta } = arg;
-
-    if (!isCi) return null;
+export function ciModeReport(arg: CiReportType): void {
+    const { delta } = arg;
 
     const crossBoundary = delta.filter((d) => d.relation === 'cross-boundary');
     const deepInternal = delta.filter((d) => d.relation === 'deep-internal');
@@ -27,16 +24,15 @@ export function ciModeReport(arg: CiReportType): boolean | null {
     console.log(`Internal dependencies: ${internal.length}`);
 
     const hasArchitecturalRisk = crossBoundary.length > 0 || deepInternal.length > 0;
-    console.log('');
 
     if (hasArchitecturalRisk) {
-        console.log(`${RED}Architectural regression detected.${RESET}`);
+        console.log(`\n${RED}Architectural regression detected.${RESET}\n`);
         // process.exit(1);
     }
 
     if (!hasArchitecturalRisk) {
-        console.log(`${GREEN}No significant architectural regression detected.${RESET}`);
+        console.log(`\n${GREEN}No significant architectural regression detected.${RESET}\n`);
     }
 
-    return hasArchitecturalRisk;
+    // return hasArchitecturalRisk;
 }

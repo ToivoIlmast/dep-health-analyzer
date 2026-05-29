@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { DependencyDelta, DependencyInsight } from '../types';
+import { DependencyDelta, DependencyInsight, RegressionThresholds } from '../types';
 
 function normalize(file: string): string[] {
     return file.replaceAll('\\', '/').split('/').filter(Boolean);
@@ -72,8 +72,12 @@ function getRelation(args: {
 
     commonDepth: number;
     residualDepth: number;
+
+    thresholds: RegressionThresholds;
 }): DependencyInsight['relation'] {
-    const { from, to, commonDepth, residualDepth } = args;
+    const { from, to, commonDepth, residualDepth, thresholds } = args;
+
+    const { internalDepth, deepInternalResidualDepth } = thresholds;
 
     const fromDir = path.dirname(from).replaceAll('\\', '/');
 
@@ -87,13 +91,13 @@ function getRelation(args: {
 
     // src/features/auth/*
     // src/features/auth/utils/*
-    if (commonDepth >= 3 && residualDepth <= 1) {
+    if (commonDepth >= internalDepth && residualDepth <= 1) {
         return 'internal';
     }
 
     // src/features/auth/*
     // src/features/auth/a/b/c/d/*
-    if (commonDepth >= 3 && residualDepth >= 3) {
+    if (commonDepth >= internalDepth && residualDepth >= deepInternalResidualDepth) {
         return 'deep-internal';
     }
 
@@ -150,7 +154,23 @@ function buildReasoning(args: {
     return reasoning;
 }
 
-export function buildDependencyInsights(delta: DependencyDelta): DependencyInsight[] {
+type RegressionRules = {
+    thresholds: {
+        internalDepth: number;
+        deepInternalResidualDepth: number;
+    };
+    severity: {
+        'cross-boundary': 'info' | 'warning' | 'error';
+        'deep-internal': 'info' | 'warning' | 'error';
+        sibling: 'info' | 'warning' | 'error';
+        internal: 'info' | 'warning' | 'error';
+    };
+};
+
+export function buildDependencyInsights(
+    delta: DependencyDelta,
+    rules: RegressionRules
+): DependencyInsight[] {
     return delta.added.map((dep) => {
         const commonDepth = getCommonDepth(dep.from, dep.to);
 
@@ -163,7 +183,10 @@ export function buildDependencyInsights(delta: DependencyDelta): DependencyInsig
             to: dep.to,
             commonDepth,
             residualDepth,
+            thresholds: rules.thresholds,
         });
+
+        const severity = rules.severity[relation];
 
         const reasoning = buildReasoning({
             relation,
@@ -179,6 +202,7 @@ export function buildDependencyInsights(delta: DependencyDelta): DependencyInsig
             residualDepth,
             commonParent,
             relation,
+            severity,
             interpretation: getInterpretation(relation),
             reasoning,
         };

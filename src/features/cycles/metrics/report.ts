@@ -51,7 +51,12 @@ function formatInstability(value: number): string {
     return chalk.green(value.toFixed(2));
 }
 
-export function printMetricsSummary(metrics: Map<string, ModuleMetrics>, limit = 3): void {
+type printMetricsSummaryType = {
+    metrics: Map<string, ModuleMetrics>;
+    limit?: number;
+};
+export function printMetricsSummary(args: printMetricsSummaryType): void {
+    const { metrics, limit = 3 } = args;
     const sorted = [...metrics.entries()].sort((a, b) => b[1].instability - a[1].instability);
 
     const unstable = sorted.slice(0, limit);

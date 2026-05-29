@@ -1,0 +1,166 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+
+    "type": "object",
+
+    "properties": {
+        "$schema": {
+            "type": "string"
+        },
+
+        "features": {
+            "type": "object",
+
+            "properties": {
+                "regression": {
+                    "type": "object",
+
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+
+                        "mode": {
+                            "type": "string",
+                            "enum": ["full", "compact", "html"]
+                        },
+
+                        "failOn": {
+                            "type": "string",
+                            "enum": ["info", "warning", "error"]
+                        },
+
+                        "reporting": {
+                            "type": "object",
+
+                            "properties": {
+                                "html": {
+                                    "type": "object",
+
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+
+                                        "outputPath": {
+                                            "type": "string"
+                                        }
+                                    },
+
+                                    "additionalProperties": false
+                                }
+                            },
+
+                            "additionalProperties": false
+                        },
+
+                        "severity": {
+                            "type": "object",
+
+                            "properties": {
+                                "cross-boundary": {
+                                    "type": "string",
+                                    "enum": ["info", "warning", "error"]
+                                },
+
+                                "deep-internal": {
+                                    "type": "string",
+                                    "enum": ["info", "warning", "error"]
+                                },
+
+                                "sibling": {
+                                    "type": "string",
+                                    "enum": ["info", "warning", "error"]
+                                },
+
+                                "internal": {
+                                    "type": "string",
+                                    "enum": ["info", "warning", "error"]
+                                }
+                            },
+
+                            "additionalProperties": false
+                        },
+
+                        "thresholds": {
+                            "type": "object",
+
+                            "properties": {
+                                "internalDepth": {
+                                    "type": "number"
+                                },
+
+                                "deepInternalResidualDepth": {
+                                    "type": "number"
+                                }
+                            },
+
+                            "additionalProperties": false
+                        }
+                    },
+
+                    "additionalProperties": false
+                },
+
+                "scc": {
+                    "type": "object",
+
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+
+                        "mode": {
+                            "type": "string",
+                            "enum": ["full", "compact", "html"]
+                        },
+
+                        "failOn": {
+                            "type": "string",
+                            "enum": ["info", "warning", "error"]
+                        },
+
+                        "reporting": {
+                            "type": "object",
+
+                            "properties": {
+                                "html": {
+                                    "type": "object",
+
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+
+                                        "outputPath": {
+                                            "type": "string"
+                                        }
+                                    },
+
+                                    "additionalProperties": false
+                                }
+                            },
+
+                            "additionalProperties": false
+                        },
+
+                        "severity": {
+                            "type": "string",
+                            "enum": ["info", "warning", "error"]
+                        },
+
+                        "maxSize": {
+                            "type": "number"
+                        }
+                    },
+
+                    "additionalProperties": false
+                }
+            },
+
+            "additionalProperties": false
+        }
+    },
+
+    "additionalProperties": false
+}

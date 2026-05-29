@@ -1,19 +1,31 @@
-export type CliArgs = {
-    command: string | undefined;
+import { ModeType } from '@shared/types';
+
+export const CLI_FLAG = {
+    TARGET: '--target',
+    BASELINE: '--baseline',
+    MODE: '--mode',
+    VERSION: '--version',
+    VERSION_SHORT: '-v',
+    INIT: '--init',
+} as const;
+
+type RegressionArgs = {
+    command: 'regression';
     target: string;
     baselineRef: string;
-    isCi: boolean;
-    isHtml: boolean;
+    mode: ModeType;
 };
 
-export const commands = ['cycles', 'regression'];
+type CyclesArgs = {
+    command: 'cycles';
+    target: string;
+    mode: ModeType;
+};
+
+export type CliArgs = RegressionArgs | CyclesArgs;
+export type CommandType = CliArgs['command'];
+
 export const CLI_COMMANDS = {
     CYCLES: 'cycles',
     REGRESSION: 'regression',
-} as const;
-
-export const flags = ['--ci', '--html'];
-export const CLI_FLAG = {
-    CI: '--ci',
-    HTML: '--html',
 } as const;

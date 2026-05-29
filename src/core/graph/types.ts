@@ -1,9 +1,9 @@
 export type NodeId = string;
 
-export interface DependencyEdge {
+/* export interface DependencyEdge {
     from: NodeId;
     to: NodeId;
-}
+} */
 
 export interface DependencyGraph {
     nodes: Set<NodeId>;

@@ -1,16 +1,14 @@
 {
+    "$schema": "./src/app/config/config.schema.json",
     "features": {
         "regression": {
             "enabled": true,
-            "ci": {
-                "enabled": true,
-                "failOn": "warning"
-            },
+            "mode": "compact",
+            "failOn": "warning",
             "reporting": {
-                "console": true,
                 "html": {
                     "enabled": true,
-                    "outputPath": "./reports/regression.html"
+                    "outputPath": "./dep-health-reports/regression.html"
                 }
             },
             "severity": {
@@ -24,24 +22,18 @@
                 "deepInternalResidualDepth": 3
             }
         },
-
         "scc": {
             "enabled": true,
-            "ci": {
-                "enabled": true,
-                "failOn": "error"
-            },
+            "mode": "compact",
+            "failOn": "error",
             "reporting": {
-                "console": true,
-
                 "html": {
                     "enabled": true,
-                    "outputPath": "./reports/scc.html"
+                    "outputPath": "./dep-health-reports/scc.html"
                 }
             },
             "severity": "error",
-            "maxSize": 10,
-            "failOnNewCycles": true
+            "maxSize": 10
         }
     }
 }

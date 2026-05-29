@@ -1,4 +1,5 @@
-import { CytoscapeEdge, CytoscapeNode } from './adapters';
+import { CytoscapeEdge, CytoscapeNode } from '../adapters';
+import { styles } from './styles';
 
 type BuildHtmlTemplate = {
     nodes: CytoscapeNode[];
@@ -19,50 +20,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
     
         <style>
-            body {
-                margin: 0;
-                padding: 0;
-                font-family: sans-serif;
-            }
-    
-            #cy {
-                width: 100vw;
-                height: 100vh;
-            }
-    
-            #tooltip {
-                position: absolute;
-                display: none;
-                padding: 8px 10px;
-                background: white;
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                font-size: 12px;
-                pointer-events: none;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-                white-space: nowrap;
-            }
-    
-            #hint {
-                position: absolute;
-                top: 16px;
-                left: 16px;
-                width: 260px;
-            
-                padding: 12px 14px;
-            
-                background: white;
-                border: 1px solid #d1d5db;
-                border-radius: 8px;
-            
-                font-size: 13px;
-                line-height: 1.5;
-                color: #374151;
-            
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-            
-                z-index: 999;
-            }
+            ${styles}
         </style>
     </head>
     
@@ -91,8 +49,64 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 Highlight connected modules
             </label>
         </div>
+
+        <div id="toolbar">
+            <label>
+                Layout:
+                <select id="layout-select">
+                    <option value="dagreLR">Dagre LR</option>
+                    <option value="dagreTB">Dagre TB</option>
+                    <option value="breadthfirst">Breadth First</option>
+                    <option value="cose">Force Directed</option>
+                </select>
+            </label>
+
+            <button id="fit-btn">
+                Fit Graph
+            </button>
+        </div>
     
         <script>
+            const layouts = {
+                dagreLR: {
+                    name: 'dagre',
+                    rankDir: 'LR',
+                    nodeSep: 60,
+                    rankSep: 140,
+                    edgeSep: 30,
+                    padding: 40,
+                    spacingFactor: 1.3,
+                    fit: true,
+                    nodeDimensionsIncludeLabels: true,
+                },
+            
+                dagreTB: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 60,
+                    rankSep: 140,
+                    edgeSep: 30,
+                    padding: 40,
+                    spacingFactor: 1.3,
+                    fit: true,
+                    nodeDimensionsIncludeLabels: true,
+                },
+            
+                breadthfirst: {
+                    name: 'breadthfirst',
+                    directed: true,
+                    fit: true,
+                    padding: 40,
+                },
+            
+                cose: {
+                    name: 'cose',
+                    animate: true,
+                    fit: true,
+                    padding: 40,
+                },
+            };
+
             cytoscape.use(cytoscapeDagre);
 
             const cy = cytoscape({
@@ -164,38 +178,67 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     },
                 ],
     
-                layout: {
-                    name: 'dagre',
-                    rankDir: 'LR',
-                    nodeSep: 60,
-                    rankSep: 140,
-                    edgeSep: 30,
-                    padding: 40,
-                    spacingFactor: 1.3,
-                    fit: false,
-                    nodeDimensionsIncludeLabels: true,
-                }
+                layout: layouts.dagreLR,
             });
-    
-            const tooltip = document.getElementById('tooltip');
-    
-            if (!tooltip) {
-                throw new Error('Tooltip element not found');
+
+            const layoutSelect = document.getElementById('layout-select');
+
+            if (layoutSelect) {
+                layoutSelect.addEventListener(
+                    'change',
+                    function () {
+                        cy.layout(
+                            layouts[this.value],
+                        ).run();
+
+                        setTimeout(() => {
+                            cy.fit(undefined, 80);
+                        }, 300);
+                    },
+                );
             }
-    
+
+            const fitButton =
+                document.getElementById(
+                    'fit-btn',
+                );
+
+            if (fitButton) {
+                fitButton.addEventListener(
+                    'click',
+                    function () {
+                        cy.fit(undefined, 40);
+                    },
+                );
+            }
+
+            const tooltip = document.getElementById(
+                    'tooltip',
+                );
+
+            if (!tooltip) {
+                throw new Error(
+                    'Tooltip element not found',
+                );
+            }
+
             let pinnedNodeId = null;
-    
+
             const highlightToggle = document.getElementById('highlight-toggle');
-    
+
             let highlightEnabled = true;
-    
-            highlightToggle?.addEventListener('change', (event) => {
-                highlightEnabled = event.target.checked;
-    
-                if (!highlightEnabled) {
-                    clearHighlights();
-                }
-            });
+
+            highlightToggle?.addEventListener(
+                'change',
+                (event) => {
+                    highlightEnabled =
+                        event.target.checked;
+
+                    if (!highlightEnabled) {
+                        clearHighlights();
+                    }
+                },
+            );
     
             function showTooltip(event) {
                 const node = event.target;
