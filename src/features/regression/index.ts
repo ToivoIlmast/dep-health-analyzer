@@ -1,7 +1,6 @@
 import { createBaselineWorktree } from './utils/createBaselineWorktree';
-import { calculateDependencyDelta } from './delta/dependency-delta';
-import { buildDependencyInsights } from './delta/buildDependencyInsights';
-import { defaultModeReport } from './ci/reporting/defaultModeReport';
+import { calculateDependencyDelta } from './delta/dependencyDelta';
+import { defaultModeReport } from './ci/reporting/defaultModeReport/defaultModeReport';
 import { ciModeReport } from './ci/reporting/ciModeReport';
 import { htmlModeReport } from './visualization';
 import { scanProject } from '@core/scanProject';
@@ -9,6 +8,7 @@ import { removeBaselineWorktree } from './utils/removeBaselineWorktree';
 import { validateGitRef } from './utils/validateGitRef';
 import { DependencyInsight, RegressionThresholds } from './types';
 import { ModeType, MODES } from '@shared/types';
+import { buildDependencyInsights } from './delta/insights/buildDependencyInsights';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';

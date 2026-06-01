@@ -1,4 +1,4 @@
-import { DependencyInsight } from '../../types';
+import { DependencyInsight } from '../../../types';
 
 type AggregatedFinding = {
     key: string;
@@ -13,7 +13,7 @@ type AggregationType = {
     delta: DependencyInsight[];
 };
 
-function aggregation(arg: AggregationType): AggregatedFinding[] {
+export function aggregation(arg: AggregationType): AggregatedFinding[] {
     const { delta } = arg;
 
     const grouped = new Map<string, AggregatedFinding>();
@@ -62,14 +62,4 @@ function aggregation(arg: AggregationType): AggregatedFinding[] {
     }
 
     return findings;
-}
-
-type DefaltReportType = {
-    delta: DependencyInsight[];
-};
-
-export function defaultModeReport(arg: DefaltReportType): void {
-    const { delta } = arg;
-
-    aggregation({ delta });
 }

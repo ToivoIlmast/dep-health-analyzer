@@ -7,6 +7,7 @@ export const CLI_FLAG = {
     VERSION: '--version',
     VERSION_SHORT: '-v',
     INIT: '--init',
+    HELP: '--help',
 } as const;
 
 type RegressionArgs = {

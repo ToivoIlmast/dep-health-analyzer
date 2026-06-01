@@ -1,7 +1,7 @@
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
 import { analyzeRegression } from '@features/regression';
 import { CLI_COMMANDS, CliArgs } from './types';
-import { IConfig } from '../config/loadConfig';
+import { IConfig } from '../config/types';
 
 export async function routeCommand(args: CliArgs, config: IConfig): Promise<boolean[]> {
     const { command, target, mode } = args;

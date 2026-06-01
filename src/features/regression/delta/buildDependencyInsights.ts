@@ -1,4 +1,4 @@
-import path from 'node:path';
+/* import path from 'node:path';
 import { DependencyDelta, DependencyInsight, RegressionThresholds } from '../types';
 
 function normalize(file: string): string[] {
@@ -208,3 +208,4 @@ export function buildDependencyInsights(
         };
     });
 }
+ */

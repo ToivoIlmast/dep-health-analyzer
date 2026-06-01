@@ -3,9 +3,7 @@ import path from 'node:path';
 import { CLI_FLAG } from './types';
 import { defaultConfig } from '../config/defaultConfig';
 
-export function handleInitFlag(): void {
-    const args = process.argv.slice(2);
-
+export function handleInitFlag(args: string[] = process.argv.slice(2)): void {
     if (!args.includes(CLI_FLAG.INIT)) {
         return;
     }

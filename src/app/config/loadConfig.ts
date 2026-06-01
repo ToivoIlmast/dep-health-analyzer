@@ -1,50 +1,8 @@
-import { ModeType } from '@shared/types';
 import fs from 'fs';
 import path from 'path';
+import { IConfig } from './types';
 
 const CONFIG_NAMES = ['dep-health.config.json', '.dep-healthrc.json'];
-
-export type SeverityLevel = 'info' | 'warning' | 'error';
-
-export interface IConfig {
-    features?: {
-        regression?: {
-            enabled?: boolean;
-            mode?: ModeType;
-            failOn?: SeverityLevel;
-            reporting?: {
-                html?: {
-                    enabled?: boolean;
-                    outputPath?: string;
-                };
-            };
-            severity: {
-                'cross-boundary'?: SeverityLevel;
-                'deep-internal'?: SeverityLevel;
-                sibling?: SeverityLevel;
-                internal?: SeverityLevel;
-            };
-            thresholds: {
-                internalDepth?: number;
-                deepInternalResidualDepth?: number;
-            };
-        };
-
-        scc?: {
-            enabled?: boolean;
-            mode?: ModeType;
-            failOn?: SeverityLevel;
-            reporting?: {
-                html?: {
-                    enabled?: boolean;
-                    outputPath?: string;
-                };
-            };
-            severity?: SeverityLevel;
-            maxSize?: number;
-        };
-    };
-}
 
 export function loadConfig(): IConfig | void {
     for (const fileName of CONFIG_NAMES) {

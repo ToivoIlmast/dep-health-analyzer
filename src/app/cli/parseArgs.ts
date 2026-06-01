@@ -1,21 +1,14 @@
-import { IConfig } from 'app/config/loadConfig';
+/* import { IConfig } from '../config/types';
 import { printHelp } from './printHelp';
 import { CLI_COMMANDS, CLI_FLAG, CliArgs, CommandType } from './types';
 import { execSync } from 'node:child_process';
 import { ModeType, MODES } from '@shared/types';
+import { parseCommand } from './parseArgs/parseCommand';
+import { getArgValue } from './parseArgs/getArgValue';
+import { parseMode } from './parseArgs/parseMode';
+import { resolveBaselineRef } from './parseArgs/resolveBaselineRef'; */
 
-function resolveBaselineRef(value?: string): string {
-    if (value) return value;
-
-    try {
-        execSync('git rev-parse --verify HEAD~1', { stdio: 'ignore' });
-        return 'HEAD~1';
-    } catch {
-        return 'HEAD';
-    }
-}
-
-function parseCommand(value: string | undefined): CommandType {
+/* function parseCommand(value: string | undefined): CommandType {
     const allowedModes = Object.values(CLI_COMMANDS);
 
     if (!allowedModes.includes(value as CommandType)) {
@@ -24,9 +17,19 @@ function parseCommand(value: string | undefined): CommandType {
     }
 
     return value as CommandType;
-}
+} */
 
-function parseMode(args: string[], defaultMode: ModeType): ModeType {
+/* function getArgValue(args: string[], flag: string): string | undefined {
+    const index = args.indexOf(flag);
+
+    if (index === -1) {
+        return undefined;
+    }
+
+    return args[index + 1];
+} */
+
+/* function parseMode(args: string[], defaultMode: ModeType): ModeType {
     const value = getArgValue(args, CLI_FLAG.MODE) ?? defaultMode;
     const allowedModes = Object.values(MODES);
 
@@ -37,19 +40,20 @@ function parseMode(args: string[], defaultMode: ModeType): ModeType {
     }
 
     return value as ModeType;
-}
+} */
 
-function getArgValue(args: string[], flag: string): string | undefined {
-    const index = args.indexOf(flag);
+/* function resolveBaselineRef(value?: string): string {
+    if (value) return value;
 
-    if (index === -1) {
-        return undefined;
+    try {
+        execSync('git rev-parse --verify HEAD~1', { stdio: 'ignore' });
+        return 'HEAD~1';
+    } catch {
+        return 'HEAD';
     }
+} */
 
-    return args[index + 1];
-}
-
-export function parseArgs(config: IConfig): CliArgs {
+/* export function parseArgs(config: IConfig): CliArgs {
     const args = process.argv.slice(2);
     const command = parseCommand(args[0]);
 
@@ -71,4 +75,4 @@ export function parseArgs(config: IConfig): CliArgs {
         baselineRef,
         mode,
     };
-}
+} */
