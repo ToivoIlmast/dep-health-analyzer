@@ -6,67 +6,34 @@ function normalizePath(file: string, root: string): string {
     return path.relative(root, file);
 }
 
-type Files = {
-    baseline: ScanResult;
-    current: ScanResult;
-    baselineRoot: string;
-    currentRoot: string;
+type Dependency = {
+    from: string;
+    to: string;
 };
 
-type RemovedFiles = Files;
-function removedFiles(args: RemovedFiles): Array<{ from: string; to: string }> {
-    const { baseline, current, baselineRoot, currentRoot } = args;
+function buildDependencySet(scanResult: ScanResult, root: string): Set<string> {
+    const dependencies = new Set<string>();
 
-    const removed: Array<{ from: string; to: string }> = [];
-    for (const [from, deps] of baseline.graph.edges.entries()) {
-        const normalizedFrom = normalizePath(from, baselineRoot);
+    for (const [from, deps] of scanResult.graph.edges.entries()) {
+        const normalizedFrom = normalizePath(from, root);
 
         for (const to of deps) {
-            const normalizedTo = normalizePath(to, baselineRoot);
+            const normalizedTo = normalizePath(to, root);
 
-            const currentDeps = current.graph.edges.get(path.resolve(currentRoot, normalizedFrom));
-
-            const existsInCurrent = currentDeps?.has(path.resolve(currentRoot, normalizedTo));
-
-            if (!existsInCurrent) {
-                removed.push({
-                    from: normalizedFrom,
-                    to: normalizedTo,
-                });
-            }
+            dependencies.add(`${normalizedFrom}::${normalizedTo}`);
         }
     }
 
-    return removed;
+    return dependencies;
 }
 
-type AddedFiles = Files;
-function addedFiles(args: AddedFiles): Array<{ from: string; to: string }> {
-    const { baseline, current, baselineRoot, currentRoot } = args;
+function parseDependency(key: string): Dependency {
+    const [from, to] = key.split('::');
 
-    const added: Array<{ from: string; to: string }> = [];
-    for (const [from, deps] of current.graph.edges.entries()) {
-        const normalizedFrom = normalizePath(from, currentRoot);
-
-        for (const to of deps) {
-            const normalizedTo = normalizePath(to, currentRoot);
-
-            const baselineDeps = baseline.graph.edges.get(
-                path.resolve(baselineRoot, normalizedFrom)
-            );
-
-            const existsInBaseline = baselineDeps?.has(path.resolve(baselineRoot, normalizedTo));
-
-            if (!existsInBaseline) {
-                added.push({
-                    from: normalizedFrom,
-                    to: normalizedTo,
-                });
-            }
-        }
-    }
-
-    return added;
+    return {
+        from: from!,
+        to: to!,
+    };
 }
 
 export function calculateDependencyDelta(args: {
@@ -75,13 +42,29 @@ export function calculateDependencyDelta(args: {
 }): DependencyDelta {
     const { baseline, current } = args;
 
-    const currentRoot = process.cwd();
-    const baselineRoot = path.resolve('.dep-health-analyzer');
+    const currentRoot = current.root;
+    const baselineRoot = baseline.root;
 
-    const removed = removedFiles({ baseline, baselineRoot, current, currentRoot });
-    const added = addedFiles({ baseline, baselineRoot, current, currentRoot });
+    const currentDependencies = buildDependencySet(current, currentRoot);
+    const baselineDependencies = buildDependencySet(baseline, baselineRoot);
 
-    /* getArea('src/features/regression/utils/createBaselineWorktree.ts', 4);
+    const added: Dependency[] = [];
+    const removed: Dependency[] = [];
+
+    for (const dependency of currentDependencies) {
+        if (!baselineDependencies.has(dependency)) {
+            added.push(parseDependency(dependency));
+        }
+    }
+
+    for (const dependency of baselineDependencies) {
+        if (!currentDependencies.has(dependency)) {
+            removed.push(parseDependency(dependency));
+        }
+    }
+
+    /* 
+    getArea('src/features/regression/utils/createBaselineWorktree.ts', 4);
 
     const commonDepth1 = getCommonDepth('/A/B/C/D/index.ts', '/A/B/C/D/E/K/smt.tsx');
     console.log('Common Depth #1', commonDepth1);
@@ -93,7 +76,8 @@ export function calculateDependencyDelta(args: {
     console.log('Common Depth #3', commonDepth3);
 
     const commonDepth4 = getCommonDepth('/A/B/C/D/index.ts', '/A/B/C/I/E/K/smt.tsx');
-    console.log('Common Depth #4', commonDepth4); */
+    console.log('Common Depth #4', commonDepth4); 
+    */
 
     return { added, removed };
 }

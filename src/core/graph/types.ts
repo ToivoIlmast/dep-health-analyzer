@@ -13,5 +13,6 @@ export interface DependencyGraph {
 export interface ScanResult {
     graph: DependencyGraph;
     scannedFiles: number;
+    root: string;
     cycles?: string[][];
 }

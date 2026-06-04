@@ -3,9 +3,12 @@ import { ScanResult } from './graph/types';
 import { discoverFiles } from './scanner/discover';
 import { extractImports } from './scanner/extract';
 import { resolveImport } from './scanner/resolve';
+import path from 'node:path';
 
 export async function scanProject(root: string): Promise<ScanResult> {
-    const files = await discoverFiles(root);
+    const normalizedRoot = path.resolve(root);
+
+    const files = await discoverFiles(normalizedRoot);
     const graph = createGraph();
 
     for (const file of files) {
@@ -27,5 +30,6 @@ export async function scanProject(root: string): Promise<ScanResult> {
     return {
         graph,
         scannedFiles: files.length,
+        root: normalizedRoot,
     };
 }
