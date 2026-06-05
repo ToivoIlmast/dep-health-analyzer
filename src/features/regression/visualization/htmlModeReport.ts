@@ -9,12 +9,21 @@ type HtmlReportType = {
     outputPath: string;
     target: string;
     baselineRef: string;
+    currentScannedFiles: number;
+    baselineScannedFiles: number;
 };
 
 export function htmlModeReport(args: HtmlReportType): void {
-    const { delta, outputPath, target, baselineRef } = args;
+    const { delta, outputPath, target, baselineRef, currentScannedFiles, baselineScannedFiles } =
+        args;
 
-    const html = buildRegressionHtmlTemplate({ delta, target, baselineRef });
+    const html = buildRegressionHtmlTemplate({
+        delta,
+        target,
+        baselineRef,
+        currentScannedFiles,
+        baselineScannedFiles,
+    });
 
     const resolvedPath = path.resolve(outputPath);
     const directory = path.dirname(resolvedPath);

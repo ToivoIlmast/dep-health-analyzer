@@ -148,4 +148,100 @@ describe('calculateDependencyDelta', () => {
             removed: [],
         });
     });
+
+    it('should normalize equivalent dependency paths across different roots', () => {
+        const current = createScanResult(
+            [
+                [
+                    '/workspace/project/src/features/users/UserService.ts',
+                    ['/workspace/project/src/features/users/UserRepository.ts'],
+                ],
+            ],
+            '/workspace/project/src'
+        );
+
+        const baseline = createScanResult(
+            [
+                [
+                    '/tmp/worktree/project/src/features/users/UserService.ts',
+                    ['/tmp/worktree/project/src/features/users/UserRepository.ts'],
+                ],
+            ],
+            '/tmp/worktree/project/src'
+        );
+
+        const result = calculateDependencyDelta({
+            current,
+            baseline,
+        });
+
+        expect(result).toEqual({
+            added: [],
+            removed: [],
+        });
+    });
+
+    it('should detect differences when dependencies are normalized against different roots', () => {
+        const current = createScanResult(
+            [
+                [
+                    '/workspace/project/src/features/users/UserService.ts',
+                    ['/workspace/project/src/features/users/UserRepository.ts'],
+                ],
+            ],
+            '/workspace/project'
+        );
+
+        const baseline = createScanResult(
+            [
+                [
+                    '/tmp/worktree/project/src/features/users/UserService.ts',
+                    ['/tmp/worktree/project/src/features/users/UserRepository.ts'],
+                ],
+            ],
+            '/tmp/worktree/project/src'
+        );
+
+        const result = calculateDependencyDelta({
+            current,
+            baseline,
+        });
+
+        expect(result.added.length).toBeGreaterThan(0);
+        expect(result.removed.length).toBeGreaterThan(0);
+    });
+
+    it('should not match dependencies normalized against different roots', () => {
+        const current = createScanResult(
+            [
+                [
+                    '/project/demo-project/src/app/bootstrap.ts',
+                    ['/project/demo-project/src/features/users/UserController.ts'],
+                ],
+            ],
+            '/project/demo-project'
+        );
+
+        const baseline = createScanResult(
+            [
+                [
+                    '/project/.dep-health-analyzer/worktree/demo-project/src/app/bootstrap.ts',
+                    [
+                        '/project/.dep-health-analyzer/worktree/demo-project/src/features/users/UserController.ts',
+                    ],
+                ],
+            ],
+            '/project/.dep-health-analyzer/worktree/demo-project/src' // <--- it is broken on purpose
+        );
+
+        const result = calculateDependencyDelta({
+            current,
+            baseline,
+        });
+
+        expect(result).not.toEqual({
+            added: [],
+            removed: [],
+        });
+    });
 });

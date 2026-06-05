@@ -51,7 +51,7 @@ export function printHelp(): void {
         dep-health-analyzer cycles \\
             --target ./src
         
-        ep-health-analyzer cycles \\
+        dep-health-analyzer cycles \\
             --target ./src \\
             --mode compact
         

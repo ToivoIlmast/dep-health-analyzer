@@ -10,11 +10,17 @@ import { riskAssessment } from './sections/riskAssessment';
 import { styles } from './styles';
 import { RiskLevel } from './types';
 
-function getRiskLevel(crossBoundaryCount: number): RiskLevel {
+type GetRiskLevelType = {
+    crossBoundaryCount: number;
+    totalModules: number;
+};
+function getRiskLevel(args: GetRiskLevelType): RiskLevel {
+    const { crossBoundaryCount, totalModules } = args;
     let riskLevel: RiskLevel = 'Low Architectural Risk';
-    if (crossBoundaryCount > 20) {
+    const percentage = Number(((crossBoundaryCount / totalModules) * 100).toFixed(2));
+    if (percentage > 15) {
         riskLevel = 'High Architectural Risk';
-    } else if (crossBoundaryCount > 10) {
+    } else if (percentage > 5) {
         riskLevel = 'Moderate Architectural Risk';
     }
 
@@ -25,10 +31,12 @@ type BuildRegressionHtmlTemplate = {
     delta: DependencyInsight[];
     target: string;
     baselineRef: string;
+    currentScannedFiles: number;
+    baselineScannedFiles: number;
 };
 
 export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): string {
-    const { delta, target, baselineRef } = args;
+    const { delta, target, baselineRef, currentScannedFiles, baselineScannedFiles } = args;
 
     const crossBoundaryCount = delta.filter((item) => item.relation === 'cross-boundary').length;
     const siblingCount = delta.filter((item) => item.relation === 'sibling').length;
@@ -53,7 +61,7 @@ export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): 
         topAreas,
     });
 
-    const riskLevel = getRiskLevel(crossBoundaryCount);
+    const riskLevel = getRiskLevel({ crossBoundaryCount, totalModules: currentScannedFiles });
     const riskAssessmentSection = riskAssessment({
         crossBoundaryCount,
         riskLevel,
@@ -69,6 +77,8 @@ export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): 
         findingsCount: delta.length,
         mostAffectedArea,
         baselineRef,
+        currentSnapshot: currentScannedFiles,
+        baselineSnapshot: baselineScannedFiles,
     });
 
     const architecturalRelationGuideSection = architecturalRelationGuide();

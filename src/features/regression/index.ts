@@ -9,6 +9,8 @@ import { validateGitRef } from './utils/validateGitRef';
 import { DependencyInsight, RegressionThresholds } from './types';
 import { ModeType, MODES } from '@shared/types';
 import { buildDependencyInsights } from './delta/insights/buildDependencyInsights';
+import { execSync } from 'node:child_process';
+import path from 'node:path';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
@@ -20,6 +22,8 @@ type ReportContext = {
     htmlReportingOutputPath: string;
     target: string;
     baselineRef: string;
+    currentScannedFiles: number;
+    baselineScannedFiles: number;
 };
 type ReportHandler = (ctx: ReportContext) => boolean | null | void;
 const handlers: Record<ModeType, ReportHandler> = {
@@ -31,12 +35,28 @@ const handlers: Record<ModeType, ReportHandler> = {
                 outputPath: ctx.htmlReportingOutputPath,
                 target: ctx.target,
                 baselineRef: ctx.baselineRef,
+                currentScannedFiles: ctx.currentScannedFiles,
+                baselineScannedFiles: ctx.baselineScannedFiles,
             });
         console.warn(`${YELLOW}\nHTML reporting is disabled in config.\n${RESET}`);
         return;
     },
     [MODES.COMPACT]: (ctx) => ciModeReport(ctx),
 };
+
+function resolveBaselineTarget(worktree: string, target: string): string {
+    const repoRoot = execSync('git rev-parse --show-toplevel', {
+        encoding: 'utf8',
+    }).trim();
+
+    const currentDir = process.cwd();
+
+    const relativeProjectPath = path.relative(repoRoot, currentDir);
+
+    const normalizedTarget = target.replace(/^\.?\//, '');
+
+    return path.join(worktree, relativeProjectPath, normalizedTarget);
+}
 
 const severityRank = {
     info: 1,
@@ -96,7 +116,7 @@ export async function analyzeRegression(args: AnalyzeRegressionType): Promise<bo
     console.log(`Modules: ${current.graph.nodes.size}`);
 
     const worktree = createBaselineWorktree(baselineRef);
-    const baseline = await scanProject(worktree);
+    const baseline = await scanProject(resolveBaselineTarget(worktree, target));
     removeBaselineWorktree(worktree);
 
     console.log(`Scanned files: ${baseline.scannedFiles}`);
@@ -122,6 +142,8 @@ export async function analyzeRegression(args: AnalyzeRegressionType): Promise<bo
         htmlReportingOutputPath: htmlReportOutputPath,
         target,
         baselineRef,
+        currentScannedFiles: current.scannedFiles,
+        baselineScannedFiles: baseline.scannedFiles,
     });
 
     return failed;
