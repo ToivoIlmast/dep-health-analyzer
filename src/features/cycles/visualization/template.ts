@@ -15,9 +15,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         <meta charset="UTF-8" />
         <title>dep-health-analyzer graph</title>
     
-        <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
-        <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
-        <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
+        <script src="./assets/cytoscape.min.js"></script>
+        <script src="./assets/dagre.min.js"></script>
+        <script src="./assets/cytoscape-dagre.js"></script>
     
         <style>
             ${styles}

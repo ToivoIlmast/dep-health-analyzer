@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters/buildCytoscapeElements';
 import { buildHtmlTemplate } from './template';
+import { copyAssets } from './copyAssets';
 
 type GenerateHtmlArgs = {
     graph: {
@@ -22,6 +23,7 @@ export function generateHtml(args: GenerateHtmlArgs): void {
     const directory = path.dirname(resolvedPath);
 
     fs.mkdirSync(directory, { recursive: true });
+    copyAssets(directory);
     fs.writeFileSync(resolvedPath, html);
 
     console.log(

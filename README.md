@@ -1,195 +1,153 @@
 # dep-health-analyzer
 
-Architecture and dependency analysis tool for JS/TS projects.
+_Architectural awareness, not architectural enforcement._
 
-`dep-health-analyzer` helps detect architectural problems early:
+Keep track of your project's dependency health.
 
-- circular dependencies;
-- unstable module boundaries;
-- coupling issues;
-- architecture decay in growing codebases.
+As projects grow, dependency structure becomes harder to understand.
 
-The long-term goal is to provide practical architecture intelligence for engineering teams and large-scale applications.
+New imports are added.
+Modules become more connected.
+Cycles appear.
+Architecture slowly drifts away from its original shape.
 
----
+Most of these changes happen gradually and often go unnoticed during code review.
 
-## Features
-
-### Current (v0.2)
-
-Architecture metrics:
-
-- Ca (Afferent Coupling)
-- Ce (Efferent Coupling)
-- Instability analysis
-
-Dependency analysis:
-
-- Circular dependency detection
-- Strongly connected components analysis (SCC)
-
-Visualization:
-
-- Interactive HTML dependency graph
-- SCC cluster highlighting
-- Node sizing based on dependency weight
-- Module tooltips with metrics
-- Connected dependency highlighting
+dep-health-analyzer helps make these changes visible.
 
 ---
 
-## Supported
+## Questions it helps answer
 
-- TypeScript (`.ts`, `.tsx`)
-- JavaScript (`.js`, `.jsx`)
+### What changed?
+
+Compare dependency structure between commits, branches, or releases.
+
+### Should I take a closer look?
+
+Spot new cycles and structural dependency changes that may deserve additional review.
+
+### What parts of the project were affected?
+
+See where new dependencies appeared and how they relate to the existing structure.
+
+### When did this happen?
+
+Track architectural changes across Git history and understand how dependency structure evolved over time.
 
 ---
 
-## Install
+## What it does
+
+### Dependency Cycle Detection
+
+Build a dependency graph and detect strongly connected components (SCCs).
+
+Explore:
+
+- dependency cycles
+- module stability metrics
+- coupling relationships
+- architectural hotspots
+
+Available modes:
+
+- full
+- compact
+- html
+
+### Regression Analysis
+
+Compare the current dependency graph against a previous Git revision.
+
+Identify newly introduced:
+
+- cross-boundary dependencies
+- deep-internal dependencies
+- internal dependencies
+- sibling dependencies
+
+Each finding includes contextual information explaining why the relationship was classified that way.
+
+Available modes:
+
+- full
+- compact
+- html
+
+### Interactive HTML Reports
+
+Generate interactive reports designed for architectural exploration.
+
+Reports provide:
+
+- dependency graph visualization
+- SCC highlighting
+- architectural metrics
+- dependency insights
+- regression summaries
+- risk assessment information
+
+---
+
+### Cycle Detection
+
+Explore dependency graphs, identify SCC clusters, and inspect architectural metrics interactively.
+
+![Cycle report](docs/images/full-cycle-report.png)
+
+_Cycles are highlighted automatically. Hover over modules to inspect coupling metrics and instability._
+
+### Regression Analysis
+
+Compare dependency structure between revisions and review newly introduced architectural signals.
+
+![Regression report](docs/images/full-regression-report.png)
+
+_Reports summarize structural findings, assess potential risk, and suggest areas for review._
+
+### See how architectural changes become visible.
+
+![Regression report](docs/images/overview.gif)
+
+## Quick Start
+
+Install the package:
 
 ```bash
 npm install -D dep-health-analyzer
 ```
 
-## Usage
-
-Run dependency analysis:
+Generate a default configuration:
 
 ```bash
-npx dep-health-analyzer scan ./src
+npx dep-health-analyzer --init
 ```
 
-Generate interactive HTML report:
+Detect dependency cycles:
 
 ```bash
-npx dep-health-analyzer scan ./src
+npx dep-health-analyzer cycles
 ```
 
-### Example output
+Compare the current revision against the previous commit:
 
 ```bash
-dep-health-analyzer v0.2.0
-
-Project: ./src
-
-Files scanned: 40
-Modules: 40
-Dependencies: 30
-
-Architecture
-
-Cycles detected: 1
-Largest SCC: 4 modules
-
-Most unstable modules
-
-auth-api.ts        I=1.00
-session-store.ts   I=0.91
-
-Most stable modules
-
-core.ts            I=0.05
-shared-types.ts    I=0.10
-
-Generate interactive HTML report:
-dep-health-analyzer-report.html
+npx dep-health-analyzer regression --baseline HEAD~1
 ```
 
-## Vision
+Generate interactive HTML reports:
 
-`dep-health-analyzer` aims to help developers understand and maintain dependency architecture in growing codebases.
+```bash
+npx dep-health-analyzer cycles --mode html
 
-The project focuses on:
-
-- dependency visibility;
-- architectural boundaries;
-- coupling analysis;
-- cycle detection;
-- long-term maintainability.
-
-The long-term direction is practical architecture tooling for engineering teams and large-scale applications.
-
-# Roadmap
-
-## v0.1 — Dependency Graph MVP
-
-Basic project dependency analyzer.
-
-### Features
-
-- [x] JS/TS file discovery
-- [x] Import/export extraction
-- [x] Dependency graph generation
-- [x] CLI support
-- [x] Cycle detection
-
-### Quality
-
-- [x] Basic tests and fixtures
-
----
-
-## v0.2 — Architecture Metrics & Visualization
-
-Module stability analysis and dependency architecture visualization.
-
-### Features
-
-- [x] Ca (Afferent Coupling)
-- [x] Ce (Efferent Coupling)
-- [x] Instability metrics
-- [x] Strongly connected components analysis
-- [x] Circular dependency detection
-
-### Visualization
-
-- [x] Interactive HTML report
-- [x] Dependency graph visualization
-- [x] SCC cluster highlighting
-- [x] Node sizing based on dependency weight
-- [x] Module metrics tooltips
-- [x] Connected dependency highlighting
-
-### Quality
-
-- [x] Extended tests and fixtures
-
----
-
-## v0.3 — Rules Engine
-
-Architecture rules and dependency policy validation.
-
-### Features
-
-- [ ] YAML / JSON configuration
-- [ ] Layer boundary validation
-- [ ] Forbidden dependency rules
-- [ ] Severity levels (warn / error)
-- [ ] CI-friendly exit codes
-- [ ] Stable Dependencies Principle (SDP) validation
-
-### Example
-
-```yaml
-rules:
-    no-cycle: error
-    no-domain-to-infra: error
+npx dep-health-analyzer regression --mode html
 ```
 
-### Quality
+## CI/CD Integration
 
-- [ ] Extended tests and fixtures
+dep-health-analyzer can be used as a quality gate in CI pipelines.
 
-## Future Directions
+Configure severity levels and fail builds when architectural signals exceed the thresholds accepted by your team.
 
-Possible future areas of development:
-
-- advanced architecture visualization;
-- CI/CD integration;
-- JSON and Mermaid export;
-- historical dependency analysis;
-- architectural hotspot detection;
-- dependency heatmaps;
-- multi-language support;
-- semantic architecture analysis.
+Regression analysis helps surface structural changes during code review, while cycle detection helps monitor long-term dependency health.

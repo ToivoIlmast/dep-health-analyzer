@@ -31,6 +31,6 @@
         }
     },
     "include": ["src", "bin"],
-    // "exclude": ["node_modules", "dist", "**/*.test.ts", "src/fixtures"]
-    "exclude": ["node_modules", "dist", "src/**/__fixtures__/**"]
+    "exclude": ["node_modules", "dist", "**/*.test.ts", "src/fixtures", "src/**/__fixtures__/**"]
+    // "exclude": ["node_modules", "dist", "src/**/__fixtures__/**"]
 }

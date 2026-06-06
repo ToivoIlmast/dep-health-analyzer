@@ -15,7 +15,8 @@
     "scripts": {
         "dev": "tsx src/app/cli.ts",
         "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
-        "build": "tsc && tsc-alias",
+        "build": "tsc && tsc-alias && node scripts/copyAssets.js",
+        "copy-assets": "mkdir -p dist/assets && cp static/assets/* dist/assets/",
         "postbuild": "chmod +x dist/app/cli.js",
         "jest": "jest --coverage --silent --runInBand --detectOpenHandles --colors",
         "jest:watch": "jest --watch",
