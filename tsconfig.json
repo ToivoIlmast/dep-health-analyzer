@@ -18,8 +18,19 @@
 
         "forceConsistentCasingInFileNames": true,
         "noUncheckedIndexedAccess": true,
-        "ignoreDeprecations": "6.0"
+        "ignoreDeprecations": "6.0",
+        "baseUrl": "./src",
+        "paths": {
+            "@graph/*": ["graph/*"],
+            "@metrics/*": ["metrics/*"],
+            "@scanner/*": ["scanner/*"],
+            "@visualization/*": ["visualization/*"],
+            "@core/*": ["core/*"],
+            "@features/*": ["features/*"],
+            "@shared/*": ["shared/*"]
+        }
     },
     "include": ["src", "bin"],
-    "exclude": ["node_modules", "dist", "**/*.test.ts", "src/fixtures"]
+    "exclude": ["node_modules", "dist", "**/*.test.ts", "src/fixtures", "src/**/__fixtures__/**"]
+    // "exclude": ["node_modules", "dist", "src/**/__fixtures__/**"]
 }

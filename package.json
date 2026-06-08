@@ -1,6 +1,6 @@
 {
     "name": "dep-health-analyzer",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "license": "MIT",
     "type": "commonjs",
     "repository": {
@@ -13,17 +13,19 @@
     },
     "description": "Architecture and dependency analysis tool for JS/TS projects",
     "scripts": {
-        "dev": "tsx src/cli.ts",
+        "dev": "tsx src/app/cli.ts",
         "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
-        "build": "tsc",
-        "postbuild": "chmod +x dist/cli.js",
+        "build": "tsc && tsc-alias && node scripts/copyAssets.js",
+        "copy-assets": "mkdir -p dist/assets && cp static/assets/* dist/assets/",
+        "postbuild": "chmod +x dist/app/cli.js",
         "jest": "jest --coverage --silent --runInBand --detectOpenHandles --colors",
         "jest:watch": "jest --watch",
         "lint": "eslint .",
-        "lint:fix": "eslint . --fix"
+        "lint:fix": "eslint . --fix",
+        "tff": "npm run jest && npm run lint:fix && npm run build"
     },
     "bin": {
-        "dep-health-analyzer": "dist/cli.js"
+        "dep-health-analyzer": "dist/app/cli.js"
     },
     "files": [
         "dist"
@@ -49,6 +51,7 @@
         "prettier": "^3.8.3",
         "ts-jest": "^29.4.9",
         "ts-node": "^10.9.2",
+        "tsc-alias": "^1.8.17",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.59.2"
