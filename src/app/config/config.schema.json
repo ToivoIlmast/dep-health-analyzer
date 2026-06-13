@@ -96,6 +96,72 @@
                             },
 
                             "additionalProperties": false
+                        },
+
+                        "scopes": {
+                            "type": "array",
+
+                            "items": {
+                                "type": "object",
+
+                                "properties": {
+                                    "match": {
+                                        "type": "string"
+                                    },
+
+                                    "ignore": {
+                                        "type": "boolean"
+                                    },
+
+                                    "severity": {
+                                        "type": "object",
+
+                                        "properties": {
+                                            "cross-boundary": {
+                                                "type": "string",
+                                                "enum": ["info", "warning", "error"]
+                                            },
+
+                                            "deep-internal": {
+                                                "type": "string",
+                                                "enum": ["info", "warning", "error"]
+                                            },
+
+                                            "sibling": {
+                                                "type": "string",
+                                                "enum": ["info", "warning", "error"]
+                                            },
+
+                                            "internal": {
+                                                "type": "string",
+                                                "enum": ["info", "warning", "error"]
+                                            }
+                                        },
+
+                                        "additionalProperties": false
+                                    },
+
+                                    "thresholds": {
+                                        "type": "object",
+
+                                        "properties": {
+                                            "internalDepth": {
+                                                "type": "number"
+                                            },
+
+                                            "deepInternalResidualDepth": {
+                                                "type": "number"
+                                            }
+                                        },
+
+                                        "additionalProperties": false
+                                    }
+                                },
+
+                                "required": ["match"],
+
+                                "additionalProperties": false
+                            }
                         }
                     },
 

@@ -20,7 +20,38 @@
             "thresholds": {
                 "internalDepth": 3,
                 "deepInternalResidualDepth": 3
-            }
+            },
+            "scopes": [
+                {
+                    "match": "src/app/**",
+                    "ignore": true
+                },
+                {
+                    "match": "src/features/**/visualization/**",
+                    "ignore": true
+                },
+                {
+                    "match": "src/features/**/ci/reporting/**",
+                    "severity": {
+                        "cross-boundary": "info",
+                        "deep-internal": "info"
+                    }
+                },
+                {
+                    "match": "src/features/regression/**",
+                    "thresholds": {
+                        "internalDepth": 2,
+                        "deepInternalResidualDepth": 2
+                    }
+                },
+                {
+                    "match": "src/features/cycles/**",
+                    "thresholds": {
+                        "internalDepth": 2,
+                        "deepInternalResidualDepth": 2
+                    }
+                }
+            ]
         },
         "scc": {
             "enabled": true,
