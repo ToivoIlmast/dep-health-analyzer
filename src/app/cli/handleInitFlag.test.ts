@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+
 import { handleInitFlag } from './handleInitFlag';
 import { defaultConfig } from '../config/defaultConfig';
 
@@ -15,9 +17,9 @@ describe('handleInitFlag', () => {
     });
 
     it('should warn and exit when config file already exists', () => {
-        jest.spyOn(path, 'resolve').mockReturnValue('dep-health.config.json');
-        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-'));
+        jest.spyOn(process, 'cwd').mockReturnValue(tempDir);
+        fs.writeFileSync(path.join(tempDir, 'dep-health.config.json'), '{}');
         const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
         const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 
@@ -28,19 +30,16 @@ describe('handleInitFlag', () => {
     });
 
     it('should write defaultConfig to dep-health.config.json', () => {
-        jest.spyOn(path, 'resolve').mockReturnValue('dep-health.config.json');
-        jest.spyOn(fs, 'existsSync').mockReturnValue(false);
-        jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-
-        const writeFileSyncSpy = jest
-            .spyOn(fs, 'writeFileSync')
-            .mockImplementation(() => undefined);
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-'));
+        jest.spyOn(process, 'cwd').mockReturnValue(tempDir);
+        const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
         handleInitFlag(['--init']);
 
-        expect(writeFileSyncSpy).toHaveBeenCalledWith(
-            'dep-health.config.json',
-            JSON.stringify(defaultConfig, null, 4)
-        );
+        const configPath = path.join(tempDir, 'dep-health.config.json');
+        expect(fs.existsSync(configPath)).toBe(true);
+        const generatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        expect(generatedConfig).toEqual(defaultConfig);
+        expect(exitSpy).toHaveBeenCalledWith(0);
     });
 });
