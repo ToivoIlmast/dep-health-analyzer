@@ -1,6 +1,7 @@
 import { debug } from '../logger/logger';
 import fs from 'node:fs';
 import path from 'node:path';
+import { TsConfigPaths } from './loadTsConfig';
 
 const extensions = ['.ts', '.tsx', '.js', '.jsx'];
 
@@ -24,16 +25,74 @@ function resolveFile(base: string): string | null {
     return null;
 }
 
-export function resolveImport(fromFile: string, specifier: string): string | null {
-    // TODO:
-    // support tsconfig paths / aliases
-    if (!specifier.startsWith('.')) {
-        debug('EXTERNAL SKIP:', specifier);
+function resolveAlias(specifier: string, tsconfig: TsConfigPaths | null): string | null {
+    if (!tsconfig) {
         return null;
     }
 
-    const dir = path.dirname(fromFile);
-    const base = path.resolve(dir, specifier);
+    const baseUrl = tsconfig.baseUrl ?? '.';
 
-    return resolveFile(base);
+    for (const [alias, targets] of Object.entries(tsconfig.paths)) {
+        const hasWildcard = alias.endsWith('/*');
+        const aliasPrefix = hasWildcard ? alias.slice(0, -2) : alias;
+
+        if (hasWildcard) {
+            if (!specifier.startsWith(`${aliasPrefix}/`)) {
+                continue;
+            }
+
+            const remainder = specifier.slice(aliasPrefix.length + 1);
+
+            for (const target of targets) {
+                const targetPrefix = target.endsWith('/*') ? target.slice(0, -2) : target;
+
+                const base = path.resolve(tsconfig.baseDir, baseUrl, targetPrefix, remainder);
+
+                const resolved = resolveFile(base);
+
+                if (resolved) {
+                    return resolved;
+                }
+            }
+        } else {
+            if (specifier !== alias) {
+                continue;
+            }
+
+            for (const target of targets) {
+                const base = path.resolve(tsconfig.baseDir, baseUrl, target);
+
+                const resolved = resolveFile(base);
+
+                if (resolved) {
+                    return resolved;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+export function resolveImport(
+    fromFile: string,
+    specifier: string,
+    tsconfig: TsConfigPaths | null = null
+): string | null {
+    if (specifier.startsWith('.')) {
+        const dir = path.dirname(fromFile);
+        const base = path.resolve(dir, specifier);
+
+        return resolveFile(base);
+    }
+
+    const aliasResolved = resolveAlias(specifier, tsconfig);
+
+    if (aliasResolved) {
+        return aliasResolved;
+    }
+
+    debug('EXTERNAL SKIP:', specifier);
+
+    return null;
 }
