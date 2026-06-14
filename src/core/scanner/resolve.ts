@@ -1,7 +1,7 @@
 import { debug } from '../logger/logger';
 import fs from 'node:fs';
 import path from 'node:path';
-import { TsConfigPaths } from './loadTsConfig';
+import { TsConfigPaths } from './types';
 
 const extensions = ['.ts', '.tsx', '.js', '.jsx'];
 
@@ -74,11 +74,14 @@ function resolveAlias(specifier: string, tsconfig: TsConfigPaths | null): string
     return null;
 }
 
-export function resolveImport(
-    fromFile: string,
-    specifier: string,
-    tsconfig: TsConfigPaths | null = null
-): string | null {
+type ResolveImportType = {
+    fromFile: string;
+    specifier: string;
+    tsconfig?: TsConfigPaths | null;
+};
+
+export function resolveImport(args: ResolveImportType): string | null {
+    const { fromFile, specifier, tsconfig = null } = args;
     if (specifier.startsWith('.')) {
         const dir = path.dirname(fromFile);
         const base = path.resolve(dir, specifier);

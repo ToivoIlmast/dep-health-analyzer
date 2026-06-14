@@ -1,11 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-
-export interface TsConfigPaths {
-    baseDir: string;
-    baseUrl?: string;
-    paths: Record<string, string[]>;
-}
+import { TsConfigPaths } from './types';
 
 export function loadTsConfig(root: string): TsConfigPaths | null {
     const tsconfigPath = path.join(root, 'tsconfig.json');
