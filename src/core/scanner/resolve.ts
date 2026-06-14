@@ -4,17 +4,7 @@ import path from 'node:path';
 
 const extensions = ['.ts', '.tsx', '.js', '.jsx'];
 
-export function resolveImport(fromFile: string, specifier: string): string | null {
-    // TODO:
-    // support tsconfig paths / aliases
-    if (!specifier.startsWith('.')) {
-        debug('EXTERNAL SKIP:', specifier);
-        return null;
-    }
-
-    const dir = path.dirname(fromFile);
-    const base = path.resolve(dir, specifier);
-
+function resolveFile(base: string): string | null {
     for (const ext of extensions) {
         const candidate = `${base}${ext}`;
 
@@ -32,4 +22,18 @@ export function resolveImport(fromFile: string, specifier: string): string | nul
     }
 
     return null;
+}
+
+export function resolveImport(fromFile: string, specifier: string): string | null {
+    // TODO:
+    // support tsconfig paths / aliases
+    if (!specifier.startsWith('.')) {
+        debug('EXTERNAL SKIP:', specifier);
+        return null;
+    }
+
+    const dir = path.dirname(fromFile);
+    const base = path.resolve(dir, specifier);
+
+    return resolveFile(base);
 }
