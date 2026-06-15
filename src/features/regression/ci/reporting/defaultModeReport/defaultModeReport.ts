@@ -1,5 +1,6 @@
 import { DependencyInsight } from '../../../types';
 import { aggregation } from './aggregation';
+import { printFindings } from './printFindings';
 
 type DefaltReportType = {
     delta: DependencyInsight[];
@@ -8,5 +9,6 @@ type DefaltReportType = {
 export function defaultModeReport(arg: DefaltReportType): void {
     const { delta } = arg;
 
-    aggregation({ delta });
+    const finding = aggregation({ delta });
+    printFindings(finding);
 }
