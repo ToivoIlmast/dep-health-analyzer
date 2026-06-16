@@ -74,4 +74,37 @@ describe('loadTsConfig', () => {
 
         expect(result).toBeNull();
     });
+
+    it('should load compilerOptions from extended tsconfig', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-tsconfig-'));
+
+        fs.writeFileSync(
+            path.join(root, 'tsconfig.base.json'),
+            JSON.stringify({
+                compilerOptions: {
+                    baseUrl: '.',
+                    paths: {
+                        '@core/*': ['src/core/*'],
+                    },
+                },
+            })
+        );
+
+        fs.writeFileSync(
+            path.join(root, 'tsconfig.json'),
+            JSON.stringify({
+                extends: './tsconfig.base.json',
+            })
+        );
+
+        const result = loadTsConfig(root);
+
+        expect(result).toEqual({
+            baseDir: root,
+            baseUrl: '.',
+            paths: {
+                '@core/*': ['src/core/*'],
+            },
+        });
+    });
 });

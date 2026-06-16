@@ -1,7 +1,7 @@
 import { scanProject } from '@core/scanProject';
 
 async function main() {
-    const result = await scanProject('./src');
+    const result = await scanProject({ projectRoot: './src', scanRoot: '' });
 
     console.log('Scanned:', result.scannedFiles);
     console.log('Nodes:', result.graph.nodes.size);

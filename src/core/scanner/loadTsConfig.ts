@@ -2,6 +2,37 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TsConfigPaths } from './types';
 
+type TsConfigJsonType = {
+    extends?: string;
+    compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+    };
+};
+
+function readTsConfig(configPath: string): TsConfigJsonType {
+    const json = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+    if (!json.extends) {
+        return json;
+    }
+
+    const parentPath = path.resolve(path.dirname(configPath), json.extends);
+
+    const normalizedParent = parentPath.endsWith('.json') ? parentPath : `${parentPath}.json`;
+
+    const parent = readTsConfig(normalizedParent);
+
+    return {
+        ...parent,
+        ...json,
+        compilerOptions: {
+            ...parent.compilerOptions,
+            ...json.compilerOptions,
+        },
+    };
+}
+
 export function loadTsConfig(root: string): TsConfigPaths | null {
     const tsconfigPath = path.join(root, 'tsconfig.json');
 
@@ -10,7 +41,7 @@ export function loadTsConfig(root: string): TsConfigPaths | null {
     }
 
     try {
-        const json = JSON.parse(fs.readFileSync(tsconfigPath, 'utf8'));
+        const json = readTsConfig(tsconfigPath);
 
         return {
             baseDir: path.dirname(tsconfigPath),

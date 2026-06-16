@@ -62,7 +62,7 @@ type AnalyzeCyclesType = {
 export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
     const { target, mode, failOn, enableHtmlReport, htmlReportOutputPath } = args;
 
-    const result = await scanProject(target);
+    const result = await scanProject({ scanRoot: target, projectRoot: process.cwd() });
     const cycles = detectCycles(result.graph);
     result.cycles = cycles;
 

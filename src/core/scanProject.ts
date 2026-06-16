@@ -6,13 +6,19 @@ import { loadTsConfig } from './scanner/loadTsConfig';
 import { resolveImport } from './scanner/resolve';
 import path from 'node:path';
 
-export async function scanProject(root: string): Promise<ScanResult> {
-    const normalizedRoot = path.resolve(root);
+type ScanProjectArgsType = {
+    projectRoot: string;
+    scanRoot: string;
+};
+
+export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult> {
+    const { projectRoot, scanRoot } = args;
+    const normalizedRoot = path.resolve(scanRoot);
 
     const files = await discoverFiles(normalizedRoot);
     const graph = createGraph();
 
-    const tsconfig = loadTsConfig(normalizedRoot);
+    const tsconfig = loadTsConfig(projectRoot);
 
     for (const file of files) {
         graph.nodes.add(file);

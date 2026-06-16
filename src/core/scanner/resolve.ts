@@ -6,6 +6,10 @@ import { TsConfigPaths } from './types';
 const extensions = ['.ts', '.tsx', '.js', '.jsx'];
 
 function resolveFile(base: string): string | null {
+    if (fs.existsSync(base) && fs.statSync(base).isFile()) {
+        return path.normalize(base);
+    }
+
     for (const ext of extensions) {
         const candidate = `${base}${ext}`;
 

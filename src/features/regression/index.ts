@@ -136,12 +136,16 @@ export async function analyzeRegression(args: AnalyzeRegressionType): Promise<bo
     console.log(`  → ${baselineInfo.sha.slice(0, 7)} (${baselineInfo.title})`);
     console.log();
 
-    const current = await scanProject(target);
+    const currentProjectRoot = process.cwd();
+    const current = await scanProject({ scanRoot: target, projectRoot: currentProjectRoot });
     console.log(`Scanned files: ${current.scannedFiles}`);
     console.log(`Modules: ${current.graph.nodes.size}`);
 
     const worktree = createBaselineWorktree(baselineRef);
-    const baseline = await scanProject(resolveBaselineTarget(worktree, target));
+    const baseline = await scanProject({
+        scanRoot: resolveBaselineTarget(worktree, target),
+        projectRoot: worktree,
+    });
     removeBaselineWorktree(worktree);
 
     console.log(`Scanned files: ${baseline.scannedFiles}`);
