@@ -1,6 +1,6 @@
 {
     "name": "dep-health-analyzer",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "license": "MIT",
     "type": "commonjs",
     "repository": {
