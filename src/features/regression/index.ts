@@ -11,6 +11,7 @@ import { ModeType, MODES } from '@shared/types';
 import { buildDependencyInsights } from './delta/insights/buildDependencyInsights';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
+import { IRegressionScope } from 'app/config/types';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
@@ -58,6 +59,21 @@ function resolveBaselineTarget(worktree: string, target: string): string {
     return path.join(worktree, relativeProjectPath, normalizedTarget);
 }
 
+function resolveBaselineInfo(ref: string): {
+    sha: string;
+    title: string;
+} {
+    const sha = execSync(`git rev-parse "${ref}"`, {
+        encoding: 'utf8',
+    }).trim();
+
+    const title = execSync(`git log -1 --pretty=%s "${sha}"`, {
+        encoding: 'utf8',
+    }).trim();
+
+    return { sha, title };
+}
+
 const severityRank = {
     info: 1,
     warning: 2,
@@ -94,6 +110,7 @@ type AnalyzeRegressionType = {
     };
     isHtmlReportingEnabled: boolean;
     htmlReportOutputPath: string;
+    scopes?: Array<IRegressionScope>;
 };
 export async function analyzeRegression(args: AnalyzeRegressionType): Promise<boolean> {
     const {
@@ -104,6 +121,7 @@ export async function analyzeRegression(args: AnalyzeRegressionType): Promise<bo
         failOn,
         isHtmlReportingEnabled,
         htmlReportOutputPath,
+        scopes,
     } = args;
 
     if (!validateGitRef(baselineRef) && baselineRef) {
@@ -111,12 +129,23 @@ export async function analyzeRegression(args: AnalyzeRegressionType): Promise<bo
         process.exit(1);
     }
 
-    const current = await scanProject(target);
+    const baselineInfo = resolveBaselineInfo(baselineRef);
+
+    console.log('Baseline:');
+    console.log(`  ${baselineRef}`);
+    console.log(`  → ${baselineInfo.sha.slice(0, 7)} (${baselineInfo.title})`);
+    console.log();
+
+    const currentProjectRoot = process.cwd();
+    const current = await scanProject({ scanRoot: target, projectRoot: currentProjectRoot });
     console.log(`Scanned files: ${current.scannedFiles}`);
     console.log(`Modules: ${current.graph.nodes.size}`);
 
     const worktree = createBaselineWorktree(baselineRef);
-    const baseline = await scanProject(resolveBaselineTarget(worktree, target));
+    const baseline = await scanProject({
+        scanRoot: resolveBaselineTarget(worktree, target),
+        projectRoot: worktree,
+    });
     removeBaselineWorktree(worktree);
 
     console.log(`Scanned files: ${baseline.scannedFiles}`);
@@ -127,7 +156,7 @@ export async function analyzeRegression(args: AnalyzeRegressionType): Promise<bo
         baseline,
     });
 
-    const findings = buildDependencyInsights(delta, rules);
+    const findings = buildDependencyInsights(delta, rules, scopes);
     const handler = handlers[mode];
 
     const failed = shouldFail({

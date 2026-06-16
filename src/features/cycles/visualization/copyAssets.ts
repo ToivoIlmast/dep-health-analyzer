@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function copyAssets(reportDirectory: string): void {
-    const source = path.resolve(__dirname, '../../../assets');
+    const source = path.resolve(process.cwd(), 'static/assets');
+
+    if (!fs.existsSync(source)) {
+        throw new Error(`Assets directory not found: ${source}`);
+    }
+
     const target = path.join(reportDirectory, 'assets');
 
     fs.mkdirSync(target, {

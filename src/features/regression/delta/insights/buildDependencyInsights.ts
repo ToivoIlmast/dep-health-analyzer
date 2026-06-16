@@ -1,7 +1,9 @@
+import { IRegressionScope } from 'app/config/types';
 import { DependencyDelta, DependencyInsight } from '../../types';
 import { getCommonDepth } from '../getCommonDepth';
 import { getCommonParent, getResidualDepth } from './pathMetrics';
 import { buildReasoning, getInterpretation, getRelation } from './relationClassifier';
+import { resolveRegressionRules } from './resolveRegressionRules';
 
 type RegressionRules = {
     thresholds: {
@@ -17,9 +19,22 @@ type RegressionRules = {
 };
 export function buildDependencyInsights(
     delta: DependencyDelta,
-    rules: RegressionRules
+    rules: RegressionRules,
+    scopes: IRegressionScope[] = []
 ): DependencyInsight[] {
-    return delta.added.map((dep) => {
+    const findings: DependencyInsight[] = [];
+
+    for (const dep of delta.added) {
+        const effectiveRules = resolveRegressionRules({
+            sourcePath: dep.from,
+            rules,
+            scopes,
+        });
+
+        if (effectiveRules.ignore) {
+            continue;
+        }
+
         const commonDepth = getCommonDepth(dep.from, dep.to);
 
         const residualDepth = getResidualDepth(dep.from, dep.to, commonDepth);
@@ -31,10 +46,10 @@ export function buildDependencyInsights(
             to: dep.to,
             commonDepth,
             residualDepth,
-            thresholds: rules.thresholds,
+            thresholds: effectiveRules.thresholds,
         });
 
-        const severity = rules.severity[relation];
+        const severity = effectiveRules.severity[relation];
 
         const reasoning = buildReasoning({
             relation,
@@ -43,7 +58,7 @@ export function buildDependencyInsights(
             commonParent,
         });
 
-        return {
+        findings.push({
             from: dep.from,
             to: dep.to,
             commonDepth,
@@ -53,6 +68,8 @@ export function buildDependencyInsights(
             severity,
             interpretation: getInterpretation(relation),
             reasoning,
-        };
-    });
+        });
+    }
+
+    return findings;
 }

@@ -2,6 +2,33 @@ import { ModeType } from '@shared/types';
 
 export type SeverityLevel = 'info' | 'warning' | 'error';
 
+export interface IRegressionScope {
+    /**
+     * Source file glob pattern.
+     * Example:
+     * src/features/**
+     */
+    match: string;
+
+    /**
+     * Ignore regression findings originating
+     * from this scope.
+     */
+    ignore?: boolean;
+
+    severity?: {
+        'cross-boundary'?: SeverityLevel;
+        'deep-internal'?: SeverityLevel;
+        sibling?: SeverityLevel;
+        internal?: SeverityLevel;
+    };
+
+    thresholds?: {
+        internalDepth?: number;
+        deepInternalResidualDepth?: number;
+    };
+}
+
 export interface IConfig {
     features?: {
         regression?: {
@@ -14,16 +41,18 @@ export interface IConfig {
                     outputPath?: string;
                 };
             };
-            severity: {
+            severity?: {
                 'cross-boundary'?: SeverityLevel;
                 'deep-internal'?: SeverityLevel;
                 sibling?: SeverityLevel;
                 internal?: SeverityLevel;
             };
-            thresholds: {
+            thresholds?: {
                 internalDepth?: number;
                 deepInternalResidualDepth?: number;
             };
+
+            scopes?: IRegressionScope[];
         };
 
         scc?: {

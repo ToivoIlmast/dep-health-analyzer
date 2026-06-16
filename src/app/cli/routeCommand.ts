@@ -60,6 +60,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 htmlReportOutputPath:
                     config.features?.regression?.reporting?.html?.outputPath ??
                     './reports/regression.html',
+                scopes: config.features?.regression?.scopes,
             });
 
             results.push(!!result);
