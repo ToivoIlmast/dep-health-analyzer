@@ -5,6 +5,7 @@ import { getArgValue } from './getArgValue';
 import { parseMode } from './parseMode';
 import { resolveBaselineRef } from './resolveBaselineRef';
 import { MODES } from '@shared/types';
+import { parseAI } from './parseAI';
 
 export function parseArgs(config: IConfig): CliArgs {
     const args = process.argv.slice(2);
@@ -18,6 +19,7 @@ export function parseArgs(config: IConfig): CliArgs {
     // these are common flags
     const target = getArgValue(args, CLI_FLAG.TARGET) ?? '.';
     const mode = parseMode(args, defaultMode);
+    const ai = parseAI(args) ?? false;
 
     // this flag is only for regression
     const baselineRef = resolveBaselineRef(getArgValue(args, CLI_FLAG.BASELINE));
@@ -27,5 +29,6 @@ export function parseArgs(config: IConfig): CliArgs {
         target,
         baselineRef,
         mode,
+        ai,
     };
 }

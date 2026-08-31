@@ -1,8 +1,8 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { validateGitRef } from './validateGitRef';
 
 jest.mock('node:child_process', () => ({
-    execSync: jest.fn(),
+    execFileSync: jest.fn(),
 }));
 
 describe('validateGitRef', () => {
@@ -11,7 +11,7 @@ describe('validateGitRef', () => {
     });
 
     it('should return true when git ref is valid', () => {
-        (execSync as jest.Mock).mockImplementation(() => undefined);
+        (execFileSync as jest.Mock).mockImplementation(() => undefined);
 
         const result = validateGitRef('HEAD');
 
@@ -19,7 +19,7 @@ describe('validateGitRef', () => {
     });
 
     it('should return false when git ref is invalid', () => {
-        (execSync as jest.Mock).mockImplementation(() => {
+        (execFileSync as jest.Mock).mockImplementation(() => {
             throw new Error('git error');
         });
 
@@ -28,13 +28,37 @@ describe('validateGitRef', () => {
         expect(result).toBe(false);
     });
 
-    it('should call git rev-parse with provided ref', () => {
-        (execSync as jest.Mock).mockImplementation(() => undefined);
+    it('should pass the ref as a Git argument instead of interpolating a shell command', () => {
+        (execFileSync as jest.Mock).mockImplementation(() => undefined);
 
         validateGitRef('HEAD~3');
 
-        expect(execSync).toHaveBeenCalledWith('git rev-parse --verify HEAD~3', {
-            stdio: 'ignore',
+        expect(execFileSync).toHaveBeenCalledWith(
+            'git',
+            ['rev-parse', '--verify', 'HEAD~3'],
+            { stdio: 'ignore' }
+        );
+    });
+
+    it('should pass shell metacharacters as a literal Git argument', () => {
+        (execFileSync as jest.Mock).mockImplementation(() => {
+            throw new Error('invalid git ref');
         });
+
+        const result = validateGitRef('HEAD; echo vulnerable');
+
+        expect(result).toBe(false);
+        expect(execFileSync).toHaveBeenCalledWith(
+            'git',
+            ['rev-parse', '--verify', 'HEAD; echo vulnerable'],
+            { stdio: 'ignore' }
+        );
+    });
+
+    it('should reject refs beginning with a dash before invoking Git', () => {
+        const result = validateGitRef('--config=core.fsmonitor=true');
+
+        expect(result).toBe(false);
+        expect(execFileSync).not.toHaveBeenCalled();
     });
 });

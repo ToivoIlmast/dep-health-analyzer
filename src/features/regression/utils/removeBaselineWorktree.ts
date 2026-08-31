@@ -1,14 +1,14 @@
 import fs from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 export function removeBaselineWorktree(worktree: string): void {
     try {
         if (fs.existsSync(worktree)) {
-            execSync(`git worktree remove ${worktree} --force`, {
+            execFileSync('git', ['worktree', 'remove', worktree, '--force'], {
                 stdio: 'ignore',
             });
 
-            execSync('git worktree prune', {
+            execFileSync('git', ['worktree', 'prune'], {
                 stdio: 'ignore',
             });
         }

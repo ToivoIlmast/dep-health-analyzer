@@ -1,5 +1,5 @@
+import { IRegressionScope } from '@shared/types';
 import { minimatch } from 'minimatch';
-import { IRegressionScope } from 'app/config/types';
 
 type RegressionRules = {
     thresholds: {

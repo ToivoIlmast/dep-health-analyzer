@@ -54,6 +54,35 @@
                             "additionalProperties": false
                         },
 
+                        "ai": {
+                            "type": "object",
+
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+
+                                "provider": {
+                                    "type": "string",
+                                    "enum": ["ollama"]
+                                },
+
+                                "host": {
+                                    "type": "string"
+                                },
+
+                                "model": {
+                                    "type": "string"
+                                },
+
+                                "language": {
+                                    "type": "string"
+                                }
+                            },
+
+                            "additionalProperties": false
+                        },
+
                         "severity": {
                             "type": "object",
 
