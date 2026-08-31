@@ -13,6 +13,15 @@ export const defaultConfig = {
                     outputPath: './dep-health-reports/regression.html',
                 },
             },
+
+            ai: {
+                enabled: true,
+                provider: 'ollama',
+                host: 'http://localhost:11434',
+                model: 'qwen3:14b',
+                language: 'en',
+            },
+
             severity: {
                 'cross-boundary': 'warning',
                 'deep-internal': 'warning',

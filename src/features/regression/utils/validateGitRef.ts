@@ -1,8 +1,12 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 export function validateGitRef(ref: string): boolean {
+    if (!ref || ref.startsWith('-')) {
+        return false;
+    }
+
     try {
-        execSync(`git rev-parse --verify ${ref}`, {
+        execFileSync('git', ['rev-parse', '--verify', ref], {
             stdio: 'ignore',
         });
 

@@ -2,7 +2,8 @@ import { routeCommand } from './routeCommand';
 import { CLI_COMMANDS } from './types';
 import { MODES } from '@shared/types';
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
-import { analyzeRegression } from '@features/regression';
+import { analyzeRegression, explainRegression } from '@features/regression';
+import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
 
 jest.mock('@features/cycles/analyzeCycles', () => ({
     analyzeCycles: jest.fn(),
@@ -10,6 +11,11 @@ jest.mock('@features/cycles/analyzeCycles', () => ({
 
 jest.mock('@features/regression', () => ({
     analyzeRegression: jest.fn(),
+    explainRegression: jest.fn(),
+}));
+
+jest.mock('@features/regression/ai/validateAIEnvironment', () => ({
+    validateOllamaAIEnvironment: jest.fn(),
 }));
 
 describe('routeCommand', () => {
@@ -27,6 +33,7 @@ describe('routeCommand', () => {
                 command: CLI_COMMANDS.CYCLES,
                 target: './src',
                 mode: MODES.FULL,
+                ai: false,
             },
             {
                 features: {
@@ -55,6 +62,7 @@ describe('routeCommand', () => {
                 command: CLI_COMMANDS.CYCLES,
                 target: './src',
                 mode: MODES.FULL,
+                ai: false,
             },
             {
                 features: {
@@ -71,7 +79,10 @@ describe('routeCommand', () => {
     it('should call analyzeRegression for regression command', async () => {
         const analyzeRegressionMock = jest.mocked(analyzeRegression);
 
-        analyzeRegressionMock.mockResolvedValue(false);
+        analyzeRegressionMock.mockResolvedValue({
+            failed: false,
+            findings: [],
+        });
 
         await routeCommand(
             {
@@ -79,6 +90,7 @@ describe('routeCommand', () => {
                 target: './src',
                 baselineRef: 'HEAD',
                 mode: MODES.FULL,
+                ai: false,
             },
             {
                 features: {
@@ -103,6 +115,7 @@ describe('routeCommand', () => {
                 target: './src',
                 baselineRef: 'HEAD',
                 mode: MODES.FULL,
+                ai: false,
             },
             {
                 features: {
@@ -128,6 +141,7 @@ describe('routeCommand', () => {
                 command: CLI_COMMANDS.CYCLES,
                 target: './src',
                 mode: MODES.FULL,
+                ai: false,
             },
             {
                 features: {
@@ -139,5 +153,44 @@ describe('routeCommand', () => {
         );
 
         expect(result).toEqual([true]);
+    });
+
+    it('should generate an AI explanation when AI is enabled and requested', async () => {
+        const analyzeRegressionMock = jest.mocked(analyzeRegression);
+        const explainRegressionMock = jest.mocked(explainRegression);
+        const validateOllamaMock = jest.mocked(validateOllamaAIEnvironment);
+        const result = { failed: false, findings: [] };
+        const ai = {
+            enabled: true,
+            provider: 'ollama' as const,
+            host: 'http://localhost:11434',
+            model: 'qwen3:14b',
+            language: 'English',
+        };
+
+        analyzeRegressionMock.mockResolvedValue(result);
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.REGRESSION,
+                target: './src',
+                baselineRef: 'HEAD',
+                mode: MODES.FULL,
+                ai: true,
+            },
+            {
+                features: {
+                    regression: {
+                        enabled: true,
+                        severity: {},
+                        thresholds: {},
+                        ai,
+                    },
+                },
+            }
+        );
+
+        expect(validateOllamaMock).toHaveBeenCalledWith('qwen3:14b');
+        expect(explainRegressionMock).toHaveBeenCalledWith({ data: result, aiConfig: ai });
     });
 });

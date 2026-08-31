@@ -51,7 +51,14 @@
                         "deepInternalResidualDepth": 2
                     }
                 }
-            ]
+            ],
+            "ai": {
+                "enabled": true,
+                "provider": "ollama",
+                "host": "http://localhost:11434",
+                "model": "gemma4:31b-cloud",
+                "language": "finnish"
+            }
         },
         "scc": {
             "enabled": true,

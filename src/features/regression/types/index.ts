@@ -19,3 +19,8 @@ export type RegressionThresholds = {
     internalDepth: number;
     deepInternalResidualDepth: number;
 };
+
+export type RegressionAnalysisResult = {
+    failed: boolean;
+    findings: DependencyInsight[];
+};

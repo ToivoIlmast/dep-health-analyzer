@@ -13,33 +13,33 @@ Architecture slowly drifts away from its original shape.
 
 Most of these changes happen gradually and often go unnoticed during code review.
 
-dep-health-analyzer helps make these changes visible.
+**dep-health-analyzer** helps make these changes visible.
 
 ---
 
-## Questions it helps answer
+# Questions it helps answer
 
-### What changed?
+## What changed?
 
 Compare dependency structure between commits, branches, or releases.
 
-### Should I take a closer look?
+## Should I take a closer look?
 
 Spot new cycles and structural dependency changes that may deserve additional review.
 
-### What parts of the project were affected?
+## What parts of the project were affected?
 
 See where new dependencies appeared and how they relate to the existing structure.
 
-### When did this happen?
+## When did this happen?
 
 Track architectural changes across Git history and understand how dependency structure evolved over time.
 
 ---
 
-## What it does
+# What it does
 
-### Dependency Cycle Detection
+## Dependency Cycle Detection
 
 Build a dependency graph and detect strongly connected components (SCCs).
 
@@ -56,7 +56,9 @@ Available modes:
 - compact
 - html
 
-### Regression Analysis
+---
+
+## Regression Analysis
 
 Compare the current dependency graph against a previous Git revision.
 
@@ -75,7 +77,48 @@ Available modes:
 - compact
 - html
 
-### Interactive HTML Reports
+---
+
+## AI Summaries (Experimental)
+
+Generate concise, human-readable summaries of regression analysis using a local Large Language Model (LLM) running via Ollama.
+
+AI summaries are generated exclusively from the observations produced by dep-health-analyzer.
+
+The model does **not** inspect your source code directly.
+
+No source code is sent to the model.
+
+Supported features:
+
+- local execution through Ollama
+- configurable model
+- configurable host
+- configurable language
+- multilingual summaries
+- architecture-aware explanations based only on detected observations
+
+Before generating a summary, dep-health-analyzer automatically verifies that:
+
+- Ollama is installed
+- the Ollama server is running
+- the configured model is available
+
+### AI Glossary
+
+AI summaries may use the following terms:
+
+| Term                         | Description                                                                                    |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| **Hotspot**                  | File with the largest number of newly introduced dependencies.                                 |
+| **Connected areas**          | Project areas connected by newly introduced dependencies.                                      |
+| **Deep-internal dependency** | Dependency that traverses deeply into another module instead of using its public entry points. |
+
+These terms describe the analysis itself and are independent of the analyzed project.
+
+---
+
+## Interactive HTML Reports
 
 Generate interactive reports designed for architectural exploration.
 
@@ -90,7 +133,7 @@ Reports provide:
 
 ---
 
-### Cycle Detection
+# Cycle Detection
 
 Explore dependency graphs, identify SCC clusters, and inspect architectural metrics interactively.
 
@@ -98,7 +141,9 @@ Explore dependency graphs, identify SCC clusters, and inspect architectural metr
 
 _Cycles are highlighted automatically. Hover over modules to inspect coupling metrics and instability._
 
-### Regression Analysis
+---
+
+# Regression Analysis
 
 Compare dependency structure between revisions and review newly introduced architectural signals.
 
@@ -106,11 +151,15 @@ Compare dependency structure between revisions and review newly introduced archi
 
 _Reports summarize structural findings, assess potential risk, and suggest areas for review._
 
-### See how architectural changes become visible.
+---
 
-![Regression report](docs/images/overview.gif)
+# See how architectural changes become visible
 
-## Quick Start
+![Regression overview](docs/images/overview.gif)
+
+---
+
+# Quick Start
 
 Install the package:
 
@@ -144,7 +193,15 @@ npx dep-health-analyzer cycles --mode html
 npx dep-health-analyzer regression --mode html
 ```
 
-## CI/CD Integration
+Generate an AI summary:
+
+```bash
+npx dep-health-analyzer regression --ai
+```
+
+---
+
+# CI/CD Integration
 
 dep-health-analyzer can be used as a quality gate in CI pipelines.
 

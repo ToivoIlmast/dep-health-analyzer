@@ -8,20 +8,24 @@ export const CLI_FLAG = {
     VERSION_SHORT: '-v',
     INIT: '--init',
     HELP: '--help',
+    AI: '--ai',
+    LANG: '--lang',
 } as const;
+
+type BaseArgs = {
+    target: string;
+    mode: ModeType;
+    ai: boolean;
+};
 
 type RegressionArgs = {
     command: 'regression';
-    target: string;
     baselineRef: string;
-    mode: ModeType;
-};
+} & BaseArgs;
 
 type CyclesArgs = {
     command: 'cycles';
-    target: string;
-    mode: ModeType;
-};
+} & BaseArgs;
 
 export type CliArgs = RegressionArgs | CyclesArgs;
 export type CommandType = CliArgs['command'];

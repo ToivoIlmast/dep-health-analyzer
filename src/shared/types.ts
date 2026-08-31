@@ -4,4 +4,38 @@ export const MODES = {
     HTML: 'html',
 } as const;
 
+export const AI_FLAGS = {
+    LANG: '--lang',
+} as const;
+
 export type ModeType = (typeof MODES)[keyof typeof MODES];
+export type LangsType = (typeof AI_FLAGS)[keyof typeof AI_FLAGS];
+
+export type SeverityLevel = 'info' | 'warning' | 'error';
+
+export interface IRegressionScope {
+    /**
+     * Source file glob pattern.
+     * Example:
+     * src/features/**
+     */
+    match: string;
+
+    /**
+     * Ignore regression findings originating
+     * from this scope.
+     */
+    ignore?: boolean;
+
+    severity?: {
+        'cross-boundary'?: SeverityLevel;
+        'deep-internal'?: SeverityLevel;
+        sibling?: SeverityLevel;
+        internal?: SeverityLevel;
+    };
+
+    thresholds?: {
+        internalDepth?: number;
+        deepInternalResidualDepth?: number;
+    };
+}

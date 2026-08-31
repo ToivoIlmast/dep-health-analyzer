@@ -1,4 +1,4 @@
-import { IRegressionScope } from 'app/config/types';
+import { IRegressionScope } from '@shared/types';
 import { DependencyDelta, DependencyInsight } from '../../types';
 import { getCommonDepth } from '../getCommonDepth';
 import { getCommonParent, getResidualDepth } from './pathMetrics';

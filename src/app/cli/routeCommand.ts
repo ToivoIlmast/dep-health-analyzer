@@ -1,10 +1,14 @@
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
-import { analyzeRegression } from '@features/regression';
+import { analyzeRegression, explainRegression } from '@features/regression';
 import { CLI_COMMANDS, CliArgs } from './types';
 import { IConfig } from '../config/types';
+import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
+
+const RED = '\x1b[31m';
+const RESET = '\x1b[0m';
 
 export async function routeCommand(args: CliArgs, config: IConfig): Promise<boolean[]> {
-    const { command, target, mode } = args;
+    const { command, target, mode, ai } = args;
 
     const results: boolean[] = [];
 
@@ -63,7 +67,24 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 scopes: config.features?.regression?.scopes,
             });
 
-            results.push(!!result);
+            if (ai === true && regressionConfig.ai?.enabled) {
+                try {
+                    await validateOllamaAIEnvironment(regressionConfig.ai?.model ?? '');
+                    await explainRegression({
+                        data: {
+                            ...result,
+                        },
+                        aiConfig: regressionConfig.ai,
+                    });
+                } catch (err) {
+                    console.error(
+                        `${RED}${err instanceof Error ? err.message : 'An unexpected error occurred.'}${RESET}`
+                    );
+                    process.exit(1);
+                }
+            }
+
+            results.push(result.failed);
             break;
         }
     }
