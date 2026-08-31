@@ -58,6 +58,16 @@ Available modes:
 
 ---
 
+## Import Resolution
+
+Dependency graphs are built by analyzing `import` / `export` declarations (ES module syntax).
+
+TypeScript path aliases are supported, including `tsconfig.json` configurations that use `extends`.
+
+CommonJS `require()` and dynamic `import()` are not analyzed yet.
+
+---
+
 ## Regression Analysis
 
 Compare the current dependency graph against a previous Git revision.
@@ -70,6 +80,8 @@ Identify newly introduced:
 - sibling dependencies
 
 Each finding includes contextual information explaining why the relationship was classified that way.
+
+Regression rules can be adjusted per project area using scopes. Scopes allow overriding severity levels and thresholds, or ignoring findings entirely, for specific paths (for example, composition roots, infrastructure code, or reporting layers).
 
 Available modes:
 
@@ -160,6 +172,8 @@ _Reports summarize structural findings, assess potential risk, and suggest areas
 ---
 
 # Quick Start
+
+**Requirements:** Node.js 22+ (see `.nvmrc`).
 
 Install the package:
 
