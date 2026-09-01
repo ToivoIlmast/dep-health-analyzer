@@ -7,6 +7,7 @@ import { scanProject } from '@core/scanProject';
 import { removeBaselineWorktree } from '../utils/removeBaselineWorktree';
 import { validateGitRef } from '../utils/validateGitRef';
 import { DependencyInsight, RegressionAnalysisResult, RegressionThresholds } from '../types';
+import type { ScanResult } from '@core/graph/types';
 import { ModeType, MODES, IRegressionScope } from '@shared/types';
 import { buildDependencyInsights } from '../delta/insights/buildDependencyInsights';
 import { execFileSync } from 'node:child_process';
@@ -143,11 +144,16 @@ export async function analyzeRegression(
     console.log(`Modules: ${current.graph.nodes.size}`);
 
     const worktree = createBaselineWorktree(baselineRef);
-    const baseline = await scanProject({
-        scanRoot: resolveBaselineTarget(worktree, target),
-        projectRoot: worktree,
-    });
-    removeBaselineWorktree(worktree);
+
+    let baseline: ScanResult;
+    try {
+        baseline = await scanProject({
+            scanRoot: resolveBaselineTarget(worktree, target),
+            projectRoot: worktree,
+        });
+    } finally {
+        removeBaselineWorktree(worktree);
+    }
 
     console.log(`Scanned files: ${baseline.scannedFiles}`);
     console.log(`Modules: ${baseline.graph.nodes.size}`);
