@@ -3,7 +3,6 @@ import { RegressionAIConfig } from './explainRegression';
 import { getAIErrorMessage } from './getAIErrorMessage';
 
 const RED = '\x1b[31m';
-const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
 
 interface IGenerateAISummary {

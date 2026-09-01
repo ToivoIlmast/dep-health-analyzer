@@ -1,18 +1,10 @@
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 
 export function createBaselineWorktree(baselineRef: string): string {
-    const worktreePath = '.dep-health-analyzer';
-    try {
-        execFileSync('git', ['worktree', 'remove', worktreePath, '--force'], {
-            stdio: 'ignore',
-        });
-    } catch {
-        // Worktree may not exist yet.
-    }
-
-    execFileSync('git', ['worktree', 'prune'], {
-        stdio: 'ignore',
-    });
+    const worktreePath = path.join(os.tmpdir(), `dep-health-analyzer-${crypto.randomUUID()}`);
 
     execFileSync('git', ['worktree', 'add', '--detach', worktreePath, baselineRef], {
         stdio: 'inherit',

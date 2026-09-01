@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DependencyDelta } from '../types';
 
 function normalizePath(file: string, root: string): string {
-    return path.relative(root, file);
+    return path.relative(root, file).replaceAll('\\', '/');
 }
 
 type Dependency = {

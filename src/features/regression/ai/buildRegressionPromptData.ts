@@ -1,21 +1,6 @@
 import { RegressionAnalysisResult } from '../types';
 import { RegressionPromptData } from './types';
 
-function calculatePrimaryAreas(findings: RegressionAnalysisResult['findings']): string[] {
-    const areaMap = new Map<string, number>();
-
-    for (const finding of findings) {
-        const area = getModuleArea(finding.from);
-
-        areaMap.set(area, (areaMap.get(area) ?? 0) + 1);
-    }
-
-    return Array.from(areaMap.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([area]) => area);
-}
-
 /**
  * Maps a file path to a high-level project area used in AI summaries.
  *
@@ -43,16 +28,6 @@ export function buildRegressionPromptData(args: RegressionAnalysisResult): Regre
     const { findings } = args;
 
     const observations: RegressionPromptData['observations'] = {};
-
-    //
-    // primaryAreas
-    //
-
-    /* const primaryAreas = calculatePrimaryAreas(findings);
-
-    if (primaryAreas.length > 0) {
-        observations.primaryAreas = primaryAreas;
-    } */
 
     //
     // topHotspots
