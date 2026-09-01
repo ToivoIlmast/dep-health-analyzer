@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run jest
+
+      - run: npm run build
+
+      - name: Smoke test on a throwaway fixture project
+        shell: bash
+        run: |
+          set -e
+
+          FIXTURE="$RUNNER_TEMP/dep-health-smoke-test"
+          mkdir -p "$FIXTURE/src"
+          cd "$FIXTURE"
+
+          git init -q
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+
+          echo "export const a = 1;" > src/a.ts
+          git add -A
+          git commit -q -m "initial"
+
+          echo "export const b = 2;" > src/b.ts
+          git add -A
+          git commit -q -m "add unrelated file"
+
+          node "$GITHUB_WORKSPACE/dist/app/cli.js" --init
+          node "$GITHUB_WORKSPACE/dist/app/cli.js" cycles --mode compact
+          node "$GITHUB_WORKSPACE/dist/app/cli.js" regression --baseline HEAD~1 --mode compact
