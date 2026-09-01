@@ -25,7 +25,7 @@ describe('resolveImport', () => {
         const result = resolveImport({ fromFile, specifier: './a5' });
 
         expect(result).not.toBeNull();
-        expect(result!).toContain('a5/index.ts');
+        expect(result!).toContain(path.join('a5', 'index.ts'));
     });
 
     it('should return null for external package import', () => {
@@ -61,7 +61,7 @@ describe('resolveImport', () => {
         });
 
         expect(result).not.toBeNull();
-        expect(result!).toContain('shared/index.ts');
+        expect(result!).toContain(path.join('shared', 'index.ts'));
     });
 
     it('should resolve wildcard alias', () => {
@@ -80,7 +80,7 @@ describe('resolveImport', () => {
         });
 
         expect(result).not.toBeNull();
-        expect(result!).toContain('core/utils.ts');
+        expect(result!).toContain(path.join('core', 'utils.ts'));
     });
 
     it('should return null for unknown alias', () => {
@@ -117,6 +117,6 @@ describe('resolveImport', () => {
         });
 
         expect(result).not.toBeNull();
-        expect(result!).toContain('shared/foo/index.ts');
+        expect(result!).toContain(path.join('shared', 'foo', 'index.ts'));
     });
 });
