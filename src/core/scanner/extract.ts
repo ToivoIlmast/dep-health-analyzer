@@ -5,7 +5,13 @@ const project = new Project({
 });
 
 export function extractImports(filePath: string): string[] {
-    const sourceFile = project.getSourceFile(filePath) ?? project.addSourceFileAtPath(filePath);
+    const cachedSourceFile = project.getSourceFile(filePath);
+
+    if (cachedSourceFile) {
+        cachedSourceFile.refreshFromFileSystemSync();
+    }
+
+    const sourceFile = cachedSourceFile ?? project.addSourceFileAtPath(filePath);
 
     const imports = sourceFile.getImportDeclarations().map((i) => i.getModuleSpecifierValue());
 
