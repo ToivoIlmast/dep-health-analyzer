@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { extractImports } from './extract';
 
@@ -31,13 +33,27 @@ describe('extractImports', () => {
         expect(result).toEqual([]);
     });
 
+    it('should reflect updated file content on repeated calls for the same path', () => {
+        const tempFilePath = path.join(os.tmpdir(), `dep-health-extract-refresh-${Date.now()}.ts`);
+
+        try {
+            fs.writeFileSync(tempFilePath, `import { a } from './a';`);
+            const first = extractImports(tempFilePath);
+            expect(first).toEqual(['./a']);
+
+            fs.writeFileSync(tempFilePath, `import { b } from './b';`);
+            const second = extractImports(tempFilePath);
+            expect(second).toEqual(['./b']);
+        } finally {
+            fs.rmSync(tempFilePath, { force: true });
+        }
+    });
+
     // TODO:
     /*
     it('should ignore exports without module specifier');
 
     it('should support multiple imports');
-
-    it('should reuse already loaded source file');
 
     it('should extract relative imports');
 
