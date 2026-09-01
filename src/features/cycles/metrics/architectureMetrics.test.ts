@@ -67,6 +67,25 @@ describe('calculateArchitectureMetrics', () => {
         expect(result.size).toBe(4);
     });
 
+    it('includes leaf modules that have incoming but no outgoing dependencies', () => {
+        // Mirrors real DependencyGraph.edges shape: a leaf file with no
+        // outgoing imports never becomes a key in the edges map, only
+        // a value inside another file's dependency set.
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B']),
+            edges: new Map<string, Set<string>>([['A', new Set(['B'])]]),
+        };
+
+        const result = calculateArchitectureMetrics(graph);
+
+        expect(result.has('B')).toBeTruthy();
+        expect(result.get('B')).toEqual({
+            ca: 1,
+            ce: 0,
+            instability: 0,
+        });
+    });
+
     it('handles isolated modules', () => {
         const graph: DependencyGraph = {
             nodes: new Set(['A']),

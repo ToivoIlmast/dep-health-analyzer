@@ -1,13 +1,6 @@
 import { DependencyGraph } from '@core/graph/types';
 import { ModuleMetrics } from './types';
-
-function ce(dependencies: Set<string>): number {
-    return dependencies.size;
-}
-
-function ca(edges: Map<string, Set<string>>, file: string): number {
-    return [...edges.values()].filter((set) => set.has(file)).length;
-}
+import { reverseGraph } from './reverseGraph';
 
 function instability(ce: number, ca: number): number {
     return Number((ce / (ca + ce)).toFixed(2));
@@ -15,15 +8,16 @@ function instability(ce: number, ca: number): number {
 
 export function calculateArchitectureMetrics(graph: DependencyGraph): Map<string, ModuleMetrics> {
     const metrics = new Map<string, ModuleMetrics>();
+    const incomingEdges = reverseGraph(graph.edges);
 
-    for (const [file, dependencies] of graph.edges) {
-        const outgoingEdges = ce(dependencies);
-        const incomingEdges = ca(graph.edges, file);
+    for (const file of graph.nodes) {
+        const outgoingEdges = graph.edges.get(file)?.size ?? 0;
+        const incomingEdgesCount = incomingEdges.get(file)?.size ?? 0;
 
         metrics.set(file, {
-            ca: incomingEdges,
+            ca: incomingEdgesCount,
             ce: outgoingEdges,
-            instability: instability(outgoingEdges, incomingEdges),
+            instability: instability(outgoingEdges, incomingEdgesCount),
         });
     }
 

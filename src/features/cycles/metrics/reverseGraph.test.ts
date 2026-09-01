@@ -158,6 +158,17 @@ describe('reverseGraph', () => {
         expect(graph).toEqual(originalGraph);
     });
 
+    it('includes nodes that only appear as targets, never as sources', () => {
+        // Mirrors real DependencyGraph.edges shape: a leaf file with no
+        // outgoing imports never becomes a key in the edges map.
+        const graph: Graph = new Map<string, Set<string>>([['A', new Set(['B'])]]);
+
+        const result = reverseGraph(graph);
+
+        expect(result.has('B')).toBeTruthy();
+        expect(result.get('B')).toEqual(new Set(['A']));
+    });
+
     it('handles nodes with multiple outgoing dependencies', () => {
         const graph: Graph = new Map<string, Set<string>>([
             ['A', new Set(['B', 'C', 'D'])],
