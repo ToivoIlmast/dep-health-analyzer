@@ -83,6 +83,8 @@ Each finding includes contextual information explaining why the relationship was
 
 Regression rules can be adjusted per project area using scopes. Scopes allow overriding severity levels and thresholds, or ignoring findings entirely, for specific paths (for example, composition roots, infrastructure code, or reporting layers).
 
+See [Configuration Reference](docs/CONFIGURATION.md) for every option, including scopes, severity, thresholds, and AI settings, with examples.
+
 Available modes:
 
 - full

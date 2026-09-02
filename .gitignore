@@ -28,3 +28,7 @@ dep-health-reports/
 
 # gzip-compressed tar archive
 *.tgz
+
+# Generated at build time from config.schema.json - never commit,
+# regenerate via `npm run generate:config-validator`
+src/app/config/validateConfig.generated.js
