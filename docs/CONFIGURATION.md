@@ -1,0 +1,253 @@
+# Configuration Reference
+
+`dep-health-analyzer` is configured through a single JSON file in your project root: `dep-health.config.json` (or `.dep-healthrc.json`, checked second if the first doesn't exist).
+
+Generate a starting point with:
+
+```bash
+npx dep-health-analyzer --init
+```
+
+Since v0.5.0, every config file is validated against the tool's JSON Schema before it's used. An invalid config (wrong type, unknown field, invalid enum value) fails fast with a clear error pointing at the exact field — it is never silently ignored or partially applied.
+
+```
+Invalid configuration in dep-health.config.json:
+  - /features/scc/mode must be equal to one of the allowed values
+```
+
+The `$schema` field at the top of a generated config is meant to give you autocomplete and inline validation in editors that support JSON Schema (VS Code does, out of the box). **Known limitation:** the path `--init` currently writes there (`./src/app/config/config.schema.json`) is only valid inside this tool's own repository — for a project that installed `dep-health-analyzer` from npm, that path doesn't exist, so editor autocomplete for `$schema` won't work yet. This doesn't affect the runtime validation described above, which works regardless.
+
+---
+
+## Top-level structure
+
+```json
+{
+    "$schema": "...",
+    "features": {
+        "regression": { ... },
+        "scc": { ... }
+    }
+}
+```
+
+Both `features.regression` and `features.scc` are optional — omit either one and that feature simply won't run when you invoke its command. Every field documented below is optional too; anything you don't set falls back to the tool's default.
+
+Unknown fields anywhere in the config are rejected by the schema (`additionalProperties: false`) — this catches typos like `enabeld` instead of `enabled` immediately, instead of the field being silently ignored.
+
+---
+
+## `features.regression`
+
+Controls the `regression` command — comparing the current dependency graph against a Git baseline.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | `boolean` | `true` | Whether the `regression` command runs at all. |
+| `mode` | `"full"` \| `"compact"` \| `"html"` | `"compact"` | Output format. `full` prints every finding with reasoning, `compact` prints category counts (CI-friendly), `html` writes an interactive report. |
+| `failOn` | `"info"` \| `"warning"` \| `"error"` | `"warning"` | Minimum severity that causes the command to exit with code `1`. See [Severity and failOn](#severity-and-failon) below. |
+| `reporting.html.enabled` | `boolean` | `true` | Whether `--mode html` is allowed to write a report. If `false`, running with `--mode html` prints a warning and skips the report instead. |
+| `reporting.html.outputPath` | `string` | `"./dep-health-reports/regression.html"` | Where the HTML report is written. |
+| `ai.enabled` | `boolean` | `true` | Whether `--ai` is allowed to run. The `--ai` CLI flag still has to be passed explicitly on top of this — enabling it here doesn't turn AI summaries on by default. |
+| `ai.provider` | `"ollama"` | `"ollama"` | Only `ollama` is supported today (local or Ollama's cloud-hosted models — see [AI Summaries](../README.md#ai-summaries-experimental) in the README). |
+| `ai.host` | `string` | `"http://localhost:11434"` | Ollama server URL. |
+| `ai.model` | `string` | `"qwen3:14b"` | Model name, exactly as it appears in `ollama list`. |
+| `ai.language` | `string` | `"en"` | Free-text language name passed to the model (e.g. `"en"`, `"Russian"`, `"finnish"` all work — the model interprets it, there's no fixed enum). |
+| `severity.*` | see below | see below | Default severity per relation category. |
+| `thresholds.*` | see below | see below | Depth thresholds used to classify new dependencies. |
+| `scopes` | array | `[]` | Per-path overrides. See [Scopes](#scopes) below. |
+
+### Severity and `failOn`
+
+Every finding is classified into one relation category (`internal`, `sibling`, `deep-internal`, `cross-boundary` — see [Thresholds](#thresholds) below for how), and each category has its own severity:
+
+```json
+"severity": {
+    "cross-boundary": "warning",
+    "deep-internal": "warning",
+    "sibling": "info",
+    "internal": "info"
+}
+```
+
+Severity ranks as `info` (1) < `warning` (2) < `error` (3). The command exits with code `1` if **any** finding's severity is greater than or equal to `failOn`. Example: with `failOn: "warning"`, a single `sibling` (`info`) finding won't fail the build, but one `cross-boundary` (`warning`) finding will.
+
+### Thresholds
+
+```json
+"thresholds": {
+    "internalDepth": 3,
+    "deepInternalResidualDepth": 3
+}
+```
+
+These control how a new dependency gets classified:
+
+- **`sibling`** — the two files live in the exact same directory. Always this, regardless of thresholds.
+- **`internal`** — the files share at least `internalDepth` path segments, and the dependency doesn't reach more than 1 level deeper past that shared point.
+- **`deep-internal`** — the files share at least `internalDepth` path segments, but the dependency reaches `deepInternalResidualDepth` or more levels deeper — i.e. it reaches into another module's internals instead of a shallow/public entry point.
+- **`cross-boundary`** — anything that doesn't match the above. The files don't share enough of a common path to be considered "the same area".
+
+Raising `internalDepth` makes the tool more willing to call something `cross-boundary` (harder to qualify as "internal"). Lowering `deepInternalResidualDepth` makes it more sensitive to deep internal reaches.
+
+Note the `internal` and `deep-internal` checks are independent, not a single scale: a dependency with `commonDepth >= internalDepth` but a `residualDepth` strictly between `1` and `deepInternalResidualDepth` matches neither and falls through to `cross-boundary`, even though it does share the required common path. With the defaults (`deepInternalResidualDepth: 3`), that gap is `residualDepth` of exactly `2`. Keeping `deepInternalResidualDepth` at `2` closes that gap if you'd rather such cases count as `deep-internal`.
+
+#### Why two separate numbers
+
+JavaScript and TypeScript have no real "this is a private implementation detail" concept at the module level — anything a file exports is importable from anywhere. Thresholds approximate that missing concept using folder structure instead, since most projects already loosely organize files by how "public" they're meant to be (an `index.ts` near the top of a feature, implementation details nested deeper inside it).
+
+`internalDepth` and `deepInternalResidualDepth` answer two different questions, which is why they're separate rather than one combined number:
+
+1. **`internalDepth`** — are these two files even in the same architectural area to begin with? (Do they share enough leading path segments?)
+2. **`deepInternalResidualDepth`** — given they are, how far past that shared point does the dependency reach? Shallow (near the area's likely public entry point) or deep (bypassing it, into internal implementation details)?
+
+Keeping them independent means you can tune each without affecting the other — a deeply nested monorepo (`src/apps/x/features/y/z/...`) typically needs a *higher* `internalDepth` (more path segments are just structural boilerplate before you reach a real module boundary), while a flat `src/*` layout needs a lower one, independent of how sensitive you want deep-reach detection to be.
+
+#### Worked example
+
+Given `internalDepth: 3, deepInternalResidualDepth: 3` (the defaults), and a new dependency from `src/features/auth/AuthService.ts` to each of these targets:
+
+| Target | `commonDepth` | `residualDepth` | Result | Why |
+|---|---|---|---|---|
+| `src/features/auth/PermissionCheck.ts` | 3 | 0 | `sibling` | Same directory as the source file — checked before thresholds even apply. |
+| `src/features/auth/session/refresh.ts` | 3 | 1 | `internal` | Same area, one directory level in — still shallow. |
+| `src/features/auth/internal/token/hash.ts` | 3 | 2 | `cross-boundary` | Same area (`commonDepth >= internalDepth`), but `residualDepth` (2) is in the gap described above — too deep for `internal` (`<= 1`), not deep enough for `deep-internal` (`>= 3`). |
+| `src/features/auth/internal/token/utils/hash.ts` | 3 | 3 | `deep-internal` | Same area, but reaches 3 directory levels past it — past a likely public surface, into implementation details. |
+| `src/core/logger.ts` | 1 | 1 | `cross-boundary` | `commonDepth` (1) is below `internalDepth` (3) — not the same area at all. |
+
+All five rows share the same source file, `src/features/auth/AuthService.ts`, and the default thresholds (`internalDepth: 3, deepInternalResidualDepth: 3`). `commonDepth` is how many leading path segments the source and target share. `residualDepth` is how many *more* directory levels the target's path goes beyond that shared point (its own filename doesn't count). Verified against the actual classifier, not computed by hand.
+
+### Scopes
+
+Scopes let you override `severity`, `thresholds`, or skip findings entirely (`ignore`) for specific parts of your project, without changing the global rules for everything else.
+
+```json
+"scopes": [
+    { "match": "src/app/**", "ignore": true },
+    { "match": "src/features/**/visualization/**", "ignore": true },
+    {
+        "match": "src/features/**/ci/reporting/**",
+        "severity": { "cross-boundary": "info", "deep-internal": "info" }
+    },
+    {
+        "match": "src/features/regression/**",
+        "thresholds": { "internalDepth": 2, "deepInternalResidualDepth": 2 }
+    }
+]
+```
+
+(This example is dep-health's own config — it's a real, working scopes setup, not a made-up one.)
+
+- `match` is a glob pattern (same syntax as `.gitignore`-style globs, matched via `minimatch`), tested against the **source** file of each finding (the file that introduced the new dependency).
+- `ignore: true` drops findings from that path entirely — they never appear in output and never affect `failOn`.
+- `severity`/`thresholds` merge into the global values for matches in that scope, only overriding the keys you specify.
+- If multiple scopes match the same file, they're applied in order from **least to most specific** (specificity = length of the `match` string) — so a more specific pattern's overrides win over a broader one's.
+
+**When to use scopes:** composition roots, infrastructure/wiring code, visualization, and reporting layers are usually fine analyzed loosely (`ignore: true` or relaxed severity) — they're expected to reach across the project by design. Core domain logic is usually where you want the default (or tighter) thresholds, since unexpected cross-boundary reaches there are more likely to be real architectural drift worth reviewing.
+
+#### The same thresholds mean different things in different projects
+
+`internalDepth` and `deepInternalResidualDepth` are raw path-segment counts — they have no idea how deep *your* project's structure normally is. The same numbers can be meaningfully strict in one project and almost meaningless in another.
+
+Take `internalDepth: 3` (the default) in a monorepo laid out as `apps/web/src/modules/<feature>/...`, and a new dependency from `apps/web/src/modules/billing/services/InvoiceService.ts`:
+
+| Target | `commonDepth` | With `internalDepth: 3` | With `internalDepth: 5` |
+|---|---|---|---|
+| `apps/web/src/modules/auth/AuthService.ts` (a *different* module) | 4 | `internal` | `cross-boundary` |
+| `apps/web/src/modules/billing/InvoiceUtils.ts` (the *same* module) | 5 | `internal` | `internal` |
+
+With the default `internalDepth: 3`, `apps/web/src` (3 segments) alone is already enough to count as "the same area" — so a dependency from `billing` straight into a completely unrelated `auth` module gets waved through as `internal`, which defeats the point: that *is* a cross-module dependency worth a second look. Raising `internalDepth` to `5` (matching where this project's real module boundary actually sits) fixes it, without touching the `billing`-to-`billing` case at all. Verified against the real classifier, not assumed.
+
+**Takeaway:** set `internalDepth` to the number of path segments it actually takes to reach a real module boundary *in your project* — read it off your own folder structure, don't leave the default unexamined.
+
+#### A tuning gotcha: relaxing thresholds doesn't always relax the result
+
+It's tempting to "calm down" noisy `deep-internal` findings from a folder that's just naturally deeply nested (a shared UI library, say) by raising `deepInternalResidualDepth`. That doesn't always do what you'd expect, because `internal` and `deep-internal` are independent checks with a gap between them (see [above](#thresholds)) — pushing `deep-internal`'s bar higher can just move a case into that gap instead of into `internal`:
+
+```
+from: src/shared/ui/components/Table/index.ts
+to:   src/shared/ui/components/Table/cells/EditableCell/hooks/useCellState.ts
+commonDepth: 5, residualDepth: 3
+
+thresholds { internalDepth: 3, deepInternalResidualDepth: 3 } → deep-internal
+thresholds { internalDepth: 3, deepInternalResidualDepth: 6 } → cross-boundary   (not internal!)
+```
+
+Raising `deepInternalResidualDepth` from `3` to `6` didn't quiet this finding down — it turned it into `cross-boundary`, which is the *most* visible category by default. If a folder is just structurally deep by nature and you don't want its internal reshuffling reviewed at all, reach for `severity` or `ignore` on a scope matching that folder instead of trying to out-tune the thresholds:
+
+```json
+{ "match": "src/shared/ui/**", "severity": { "deep-internal": "info", "cross-boundary": "info" } }
+```
+
+#### Excluding something from analysis entirely
+
+Some folders aren't worth architectural review at all — generated code is the clearest case. Its internal dependency shape is produced by a codegen tool, not by a person making a design decision, so findings from it are just noise:
+
+```json
+{ "match": "src/generated/**", "ignore": true }
+```
+
+This is different from lowering severity: an `ignore`d scope's findings never appear in any report and never influence `failOn`, as if they didn't exist. Reach for `severity` when you still want visibility but lower urgency, and `ignore` when a path genuinely shouldn't be analyzed at all.
+
+---
+
+## `features.scc`
+
+Controls the `cycles` command — dependency cycle / SCC detection.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | `boolean` | `true` | Whether the `cycles` command runs at all. |
+| `mode` | `"full"` \| `"compact"` \| `"html"` | `"compact"` | Same meaning as `regression.mode`. |
+| `failOn` | `"info"` \| `"warning"` \| `"error"` | `"error"` | The command exits with code `1` if any cycle is detected and `failOn` isn't `"info"`. |
+| `reporting.html.enabled` | `boolean` | `true` | Same meaning as `regression.reporting.html.enabled`. |
+| `reporting.html.outputPath` | `string` | `"./dep-health-reports/scc.html"` | Where the HTML report is written. |
+
+> `severity` and `maxSize` are accepted by the schema and can be set without a validation error, but nothing in the current implementation reads them — they don't yet affect behavior. Documented here for accuracy rather than left silently undocumented; treat them as reserved for now, not as working options.
+
+---
+
+## Full example
+
+```json
+{
+    "$schema": "./src/app/config/config.schema.json",
+    "features": {
+        "regression": {
+            "enabled": true,
+            "mode": "compact",
+            "failOn": "warning",
+            "reporting": {
+                "html": { "enabled": true, "outputPath": "./dep-health-reports/regression.html" }
+            },
+            "severity": {
+                "cross-boundary": "warning",
+                "deep-internal": "warning",
+                "sibling": "info",
+                "internal": "info"
+            },
+            "thresholds": { "internalDepth": 3, "deepInternalResidualDepth": 3 },
+            "scopes": [
+                { "match": "src/app/**", "ignore": true },
+                {
+                    "match": "src/features/regression/**",
+                    "thresholds": { "internalDepth": 2, "deepInternalResidualDepth": 2 }
+                }
+            ],
+            "ai": {
+                "enabled": true,
+                "provider": "ollama",
+                "host": "http://localhost:11434",
+                "model": "qwen3:14b",
+                "language": "en"
+            }
+        },
+        "scc": {
+            "enabled": true,
+            "mode": "compact",
+            "failOn": "error",
+            "reporting": { "html": { "enabled": true, "outputPath": "./dep-health-reports/scc.html" } }
+        }
+    }
+}
+```
