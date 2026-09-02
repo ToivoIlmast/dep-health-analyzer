@@ -16,6 +16,7 @@ module.exports = [
             'docs/**',
             'scripts/**',
             'dep-health-reports/**',
+            'src/app/config/validateConfig.generated.js',
         ],
     },
     js.configs.recommended,

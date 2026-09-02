@@ -19,7 +19,14 @@ async function main(): Promise<void> {
     handleInitFlag(process.argv.slice(2));
     handleHelpFlag(process.argv.slice(2));
 
-    const config = loadConfig();
+    let config;
+    try {
+        config = loadConfig();
+    } catch (err) {
+        console.error(`\n${RED}${err instanceof Error ? err.message : 'Failed to load configuration.'}${RESET}`);
+        process.exit(1);
+    }
+
     if (!config) {
         console.error(
             `\n${RED}Configuration file not found.${RESET}\n\n` +

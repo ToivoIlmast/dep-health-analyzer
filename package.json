@@ -1,6 +1,6 @@
 {
     "name": "dep-health-analyzer",
-    "version": "0.4.3",
+    "version": "0.5.0",
     "license": "MIT",
     "type": "commonjs",
     "repository": {
@@ -16,15 +16,18 @@
         "dev": "tsx src/app/cli.ts",
         "dev:fixtures": "tsx src/cli.ts scan ./src/fixtures",
         "typecheck": "tsc --noEmit",
-        "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node scripts/copyAssets.js",
+        "prebuild": "node scripts/generateConfigValidator.js",
+        "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node scripts/copyAssets.js && node scripts/copyConfigValidator.js",
         "copy-assets": "mkdir -p dist/assets && cp static/assets/* dist/assets/",
         "postbuild": "node scripts/makeExecutable.js",
+        "prejest": "node scripts/generateConfigValidator.js",
         "jest": "jest --coverage --silent --runInBand --detectOpenHandles --colors",
         "jest:watch": "jest --watch",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "tff": "npm run jest && npm run lint:fix && npm run build",
-        "generate:config-types": "json2ts -i src/app/config/config.schema.json -o src/app/config/config.types.ts"
+        "generate:config-types": "json2ts -i src/app/config/config.schema.json -o src/app/config/config.types.ts",
+        "generate:config-validator": "node scripts/generateConfigValidator.js"
     },
     "bin": {
         "dep-health-analyzer": "dist/app/cli.js"
@@ -46,6 +49,7 @@
         "@eslint/js": "^10.0.1",
         "@types/jest": "^30.0.0",
         "@types/node": "^25.6.0",
+        "ajv": "^8.20.0",
         "eslint": "^10.3.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.5",
