@@ -97,7 +97,10 @@ describe('calculateArchitectureMetrics', () => {
         expect(result.has('A')).toBeTruthy();
         expect(result.get('A')?.ca).toBe(0);
         expect(result.get('A')?.ce).toBe(0);
-        expect(result.get('A')?.instability).toBe(NaN);
+        // A module with no incoming or outgoing edges has no coupling in
+        // either direction, so instability is 0 (maximally stable), not the
+        // NaN that an unguarded 0/0 division would produce.
+        expect(result.get('A')?.instability).toBe(0);
     });
 
     it('handles empty graphs', () => {
