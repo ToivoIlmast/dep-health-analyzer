@@ -138,6 +138,9 @@ describe('analyzeCycles', () => {
     });
 
     it('should compute the largest SCC size from the longest detected cycle', async () => {
+        // detectCycles repeats the first node at the end of each cycle array
+        // (e.g. a 2-module cycle is ['a.ts', 'b.ts', 'a.ts']) - the count
+        // must be the number of distinct modules, not the raw array length.
         mockedDetectCycles.mockReturnValue([
             ['a.ts', 'b.ts', 'a.ts'],
             ['x.ts', 'y.ts', 'z.ts', 'x.ts'],
@@ -146,7 +149,7 @@ describe('analyzeCycles', () => {
 
         await analyzeCycles({ ...baseArgs, failOn: 'info' });
 
-        expect(logSpy).toHaveBeenCalledWith('Largest SCC: 4 module(s)');
+        expect(logSpy).toHaveBeenCalledWith('Largest SCC: 3 module(s)');
     });
 
     it('should report zero as the largest SCC when there are no cycles', async () => {
