@@ -9,7 +9,6 @@ export const CLI_FLAG = {
     INIT: '--init',
     HELP: '--help',
     AI: '--ai',
-    LANG: '--lang',
 } as const;
 
 type BaseArgs = {

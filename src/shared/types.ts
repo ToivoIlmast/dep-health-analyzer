@@ -4,12 +4,7 @@ export const MODES = {
     HTML: 'html',
 } as const;
 
-export const AI_FLAGS = {
-    LANG: '--lang',
-} as const;
-
 export type ModeType = (typeof MODES)[keyof typeof MODES];
-export type LangsType = (typeof AI_FLAGS)[keyof typeof AI_FLAGS];
 
 export type SeverityLevel = 'info' | 'warning' | 'error';
 
