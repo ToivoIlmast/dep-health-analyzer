@@ -13,6 +13,9 @@ export async function discoverFiles(root: string): Promise<string[]> {
             '**/*.test.ts',
             '**/*.spec.ts',
             '**/__fixtures__/**',
+            '**/coverage/**',
+            '**/static/**',
+            '**/dep-health-reports/**',
         ],
         dot: false,
     });
