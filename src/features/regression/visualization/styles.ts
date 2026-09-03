@@ -148,4 +148,16 @@ export const styles = `
         font-weight: bold;
         border: 1px solid;
     }
+
+    .doc-link {
+        display: inline-block;
+        margin-top: 4px;
+        color: #60a5fa;
+        font-size: 15px;
+        text-decoration: none;
+    }
+
+    .doc-link:hover {
+        text-decoration: underline;
+    }
 `;

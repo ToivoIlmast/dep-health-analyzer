@@ -15,7 +15,7 @@ Invalid configuration in dep-health.config.json:
   - /features/scc/mode must be equal to one of the allowed values
 ```
 
-The `$schema` field at the top of a generated config is meant to give you autocomplete and inline validation in editors that support JSON Schema (VS Code does, out of the box). **Known limitation:** the path `--init` currently writes there (`./src/app/config/config.schema.json`) is only valid inside this tool's own repository — for a project that installed `dep-health-analyzer` from npm, that path doesn't exist, so editor autocomplete for `$schema` won't work yet. This doesn't affect the runtime validation described above, which works regardless.
+The `$schema` field at the top of a generated config gives you autocomplete and inline validation in editors that support JSON Schema (VS Code does, out of the box). It points at the schema file on GitHub rather than a local path, so it resolves the same way whether you're inside this repository or in a project that installed `dep-health-analyzer` from npm — no local file needs to exist for it to work.
 
 ---
 
@@ -230,7 +230,7 @@ Controls the `cycles` command — dependency cycle / SCC detection.
 
 ```json
 {
-    "$schema": "./src/app/config/config.schema.json",
+    "$schema": "https://raw.githubusercontent.com/ToivoIlmast/dep-health-analyzer/master/src/app/config/config.schema.json",
     "features": {
         "regression": {
             "enabled": true,

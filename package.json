@@ -1,6 +1,6 @@
 {
     "name": "dep-health-analyzer",
-    "version": "0.5.2",
+    "version": "0.5.4",
     "license": "MIT",
     "type": "commonjs",
     "repository": {
@@ -18,7 +18,6 @@
         "typecheck": "tsc --noEmit",
         "prebuild": "node scripts/generateConfigValidator.js",
         "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node scripts/copyAssets.js && node scripts/copyConfigValidator.js",
-        "copy-assets": "mkdir -p dist/assets && cp static/assets/* dist/assets/",
         "postbuild": "node scripts/makeExecutable.js",
         "prejest": "node scripts/generateConfigValidator.js",
         "jest": "jest --coverage --silent --runInBand --detectOpenHandles --colors",

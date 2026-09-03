@@ -1,5 +1,11 @@
 export const defaultConfig = {
-    $schema: './src/app/config/config.schema.json',
+    // A remote URL, not a repo-relative path: this file is copied verbatim
+    // into every user's generated config via `--init`, and a relative path
+    // to the schema only resolves inside this repo itself, not in an
+    // installed package (the raw schema isn't shipped in `dist`). A remote
+    // URL works the same for every install layout (npm, pnpm, monorepos).
+    $schema:
+        'https://raw.githubusercontent.com/ToivoIlmast/dep-health-analyzer/master/src/app/config/config.schema.json',
 
     features: {
         regression: {
