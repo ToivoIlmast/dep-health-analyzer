@@ -69,7 +69,10 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
 
             if (ai === true && regressionConfig.ai?.enabled) {
                 try {
-                    await validateOllamaAIEnvironment(regressionConfig.ai?.model ?? '');
+                    await validateOllamaAIEnvironment({
+                        model: regressionConfig.ai?.model ?? '',
+                        host: regressionConfig.ai?.host,
+                    });
                     await explainRegression({
                         data: {
                             ...result,
