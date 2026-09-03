@@ -31,5 +31,15 @@ export function riskAssessment(args: RiskAssessmentType): string {
             Findings are heuristic signals and should be reviewed
             together with project-specific architecture rules.
         </p>
+
+        <p>
+            <a
+                href="https://github.com/ToivoIlmast/dep-health-analyzer/blob/master/docs/CONFIGURATION.md#risk-assessment-html-report"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                How is this calculated?
+            </a>
+        </p>
     `;
 }

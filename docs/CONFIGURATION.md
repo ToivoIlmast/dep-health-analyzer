@@ -191,6 +191,25 @@ This is different from lowering severity: an `ignore`d scope's findings never ap
 
 ---
 
+## Risk Assessment (HTML report)
+
+The `--mode html` regression report includes a "Risk Assessment" banner (Low / Moderate / High Architectural Risk). It measures how large a share of **this change's** findings are `cross-boundary` — not how large a share of the whole project is cross-boundary. The same absolute change reads the same regardless of how big the surrounding codebase happens to be.
+
+Below **2** cross-boundary findings, risk always stays Low, no matter the percentage. A single cross-boundary finding in a 1-3 finding change is 33-100% by percentage alone, which is just noise from a tiny denominator, not a real signal of a trend. Once there are 2 or more cross-boundary findings, the percentage of `cross-boundary` findings among all findings in the change decides the rest: above 15% is High, above 5% is Moderate, otherwise Low.
+
+These numbers (2 minimum, 5%/15% bands) are **not currently configurable** — unlike `thresholds` and `severity` above, they're fixed in code. They were checked against dep-health's own commit history before being set, not picked arbitrarily:
+
+| Change | Cross-boundary | Total findings | Result | Why |
+|---|---|---|---|---|
+| 1 cross-boundary out of 1 finding | 1 | 1 | Low | Below the minimum of 2 — a single finding shouldn't decide "High" on its own. |
+| 1 cross-boundary out of 3 findings | 1 | 3 | Low | Same — 33% looks alarming, but it's one data point. |
+| 4 cross-boundary out of 26 findings | 4 | 26 | High | At or above the minimum; 15.4% crosses the High threshold. |
+| 9 cross-boundary out of 20 findings | 9 | 20 | High | 45% — a real, repeated signal, not noise. |
+
+The first two rows are real dep-health commits that used to read "High Architectural Risk" under an earlier, unqualified percentage — a real change with one incidental cross-boundary finding shouldn't top the risk scale the same way a change with many does.
+
+---
+
 ## `features.scc`
 
 Controls the `cycles` command — dependency cycle / SCC detection.

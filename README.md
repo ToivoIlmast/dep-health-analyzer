@@ -143,7 +143,7 @@ Reports provide:
 - architectural metrics
 - dependency insights
 - regression summaries
-- risk assessment information
+- risk assessment information (see [Risk Assessment](docs/CONFIGURATION.md#risk-assessment-html-report) for how it's calculated)
 
 ---
 
