@@ -1,7 +1,16 @@
 import { execSync } from 'node:child_process';
-import ollama from 'ollama';
+import { Ollama } from 'ollama';
 
-export async function validateOllamaAIEnvironment(model: string): Promise<void> {
+type ValidateOllamaAIEnvironmentArgs = {
+    model: string;
+    host?: string;
+};
+
+export async function validateOllamaAIEnvironment(
+    args: ValidateOllamaAIEnvironmentArgs
+): Promise<void> {
+    const { model, host } = args;
+
     console.log('Checking AI environment...\n');
 
 
@@ -23,10 +32,12 @@ export async function validateOllamaAIEnvironment(model: string): Promise<void> 
     // Ollama server
     //
 
+    const client = new Ollama({ host });
+
     let models;
 
     try {
-        const response = await ollama.list();
+        const response = await client.list();
 
         models = response.models;
 

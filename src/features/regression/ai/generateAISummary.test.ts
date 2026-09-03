@@ -1,10 +1,41 @@
 import ora from 'ora';
 import { generateAISummary } from './generateAISummary';
 
+const mockChat = jest.fn();
+
+jest.mock('ollama', () => ({
+    __esModule: true,
+    Ollama: jest.fn().mockImplementation((config: { host?: string }) => ({
+        __host: config?.host,
+        chat: mockChat,
+    })),
+}));
+
 jest.mock('ora', () => ({
     __esModule: true,
     default: jest.fn(),
 }));
+
+class FakeResponseError extends Error {
+    constructor(
+        message: string,
+        public status_code: number
+    ) {
+        super(message);
+        this.name = 'ResponseError';
+    }
+}
+
+function makeStream(chunks: Array<{ message?: { content?: string }; done?: boolean }>) {
+    return {
+        abort: jest.fn(),
+        [Symbol.asyncIterator]: async function* () {
+            for (const chunk of chunks) {
+                yield chunk;
+            }
+        },
+    };
+}
 
 describe('generateAISummary', () => {
     const spinner = {
@@ -25,95 +56,60 @@ describe('generateAISummary', () => {
         jest.mocked(ora).mockReturnValue(spinner as unknown as ReturnType<typeof ora>);
     });
 
-    it('should send the configured request and print streamed response content', async () => {
-        const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
-            ok: true,
-            status: 200,
-            body: {
-                getReader: () => {
-                    const chunks = [
-                        new TextEncoder().encode('{"message":{"content":"Summary"}}\n'),
-                        new TextEncoder().encode('\n'),
-                        new TextEncoder().encode('{"message":{"content":" complete"},"done":true}\n'),
-                    ];
-                    let index = 0;
+    it('should connect to the configured host and send the configured chat request', async () => {
+        const { Ollama } = jest.requireMock('ollama');
+        mockChat.mockResolvedValue(makeStream([{ message: { content: 'Summary' }, done: true }]));
 
-                    return {
-                        read: jest.fn(async () => {
-                            const value = chunks[index++];
-                            return value ? { done: false, value } : { done: true, value: undefined };
-                        }),
-                    };
-                },
-            },
-        } as unknown as Response);
+        await generateAISummary({ prompt: 'test prompt', aiConfig });
+
+        expect(Ollama).toHaveBeenCalledWith({ host: 'http://ollama.test' });
+        expect(mockChat).toHaveBeenCalledWith({
+            model: 'qwen3:14b',
+            think: false,
+            stream: true,
+            messages: [{ role: 'user', content: 'test prompt' }],
+        });
+    });
+
+    it('should print streamed response content as it arrives', async () => {
+        mockChat.mockResolvedValue(
+            makeStream([
+                { message: { content: 'Summary' } },
+                { message: { content: ' complete' }, done: true },
+            ])
+        );
         const stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
         const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
         await generateAISummary({ prompt: 'test prompt', aiConfig });
 
-        expect(fetchMock).toHaveBeenCalledWith(
-            'http://ollama.test/api/chat',
-            expect.objectContaining({
-                method: 'POST',
-                body: JSON.stringify({
-                    model: 'qwen3:14b',
-                    think: false,
-                    stream: true,
-                    messages: [{ role: 'user', content: 'test prompt' }],
-                }),
-            })
-        );
         expect(spinner.succeed).toHaveBeenCalledWith('AI summary generated');
         expect(stdoutSpy).toHaveBeenNthCalledWith(1, 'Summary');
         expect(stdoutSpy).toHaveBeenNthCalledWith(2, ' complete');
 
-        fetchMock.mockRestore();
         stdoutSpy.mockRestore();
         consoleLogSpy.mockRestore();
     });
 
-    it('should fail the summary when Ollama returns an HTTP error', async () => {
-        const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
-            ok: false,
-            status: 404,
-        } as Response);
+    it('should fail the summary when Ollama rejects with a response error', async () => {
+        mockChat.mockRejectedValue(new FakeResponseError('not found', 404));
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         const exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
 
         await generateAISummary({ prompt: 'test prompt', aiConfig });
 
         expect(spinner.fail).toHaveBeenCalledWith('AI summary failed');
-        expect(consoleErrorSpy).toHaveBeenCalledWith('Model "qwen3:14b" was not found. Check the model name.');
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            'Model "qwen3:14b" was not found. Check the model name.'
+        );
         expect(exitSpy).toHaveBeenCalledWith(1);
 
-        fetchMock.mockRestore();
         consoleErrorSpy.mockRestore();
         exitSpy.mockRestore();
     });
 
-    it('should fail the summary when Ollama returns an empty response body', async () => {
-        const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
-            ok: true,
-            status: 200,
-            body: null,
-        } as Response);
-        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-        const exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
-
-        await generateAISummary({ prompt: 'test prompt', aiConfig });
-
-        expect(spinner.fail).toHaveBeenCalledWith('AI summary failed');
-        expect(consoleErrorSpy).toHaveBeenCalledWith('Response body is empty');
-        expect(exitSpy).toHaveBeenCalledWith(1);
-
-        fetchMock.mockRestore();
-        consoleErrorSpy.mockRestore();
-        exitSpy.mockRestore();
-    });
-
-    it('should report a connection error when fetch throws a TypeError', async () => {
-        const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(new TypeError('network error'));
+    it('should report a connection error when the request throws a TypeError', async () => {
+        mockChat.mockRejectedValue(new TypeError('fetch failed'));
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         const exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
 
@@ -124,13 +120,12 @@ describe('generateAISummary', () => {
         );
         expect(exitSpy).toHaveBeenCalledWith(1);
 
-        fetchMock.mockRestore();
         consoleErrorSpy.mockRestore();
         exitSpy.mockRestore();
     });
 
-    it('should report an unexpected error when fetch throws a non-error value', async () => {
-        const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue('network error');
+    it('should report an unexpected error when the request throws a non-error value', async () => {
+        mockChat.mockRejectedValue('network error');
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         const exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
 
@@ -139,7 +134,6 @@ describe('generateAISummary', () => {
         expect(consoleErrorSpy).toHaveBeenCalledWith('An unexpected error occurred.');
         expect(exitSpy).toHaveBeenCalledWith(1);
 
-        fetchMock.mockRestore();
         consoleErrorSpy.mockRestore();
         exitSpy.mockRestore();
     });

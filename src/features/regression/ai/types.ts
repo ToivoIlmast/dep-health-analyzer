@@ -1,48 +1,6 @@
-/* export type RegressionPromptData = {
-    summary: {
-        total: number;
-        crossBoundary: number;
-        deepInternal: number;
-        sibling: number;
-        internal: number;
-    };
+import { IConfig } from 'app/config/types';
 
-    patterns: Array<{
-        source: string;
-        dependencies: number;
-        targets: string[];
-    }>;
-
-    findings: Array<{
-        from: string;
-        to: string;
-        relation: string;
-        severity: string;
-        interpretation: string;
-    }>;
-};
- */
-
-/* export type RegressionPromptData = {
-    summary: {
-        total: number;
-        crossBoundary: number;
-        deepInternal: number;
-        sibling: number;
-        internal: number;
-    };
-
-    hotspots: Array<{
-        source: string;
-        dependencies: number;
-    }>;
-
-    importantFindings: Array<{
-        from: string;
-        to: string;
-        relation: string;
-    }>;
-}; */
+export type RegressionAIConfig = NonNullable<NonNullable<IConfig['features']>['regression']>['ai'];
 
 export interface RegressionPromptData {
     observations: {

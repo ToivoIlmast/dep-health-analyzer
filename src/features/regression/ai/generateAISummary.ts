@@ -1,13 +1,25 @@
+import { Ollama } from 'ollama';
 import ora from 'ora';
-import { RegressionAIConfig } from './explainRegression';
+import { RegressionAIConfig } from './types';
 import { getAIErrorMessage } from './getAIErrorMessage';
 
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
+const STREAM_TIMEOUT_MS = 1_200_000; // 20 min
+
 interface IGenerateAISummary {
     prompt: string;
     aiConfig: RegressionAIConfig;
+}
+
+function hasStatusCode(err: unknown): err is { status_code: number } {
+    return (
+        typeof err === 'object' &&
+        err !== null &&
+        'status_code' in err &&
+        typeof (err as { status_code: unknown }).status_code === 'number'
+    );
 }
 
 export async function generateAISummary(args: IGenerateAISummary): Promise<void> {
@@ -21,84 +33,43 @@ export async function generateAISummary(args: IGenerateAISummary): Promise<void>
     const started = Date.now();
     const spinner = ora('\nGenerating AI summary...').start();
 
+    const client = new Ollama({ host: aiConfig?.host });
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
-        const response = await fetch(`${aiConfig?.host}/api/chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: aiConfig?.model,
-                think: false,
-                stream: true,
-                messages: [
-                    {
-                        role: 'user',
-                        content: prompt,
-                    },
-                ],
-            }),
-            signal: AbortSignal.timeout(1_200_000), // 20 min
+        const stream = await client.chat({
+            model: aiConfig?.model ?? '',
+            think: false,
+            stream: true,
+            messages: [
+                {
+                    role: 'user',
+                    content: prompt,
+                },
+            ],
         });
 
-        if (!response.ok) {
-            throw new Error(getAIErrorMessage(response.status, aiConfig?.model ?? ''));
-        }
-
-        if (!response.body) {
-            throw new Error('Response body is empty');
-        }
+        timeoutId = setTimeout(() => stream.abort(), STREAM_TIMEOUT_MS);
 
         spinner.succeed('AI summary generated');
         console.log('\nAI response:\n');
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        let buffer = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-
-            if (done) {
-                break;
+        for await (const chunk of stream) {
+            if (chunk.message?.content) {
+                process.stdout.write(chunk.message.content);
             }
 
-            buffer += decoder.decode(value, {
-                stream: true,
-            });
-
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-
-            for (const line of lines) {
-                if (!line.trim()) {
-                    continue;
-                }
-
-                try {
-                    const chunk = JSON.parse(line);
-
-                    const content = chunk.message?.content;
-
-                    if (content) {
-                        process.stdout.write(content);
-                    }
-
-                    if (chunk.done) {
-                        console.log(
-                            `\n\nCompleted in ${((Date.now() - started) / 1000).toFixed(2)}s`
-                        );
-                    }
-                } catch {
-                    // ignore incomplete chunk
-                }
+            if (chunk.done) {
+                console.log(`\n\nCompleted in ${((Date.now() - started) / 1000).toFixed(2)}s`);
             }
         }
     } catch (err: unknown) {
         spinner.fail('AI summary failed');
 
-        if (err instanceof TypeError) {
+        if (hasStatusCode(err)) {
+            console.error(getAIErrorMessage(err.status_code, aiConfig?.model ?? ''));
+        } else if (err instanceof TypeError) {
             console.error(
                 `Unable to connect to the Ollama server at ${RED}${aiConfig?.host}${RESET}. ` +
                     'Check that the server is running and the host is correct.'
@@ -110,5 +81,9 @@ export async function generateAISummary(args: IGenerateAISummary): Promise<void>
         }
 
         process.exit(1);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
     }
 }

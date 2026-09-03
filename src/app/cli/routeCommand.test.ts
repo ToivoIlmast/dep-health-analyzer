@@ -190,7 +190,10 @@ describe('routeCommand', () => {
             }
         );
 
-        expect(validateOllamaMock).toHaveBeenCalledWith('qwen3:14b');
+        expect(validateOllamaMock).toHaveBeenCalledWith({
+            model: 'qwen3:14b',
+            host: 'http://localhost:11434',
+        });
         expect(explainRegressionMock).toHaveBeenCalledWith({ data: result, aiConfig: ai });
     });
 });

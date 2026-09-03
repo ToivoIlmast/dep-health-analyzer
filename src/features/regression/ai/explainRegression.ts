@@ -1,11 +1,8 @@
-import { IConfig } from 'app/config/types';
 import { RegressionAnalysisResult } from '../types';
 import { buildRegressionPrompt } from './buildRegressionPrompt';
 import { buildRegressionPromptData } from './buildRegressionPromptData';
 import { generateAISummary } from './generateAISummary';
-import { RegressionPromptData } from './types';
-
-export type RegressionAIConfig = NonNullable<NonNullable<IConfig['features']>['regression']>['ai'];
+import { RegressionAIConfig, RegressionPromptData } from './types';
 
 export type ExplainRegressionType = {
     data: RegressionAnalysisResult;
