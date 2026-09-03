@@ -79,7 +79,11 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
     const prettyLength: number[] = [];
     for (const cycle of result.cycles) {
         const pretty = cycle.map((file) => path.basename(file));
-        prettyLength.push(pretty.length);
+        // detectCycles closes each cycle by repeating its first node at the
+        // end (e.g. [A, B, C, A]) so it can be displayed as "A -> B -> C ->
+        // A". Deduplicate before counting, or every cycle's module count is
+        // off by one.
+        prettyLength.push(new Set(pretty).size);
     }
     const largestScc = prettyLength.length > 0 ? Math.max(...prettyLength) : 0;
     console.log(`Largest SCC: ${largestScc} module(s)`);
