@@ -1,26 +1,6 @@
-import { getCommonDepth, getCommonParent, getResidualDepth } from './pathMetrics';
+import { getCommonParent, getResidualDepth } from './pathMetrics';
 
 describe('pathMetrics', () => {
-    describe('getCommonDepth', () => {
-        it('should return full common depth for identical paths', () => {
-            const result = getCommonDepth('src/features/cycles', 'src/features/cycles');
-
-            expect(result).toBe(3);
-        });
-
-        it('should return common depth for nested paths', () => {
-            const result = getCommonDepth('src/features/cycles', 'src/features/regression');
-
-            expect(result).toBe(2);
-        });
-
-        it('should support windows path separators', () => {
-            const result = getCommonDepth('src\\features\\cycles', 'src\\features\\regression');
-
-            expect(result).toBe(2);
-        });
-    });
-
     describe('getCommonParent', () => {
         it('should return common parent path', () => {
             const result = getCommonParent('src/features/cycles/a.ts', 'src/features/cycles/b.ts');
