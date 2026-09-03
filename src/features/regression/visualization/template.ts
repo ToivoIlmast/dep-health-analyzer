@@ -12,12 +12,34 @@ import { RiskLevel } from './types';
 
 type GetRiskLevelType = {
     crossBoundaryCount: number;
-    totalModules: number;
+    totalFindings: number;
 };
-function getRiskLevel(args: GetRiskLevelType): RiskLevel {
-    const { crossBoundaryCount, totalModules } = args;
+
+/**
+ * Below this many cross-boundary findings, the percentage is too noisy to
+ * mean anything (a single finding in a 1-3 finding change is 33-100% no
+ * matter how small the actual signal is) - verified against real history:
+ * every single-cross-boundary change in dep-health's own commits landed at
+ * 33-100%, while repeated signals (4+, 9+) landed at a much more stable
+ * 15-45%. Below this count, risk stays Low regardless of percentage.
+ */
+const MIN_CROSS_BOUNDARY_FOR_CONCERN = 2;
+
+/**
+ * Risk is the share of cross-boundary findings within this change
+ * (architectural impact of the change), not within the whole project
+ * (architectural density) — the same absolute change should read the
+ * same regardless of how large the surrounding codebase happens to be.
+ */
+export function getRiskLevel(args: GetRiskLevelType): RiskLevel {
+    const { crossBoundaryCount, totalFindings } = args;
+
+    if (totalFindings === 0 || crossBoundaryCount < MIN_CROSS_BOUNDARY_FOR_CONCERN) {
+        return 'Low Architectural Risk';
+    }
+
     let riskLevel: RiskLevel = 'Low Architectural Risk';
-    const percentage = Number(((crossBoundaryCount / totalModules) * 100).toFixed(2));
+    const percentage = Number(((crossBoundaryCount / totalFindings) * 100).toFixed(2));
     if (percentage > 15) {
         riskLevel = 'High Architectural Risk';
     } else if (percentage > 5) {
@@ -61,7 +83,7 @@ export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): 
         topAreas,
     });
 
-    const riskLevel = getRiskLevel({ crossBoundaryCount, totalModules: currentScannedFiles });
+    const riskLevel = getRiskLevel({ crossBoundaryCount, totalFindings: delta.length });
     const riskAssessmentSection = riskAssessment({
         crossBoundaryCount,
         riskLevel,
