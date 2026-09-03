@@ -1,5 +1,4 @@
-import { RegressionAIConfig } from './explainRegression';
-import { RegressionPromptData } from './types';
+import { RegressionAIConfig, RegressionPromptData } from './types';
 
 interface IBuildRegressionPrompt {
     analyseData: RegressionPromptData;
