@@ -34,6 +34,7 @@ export function riskAssessment(args: RiskAssessmentType): string {
 
         <p>
             <a
+                class="doc-link"
                 href="https://github.com/ToivoIlmast/dep-health-analyzer/blob/master/docs/CONFIGURATION.md#risk-assessment-html-report"
                 target="_blank"
                 rel="noopener noreferrer"

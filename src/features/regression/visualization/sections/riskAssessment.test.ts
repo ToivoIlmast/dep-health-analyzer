@@ -32,5 +32,8 @@ describe('riskAssessment', () => {
         );
         expect(html).toContain('target="_blank"');
         expect(html).toContain('rel="noopener noreferrer"');
+        // Styled explicitly (readable color/size on the report's dark theme)
+        // rather than left to the browser's default link styling.
+        expect(html).toContain('class="doc-link"');
     });
 });
