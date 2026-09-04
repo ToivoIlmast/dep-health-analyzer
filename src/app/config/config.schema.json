@@ -191,6 +191,32 @@
 
                                 "additionalProperties": false
                             }
+                        },
+
+                        "history": {
+                            "type": "object",
+
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+
+                                "sampleSize": {
+                                    "type": "number"
+                                },
+
+                                "strategy": {
+                                    "type": "string",
+                                    "enum": ["incremental", "cumulative", "both"]
+                                },
+
+                                "mode": {
+                                    "type": "string",
+                                    "enum": ["full", "compact", "html"]
+                                }
+                            },
+
+                            "additionalProperties": false
                         }
                     },
 

@@ -6,6 +6,7 @@ import { htmlModeReport } from '../visualization';
 import { scanProject } from '@core/scanProject';
 import { removeBaselineWorktree } from '../utils/removeBaselineWorktree';
 import { resolveWorktreeTarget } from '../utils/resolveWorktreeTarget';
+import { shouldFail } from '../utils/shouldFail';
 import { validateGitRef } from '../utils/validateGitRef';
 import { DependencyInsight, RegressionAnalysisResult, RegressionThresholds } from '../types';
 import type { ScanResult } from '@core/graph/types';
@@ -58,26 +59,6 @@ function resolveBaselineInfo(ref: string): {
     }).trim();
 
     return { sha, title };
-}
-
-const severityRank = {
-    info: 1,
-    warning: 2,
-    error: 3,
-};
-
-type ShouldFailType = {
-    findings: DependencyInsight[];
-    failOn: 'info' | 'warning' | 'error';
-};
-function shouldFail(args: ShouldFailType): boolean {
-    const { findings, failOn } = args;
-    const failLevel = severityRank[failOn];
-
-    return findings.some((finding) => {
-        const level = severityRank[finding.severity];
-        return level >= failLevel;
-    });
 }
 
 type AnalyzeRegressionType = {

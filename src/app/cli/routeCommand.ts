@@ -1,5 +1,5 @@
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
-import { analyzeRegression, explainRegression } from '@features/regression';
+import { analyzeHistory, analyzeRegression, explainRegression } from '@features/regression';
 import { CLI_COMMANDS, CliArgs } from './types';
 import { IConfig } from '../config/types';
 import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
@@ -86,6 +86,42 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                     process.exit(1);
                 }
             }
+
+            results.push(result.failed);
+            break;
+        }
+
+        case CLI_COMMANDS.HISTORY: {
+            const regressionConfig = config.features?.regression;
+            const historyConfig = regressionConfig?.history;
+
+            if (!historyConfig?.enabled) {
+                break;
+            }
+
+            const result = await analyzeHistory({
+                target,
+                baselineRef: args.baselineRef,
+                sampleSize: args.sampleSize,
+                strategy: args.strategy,
+                mode,
+                failOn: regressionConfig?.failOn ?? 'error',
+                rules: {
+                    thresholds: {
+                        deepInternalResidualDepth:
+                            regressionConfig?.thresholds?.deepInternalResidualDepth ?? 3,
+                        internalDepth: regressionConfig?.thresholds?.internalDepth ?? 3,
+                    },
+                    severity: {
+                        'cross-boundary':
+                            regressionConfig?.severity?.['cross-boundary'] ?? 'warning',
+                        'deep-internal': regressionConfig?.severity?.['deep-internal'] ?? 'warning',
+                        sibling: regressionConfig?.severity?.sibling ?? 'info',
+                        internal: regressionConfig?.severity?.internal ?? 'info',
+                    },
+                },
+                scopes: regressionConfig?.scopes,
+            });
 
             results.push(result.failed);
             break;

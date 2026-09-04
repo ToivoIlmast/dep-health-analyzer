@@ -1,8 +1,8 @@
 import { routeCommand } from './routeCommand';
 import { CLI_COMMANDS } from './types';
-import { MODES } from '@shared/types';
+import { HISTORY_STRATEGIES, MODES } from '@shared/types';
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
-import { analyzeRegression, explainRegression } from '@features/regression';
+import { analyzeHistory, analyzeRegression, explainRegression } from '@features/regression';
 import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
 
 jest.mock('@features/cycles/analyzeCycles', () => ({
@@ -12,6 +12,7 @@ jest.mock('@features/cycles/analyzeCycles', () => ({
 jest.mock('@features/regression', () => ({
     analyzeRegression: jest.fn(),
     explainRegression: jest.fn(),
+    analyzeHistory: jest.fn(),
 }));
 
 jest.mock('@features/regression/ai/validateAIEnvironment', () => ({
@@ -195,5 +196,95 @@ describe('routeCommand', () => {
             host: 'http://localhost:11434',
         });
         expect(explainRegressionMock).toHaveBeenCalledWith({ data: result, aiConfig: ai });
+    });
+
+    it('should call analyzeHistory for history command', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+
+        analyzeHistoryMock.mockResolvedValue({ failed: false, points: [] });
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: './src',
+                baselineRef: 'HEAD~20',
+                sampleSize: 8,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: false,
+            },
+            {
+                features: {
+                    regression: {
+                        history: { enabled: true },
+                        severity: {},
+                        thresholds: {},
+                    },
+                },
+            }
+        );
+
+        expect(analyzeHistoryMock).toHaveBeenCalledTimes(1);
+        expect(analyzeHistoryMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                target: './src',
+                baselineRef: 'HEAD~20',
+                sampleSize: 8,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+            })
+        );
+    });
+
+    it('should not call analyzeHistory when history is disabled', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: './src',
+                baselineRef: 'HEAD~20',
+                sampleSize: 8,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: false,
+            },
+            {
+                features: {
+                    regression: {
+                        history: { enabled: false },
+                    },
+                },
+            }
+        );
+
+        expect(analyzeHistoryMock).not.toHaveBeenCalled();
+    });
+
+    it('should return the analyzer result for history command', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+
+        analyzeHistoryMock.mockResolvedValue({ failed: true, points: [] });
+
+        const result = await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: './src',
+                baselineRef: 'HEAD~20',
+                sampleSize: 8,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: false,
+            },
+            {
+                features: {
+                    regression: {
+                        history: { enabled: true },
+                    },
+                },
+            }
+        );
+
+        expect(result).toEqual([true]);
     });
 });

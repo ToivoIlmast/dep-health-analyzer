@@ -39,6 +39,13 @@ export const defaultConfig = {
                 internalDepth: 3,
                 deepInternalResidualDepth: 3,
             },
+
+            history: {
+                enabled: true,
+                sampleSize: 10,
+                strategy: 'incremental',
+                mode: 'compact',
+            },
         },
 
         scc: {
