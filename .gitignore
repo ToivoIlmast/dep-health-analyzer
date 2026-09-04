@@ -32,3 +32,6 @@ dep-health-reports/
 # Generated at build time from config.schema.json - never commit,
 # regenerate via `npm run generate:config-validator`
 src/app/config/validateConfig.generated.js
+
+# Personal architecture/overview notes - not for the repo
+architecture.md
