@@ -2,7 +2,7 @@ import { routeCommand } from './routeCommand';
 import { CLI_COMMANDS } from './types';
 import { HISTORY_STRATEGIES, MODES } from '@shared/types';
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
-import { analyzeHistory, analyzeRegression, explainRegression } from '@features/regression';
+import { analyzeHistory, analyzeRegression, explainHistory, explainRegression } from '@features/regression';
 import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
 
 jest.mock('@features/cycles/analyzeCycles', () => ({
@@ -13,6 +13,7 @@ jest.mock('@features/regression', () => ({
     analyzeRegression: jest.fn(),
     explainRegression: jest.fn(),
     analyzeHistory: jest.fn(),
+    explainHistory: jest.fn(),
 }));
 
 jest.mock('@features/regression/ai/validateAIEnvironment', () => ({
@@ -286,5 +287,87 @@ describe('routeCommand', () => {
         );
 
         expect(result).toEqual([true]);
+    });
+
+    it('should generate an AI explanation for history when AI is enabled and requested', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+        const explainHistoryMock = jest.mocked(explainHistory);
+        const validateOllamaMock = jest.mocked(validateOllamaAIEnvironment);
+        const points = [
+            {
+                commit: { sha: 'abc1234', date: '2026-01-01', title: 'a' },
+                scannedFiles: 1,
+                modules: 1,
+                incremental: null,
+                cumulative: null,
+            },
+        ];
+        const result = { failed: false, points };
+        const ai = {
+            enabled: true,
+            provider: 'ollama' as const,
+            host: 'http://localhost:11434',
+            model: 'qwen3:14b',
+            language: 'English',
+        };
+
+        analyzeHistoryMock.mockResolvedValue(result);
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: './src',
+                baselineRef: 'HEAD~20',
+                sampleSize: 8,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: true,
+            },
+            {
+                features: {
+                    regression: {
+                        history: { enabled: true },
+                        severity: {},
+                        thresholds: {},
+                        ai,
+                    },
+                },
+            }
+        );
+
+        expect(validateOllamaMock).toHaveBeenCalledWith({
+            model: 'qwen3:14b',
+            host: 'http://localhost:11434',
+        });
+        expect(explainHistoryMock).toHaveBeenCalledWith({ data: { points }, aiConfig: ai });
+    });
+
+    it('should not generate an AI explanation for history when AI is not requested', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+        const explainHistoryMock = jest.mocked(explainHistory);
+
+        analyzeHistoryMock.mockResolvedValue({ failed: false, points: [] });
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: './src',
+                baselineRef: 'HEAD~20',
+                sampleSize: 8,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: false,
+            },
+            {
+                features: {
+                    regression: {
+                        history: { enabled: true },
+                        ai: { enabled: true, provider: 'ollama' },
+                    },
+                },
+            }
+        );
+
+        expect(explainHistoryMock).not.toHaveBeenCalled();
     });
 });
