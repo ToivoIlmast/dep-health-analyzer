@@ -54,6 +54,12 @@ export interface ConfigSchema {
         sampleSize?: number;
         strategy?: "incremental" | "cumulative" | "both";
         mode?: "full" | "compact" | "html";
+        reporting?: {
+          html?: {
+            enabled?: boolean;
+            outputPath?: string;
+          };
+        };
       };
     };
     scc?: {

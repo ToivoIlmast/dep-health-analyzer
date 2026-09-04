@@ -45,6 +45,12 @@ export const defaultConfig = {
                 sampleSize: 10,
                 strategy: 'incremental',
                 mode: 'compact',
+                reporting: {
+                    html: {
+                        enabled: true,
+                        outputPath: './dep-health-reports/history.html',
+                    },
+                },
             },
         },
 

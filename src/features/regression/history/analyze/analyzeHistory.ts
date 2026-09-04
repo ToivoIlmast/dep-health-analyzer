@@ -4,6 +4,7 @@ import { shouldFail } from '../../utils/shouldFail';
 import { DependencyInsight, RegressionThresholds } from '../../types';
 import { compactModeReport } from '../ci/compactModeReport';
 import { fullModeReport } from '../ci/fullModeReport';
+import { htmlModeReport } from '../visualization';
 import { HistoryPoint } from '../types';
 import { walkHistory } from './walkHistory';
 
@@ -29,6 +30,8 @@ type AnalyzeHistoryType = {
     failOn: 'info' | 'warning' | 'error';
     rules: RegressionRules;
     scopes?: IRegressionScope[];
+    isHtmlReportingEnabled: boolean;
+    htmlReportOutputPath: string;
 };
 
 export type AnalyzeHistoryResult = {
@@ -52,7 +55,18 @@ function collectFindings(points: HistoryPoint[], strategy: HistoryStrategyType):
 }
 
 export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeHistoryResult> {
-    const { target, baselineRef, sampleSize, strategy, mode, failOn, rules, scopes } = args;
+    const {
+        target,
+        baselineRef,
+        sampleSize,
+        strategy,
+        mode,
+        failOn,
+        rules,
+        scopes,
+        isHtmlReportingEnabled,
+        htmlReportOutputPath,
+    } = args;
 
     if (!validateGitRef(baselineRef)) {
         console.error(`Invalid git reference: ${baselineRef}`);
@@ -69,9 +83,12 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
     const failed = shouldFail({ findings: collectFindings(points, strategy), failOn });
 
     if (mode === MODES.HTML) {
-        console.warn(
-            `${YELLOW}\nHistory trend visualization is not implemented yet - use --mode full or --mode compact.\n${RESET}`
-        );
+        if (!isHtmlReportingEnabled) {
+            console.warn(`${YELLOW}\nHTML reporting is disabled in config.\n${RESET}`);
+            return { failed, points };
+        }
+
+        htmlModeReport({ points, strategy, target, baselineRef, outputPath: htmlReportOutputPath });
         return { failed, points };
     }
 

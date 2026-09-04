@@ -213,6 +213,30 @@
                                 "mode": {
                                     "type": "string",
                                     "enum": ["full", "compact", "html"]
+                                },
+
+                                "reporting": {
+                                    "type": "object",
+
+                                    "properties": {
+                                        "html": {
+                                            "type": "object",
+
+                                            "properties": {
+                                                "enabled": {
+                                                    "type": "boolean"
+                                                },
+
+                                                "outputPath": {
+                                                    "type": "string"
+                                                }
+                                            },
+
+                                            "additionalProperties": false
+                                        }
+                                    },
+
+                                    "additionalProperties": false
                                 }
                             },
 

@@ -5,17 +5,20 @@ jest.mock('../../utils/validateGitRef', () => ({ validateGitRef: jest.fn() }));
 jest.mock('./walkHistory', () => ({ walkHistory: jest.fn() }));
 jest.mock('../ci/compactModeReport', () => ({ compactModeReport: jest.fn() }));
 jest.mock('../ci/fullModeReport', () => ({ fullModeReport: jest.fn() }));
+jest.mock('../visualization', () => ({ htmlModeReport: jest.fn() }));
 
 import { validateGitRef } from '../../utils/validateGitRef';
 import { walkHistory } from './walkHistory';
 import { compactModeReport } from '../ci/compactModeReport';
 import { fullModeReport } from '../ci/fullModeReport';
+import { htmlModeReport } from '../visualization';
 import { analyzeHistory } from './analyzeHistory';
 
 const mockedValidateGitRef = jest.mocked(validateGitRef);
 const mockedWalkHistory = jest.mocked(walkHistory);
 const mockedCompactModeReport = jest.mocked(compactModeReport);
 const mockedFullModeReport = jest.mocked(fullModeReport);
+const mockedHtmlModeReport = jest.mocked(htmlModeReport);
 
 function makeFinding(severity: 'info' | 'warning' | 'error' = 'warning') {
     return {
@@ -60,6 +63,8 @@ const baseArgs = {
     mode: MODES.COMPACT,
     failOn: 'warning' as const,
     rules,
+    isHtmlReportingEnabled: true,
+    htmlReportOutputPath: './history.html',
 };
 
 describe('analyzeHistory', () => {
@@ -148,12 +153,23 @@ describe('analyzeHistory', () => {
         expect(mockedCompactModeReport).not.toHaveBeenCalled();
     });
 
-    it('warns and skips both reporters in html mode, since the chart is not implemented yet', async () => {
-        await analyzeHistory({ ...baseArgs, mode: MODES.HTML });
+    it('generates an HTML report when mode is html and reporting is enabled', async () => {
+        await analyzeHistory({ ...baseArgs, mode: MODES.HTML, isHtmlReportingEnabled: true });
 
-        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('not implemented yet'));
+        expect(mockedHtmlModeReport).toHaveBeenCalledWith(
+            expect.objectContaining({ outputPath: './history.html' })
+        );
         expect(mockedCompactModeReport).not.toHaveBeenCalled();
         expect(mockedFullModeReport).not.toHaveBeenCalled();
+    });
+
+    it('warns and skips the report when html mode is requested but disabled in config', async () => {
+        await analyzeHistory({ ...baseArgs, mode: MODES.HTML, isHtmlReportingEnabled: false });
+
+        expect(console.warn).toHaveBeenCalledWith(
+            expect.stringContaining('HTML reporting is disabled in config.')
+        );
+        expect(mockedHtmlModeReport).not.toHaveBeenCalled();
     });
 
     it('passes sampleSize through to walkHistory', async () => {

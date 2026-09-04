@@ -121,6 +121,9 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                     },
                 },
                 scopes: regressionConfig?.scopes,
+                isHtmlReportingEnabled: historyConfig?.reporting?.html?.enabled ?? true,
+                htmlReportOutputPath:
+                    historyConfig?.reporting?.html?.outputPath ?? './dep-health-reports/history.html',
             });
 
             results.push(result.failed);
