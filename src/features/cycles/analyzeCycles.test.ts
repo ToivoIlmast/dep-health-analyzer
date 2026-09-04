@@ -137,14 +137,8 @@ describe('analyzeCycles', () => {
         );
     });
 
-    it('should compute the largest SCC size from the longest detected cycle', async () => {
-        // detectCycles repeats the first node at the end of each cycle array
-        // (e.g. a 2-module cycle is ['a.ts', 'b.ts', 'a.ts']) - the count
-        // must be the number of distinct modules, not the raw array length.
-        mockedDetectCycles.mockReturnValue([
-            ['a.ts', 'b.ts', 'a.ts'],
-            ['x.ts', 'y.ts', 'z.ts', 'x.ts'],
-        ]);
+    it('should compute the largest SCC size from findSCCs (real Kosaraju data), not detectCycles', async () => {
+        mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts', 'c.ts']]);
         const logSpy = jest.spyOn(console, 'log');
 
         await analyzeCycles({ ...baseArgs, failOn: 'info' });
@@ -152,8 +146,30 @@ describe('analyzeCycles', () => {
         expect(logSpy).toHaveBeenCalledWith('Largest SCC: 3 module(s)');
     });
 
-    it('should report zero as the largest SCC when there are no cycles', async () => {
-        mockedDetectCycles.mockReturnValue([]);
+    it('should report zero as the largest SCC when there are no real cycles', async () => {
+        mockedFindSCCs.mockReturnValue([]);
+        const logSpy = jest.spyOn(console, 'log');
+
+        await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+        expect(logSpy).toHaveBeenCalledWith('Largest SCC: 0 module(s)');
+    });
+
+    it('should report the true SCC size for overlapping cycles sharing a node, not an undercount', async () => {
+        // Regression test for a real bug: detectCycles (naive DFS cycle
+        // enumeration) reported "3" for a graph where A->B->C->A and A->D->A
+        // overlap at node A - the true SCC (via Kosaraju/findSCCs) is all 4
+        // nodes, since every node reaches every other node.
+        mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts', 'c.ts', 'd.ts']]);
+        const logSpy = jest.spyOn(console, 'log');
+
+        await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+        expect(logSpy).toHaveBeenCalledWith('Largest SCC: 4 module(s)');
+    });
+
+    it('should not count a trivial size-1 component (a node with no real cycle) as a Largest SCC of 1', async () => {
+        mockedFindSCCs.mockReturnValue([['a.ts'], ['b.ts']]);
         const logSpy = jest.spyOn(console, 'log');
 
         await analyzeCycles({ ...baseArgs, failOn: 'info' });

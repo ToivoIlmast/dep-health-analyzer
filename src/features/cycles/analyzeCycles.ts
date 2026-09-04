@@ -1,10 +1,10 @@
 import { buildCytoscapeElements } from '@features/cycles/adapters';
-import path from 'node:path';
 import { generateHtml } from '@features/cycles/visualization/generateHtml';
 import { scanProject } from '@core/scanProject';
 import { detectCycles } from './detectCycles';
 import { calculateArchitectureMetrics } from './metrics/architectureMetrics';
 import { findSCCs } from './metrics/findScc';
+import { getLargestSccSize } from './metrics/getLargestSccSize';
 import { printMetricsSummary } from './metrics/report';
 import { ModuleMetrics } from './metrics/types';
 import { ModeType, MODES } from '@shared/types';
@@ -76,16 +76,16 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
 
     console.log(`Dependencies: ${edgesCount}`);
     console.log(`Cycles detected: ${result.cycles.length}`);
-    const prettyLength: number[] = [];
-    for (const cycle of result.cycles) {
-        const pretty = cycle.map((file) => path.basename(file));
-        // detectCycles closes each cycle by repeating its first node at the
-        // end (e.g. [A, B, C, A]) so it can be displayed as "A -> B -> C ->
-        // A". Deduplicate before counting, or every cycle's module count is
-        // off by one.
-        prettyLength.push(new Set(pretty).size);
-    }
-    const largestScc = prettyLength.length > 0 ? Math.max(...prettyLength) : 0;
+
+    // detectCycles enumerates individual cycles via a naive DFS, which can
+    // undercount true architectural entanglement when cycles share a node
+    // (e.g. A->B->C->A plus A->D->A is genuinely one 4-node SCC, but
+    // detectCycles reports two separate 3-node/2-node cycles). findSCCs runs
+    // the real Kosaraju algorithm, so "Largest SCC" is computed from that
+    // instead - and reused below for the HTML report, so both stay
+    // consistent with each other by construction.
+    const sccs = findSCCs(result.graph);
+    const largestScc = getLargestSccSize(sccs, result.graph);
     console.log(`Largest SCC: ${largestScc} module(s)`);
     const instabilityMetrics = calculateArchitectureMetrics(result.graph);
 
@@ -99,8 +99,6 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
             console.warn(`${YELLOW}\nHTML reporting is disabled in config.\n${RESET}`);
             return failed;
         }
-
-        const sccs = findSCCs(result.graph);
 
         const elements = buildCytoscapeElements({
             graph: result.graph,
