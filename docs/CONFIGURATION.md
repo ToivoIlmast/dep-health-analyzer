@@ -199,7 +199,7 @@ Controls the `history` command — walking a range of Git history instead of com
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `enabled` | `boolean` | `true` | Whether the `history` command runs at all. |
-| `sampleSize` | `number` | `10` | How many commits to sample (evenly spaced) between the baseline and the current revision. Overridable per-run with `--points`. |
+| `sampleSize` | `number` (integer, >= 2) | `10` | How many commits to sample (evenly spaced) between the baseline and the current revision. Overridable per-run with `--points`. A single point can never produce a comparison (there's nothing to diff it against), so the minimum is 2, not 1. |
 | `strategy` | `"incremental"` \| `"cumulative"` \| `"both"` | `"incremental"` | Which comparison to compute and report at each sampled point — see below. Overridable per-run with `--strategy`. |
 | `mode` | `"full"` \| `"compact"` \| `"html"` | `"compact"` | Output format. `html` generates a trend chart — see below. |
 | `reporting.html.enabled` | `boolean` | `true` | Whether `--mode html` is allowed to write a report. If `false`, running with `--mode html` prints a warning and skips the report instead. |
