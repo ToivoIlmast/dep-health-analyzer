@@ -51,6 +51,52 @@ describe('fullModeReport', () => {
         expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('Incremental'));
     });
 
+    it('prints the trend classification in the summary', () => {
+        const logSpy = jest.spyOn(console, 'log');
+
+        fullModeReport({
+            points: [makePoint(), makePoint({ incremental: { findings: [] } })],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+        });
+
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Classification: Stable'));
+    });
+
+    it('lists every detected spike with its commit and date', () => {
+        const logSpy = jest.spyOn(console, 'log');
+        const bigFindings = Array(20).fill({
+            from: 'a.ts', to: 'b.ts', commonDepth: 1, residualDepth: 1, commonParent: '',
+            relation: 'cross-boundary' as const, severity: 'warning' as const, interpretation: '', reasoning: [],
+        });
+
+        fullModeReport({
+            points: [
+                makePoint({ commit: { sha: 'aaa1111', date: '2026-01-01T00:00:00Z', title: 'a' } }),
+                makePoint({ incremental: { findings: [] } }),
+                makePoint({ incremental: { findings: [] } }),
+                makePoint({
+                    commit: { sha: 'spikeaa', date: '2026-01-05T00:00:00Z', title: 'spike' },
+                    incremental: { findings: bigFindings },
+                }),
+            ],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+        });
+
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Spikes (1)'));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('spikeaa'));
+    });
+
+    it('reports no spikes when the history is quiet', () => {
+        const logSpy = jest.spyOn(console, 'log');
+
+        fullModeReport({
+            points: [makePoint(), makePoint({ incremental: { findings: [] } })],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+        });
+
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No spikes detected.'));
+    });
+
     it('prints commit metadata for every point', () => {
         const logSpy = jest.spyOn(console, 'log');
 

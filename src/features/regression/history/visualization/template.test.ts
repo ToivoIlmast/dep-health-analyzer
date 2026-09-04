@@ -84,6 +84,39 @@ describe('buildHistoryHtmlTemplate', () => {
         expect(html).toContain('<th>Cumulative</th>');
     });
 
+    it('includes a trend summary with the classification', () => {
+        const html = buildHistoryHtmlTemplate({
+            points: [makePoint(), makePoint({ incremental: { findings: [] } })],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+            target: '.',
+            baselineRef: 'HEAD~10',
+        });
+
+        expect(html).toContain('Trend Summary');
+        expect(html).toContain('Stable');
+    });
+
+    it('lists spikes with their commit sha in the trend summary', () => {
+        const bigFindings = Array(20).fill(makeFinding());
+
+        const html = buildHistoryHtmlTemplate({
+            points: [
+                makePoint({ commit: { sha: 'aaa1111', date: '2026-01-01T00:00:00Z', title: 'a' } }),
+                makePoint({ incremental: { findings: [] } }),
+                makePoint({ incremental: { findings: [] } }),
+                makePoint({
+                    commit: { sha: 'spikeaaa', date: '2026-01-05T00:00:00Z', title: 'spike' },
+                    incremental: { findings: bigFindings },
+                }),
+            ],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+            target: '.',
+            baselineRef: 'HEAD~10',
+        });
+
+        expect(html).toContain('spikeaa');
+    });
+
     it('embeds the trend chart svg', () => {
         const html = buildHistoryHtmlTemplate({
             points: [makePoint()],
