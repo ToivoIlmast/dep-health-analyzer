@@ -1,3 +1,5 @@
+import { escapeHtml } from '@shared/escapeHtml';
+
 type RegressionSummaryType = {
     baselineRef: string;
     findingsCount: number;
@@ -21,7 +23,7 @@ export function regressionSummary(args: RegressionSummaryType): string {
         <h2>Summary</h2>
 
         <p>
-            Compared to <strong>${baselineRef}</strong>,
+            Compared to <strong>${escapeHtml(baselineRef)}</strong>,
             dep-health detected
             <strong>${findingsCount}</strong>
             new architectural findings,
@@ -38,7 +40,7 @@ export function regressionSummary(args: RegressionSummaryType): string {
 
         <p>
             The most affected area is
-            <strong>${mostAffectedArea}</strong>.
+            <strong>${escapeHtml(mostAffectedArea)}</strong>.
         </p>
     `;
 }

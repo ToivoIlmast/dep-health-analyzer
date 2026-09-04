@@ -1,4 +1,5 @@
 import { CytoscapeEdge, CytoscapeNode } from '../adapters';
+import { safeJsonForScript } from '@shared/safeJsonForScript';
 import { styles } from './styles';
 
 type BuildHtmlTemplate = {
@@ -67,6 +68,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         </div>
     
         <script>
+            // Node labels/ids come from file paths, which could in principle
+            // contain HTML if a file were named that way - escape before
+            // using innerHTML below, since the tooltip is built from a
+            // template string, not from text-only DOM APIs.
+            function escapeHtml(value) {
+                const div = document.createElement('div');
+                div.textContent = value;
+                return div.innerHTML;
+            }
+
             const layouts = {
                 dagreLR: {
                     name: 'dagre',
@@ -113,8 +124,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 container: document.getElementById('cy'),
     
                 elements: {
-                    nodes: ${JSON.stringify(nodes)},
-                    edges: ${JSON.stringify(edges)},
+                    nodes: ${safeJsonForScript(nodes)},
+                    edges: ${safeJsonForScript(edges)},
                 },
     
                 style: [
@@ -248,12 +259,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const showFullPath = title !== data.id;
     
                 tooltip.innerHTML = \`
-                    <strong>\${title}</strong>
-    
+                    <strong>\${escapeHtml(title)}</strong>
+
                     \${showFullPath
                         ? \`<br />
                         <span style="color:#6b7280;font-size:11px;">
-                            \${data.id}
+                            \${escapeHtml(data.id)}
                         </span>\`
                         : ''
                     }

@@ -1,4 +1,5 @@
 import { HISTORY_STRATEGIES, HistoryStrategyType } from '@shared/types';
+import { escapeHtml } from '@shared/escapeHtml';
 import { styles } from '../../visualization/styles';
 import { chartStyles } from './chartStyles';
 import { buildTrendChart } from './buildTrendChart';
@@ -95,7 +96,7 @@ export function buildHistoryHtmlTemplate(args: BuildHistoryHtmlTemplateArgs): st
             <tr>
                 <td>${point.commit.sha.slice(0, 7)}</td>
                 <td>${point.commit.date}</td>
-                <td>${point.commit.title}</td>
+                <td>${escapeHtml(point.commit.title)}</td>
                 <td>${point.scannedFiles}</td>
                 <td>${point.modules}</td>
                 ${showIncremental ? `<td>${incrementalCount}</td>` : ''}
@@ -121,8 +122,8 @@ export function buildHistoryHtmlTemplate(args: BuildHistoryHtmlTemplateArgs): st
             <h1>Architecture History Report</h1>
 
             <div class="section" id="baselineInformationSection">
-                <p><strong>Target:</strong> ${target}</p>
-                <p><strong>Baseline:</strong> ${baselineRef}</p>
+                <p><strong>Target:</strong> ${escapeHtml(target)}</p>
+                <p><strong>Baseline:</strong> ${escapeHtml(baselineRef)}</p>
                 <p><strong>Sampled points:</strong> ${points.length}</p>
                 <p><strong>Strategy:</strong> ${strategy}</p>
             </div>

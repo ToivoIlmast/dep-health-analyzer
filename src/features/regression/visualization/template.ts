@@ -1,3 +1,4 @@
+import { escapeHtml } from '@shared/escapeHtml';
 import { DependencyInsight } from '../types';
 import { architecturalHealthSummary } from './sections/architecturalHealthSummary';
 import { architecturalRelationGuide } from './sections/architecturalRelationGuide';
@@ -71,7 +72,7 @@ export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): 
     const topAreas = [...areaMap.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([area, count]) => `<li>${area} (${count} findings)</li>`)
+        .map(([area, count]) => `<li>${escapeHtml(area)} (${count} findings)</li>`)
         .join('');
 
     const architecturalHealthSummarySection = architecturalHealthSummary({
@@ -121,11 +122,11 @@ export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): 
             <tr>
                 <td class="${item.relation}">${item.relation}</td>
                 <td>${item.interpretation}</td>
-                <td>${item.from}</td>
-                <td>${item.to}</td>
+                <td>${escapeHtml(item.from)}</td>
+                <td>${escapeHtml(item.to)}</td>
                 <td>${item.commonDepth}</td>
                 <td>${item.residualDepth}</td>
-                <td>${item.commonParent}</td>
+                <td>${escapeHtml(item.commonParent)}</td>
                 <td>
                     <ul>
                         ${reasoning}
