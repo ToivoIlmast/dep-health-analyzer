@@ -68,6 +68,11 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
         htmlReportOutputPath,
     } = args;
 
+    if (sampleSize < 2) {
+        console.error(`Invalid --points value: ${sampleSize} (must be at least 2 to show a trend)`);
+        process.exit(1);
+    }
+
     if (!validateGitRef(baselineRef)) {
         console.error(`Invalid git reference: ${baselineRef}`);
         process.exit(1);

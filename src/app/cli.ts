@@ -9,12 +9,16 @@ import { loadConfig } from './config/loadConfig';
 import { handleVersionFlag } from './cli/handleVersionFlag';
 import { handleInitFlag } from './cli/handleInitFlag';
 import { handleHelpFlag } from './cli/handleHelpFlag';
+import { registerSignalHandlers } from './cli/registerSignalHandlers';
+import { isExecFileError } from './cli/isExecFileError';
 
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
 
 async function main(): Promise<void> {
+    registerSignalHandlers();
+
     handleVersionFlag(process.argv.slice(2));
     handleInitFlag(process.argv.slice(2));
     handleHelpFlag(process.argv.slice(2));
@@ -45,6 +49,14 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+    if (isExecFileError(err)) {
+        // The child process (always git here) already printed its own
+        // error to the terminal via stdio: 'inherit' - a full Node stack
+        // trace on top of that is noise, not new information.
+        console.error(`${RED}\nGit command failed (see output above for details).\n${RESET}`);
+        process.exit(1);
+    }
+
     console.error(err);
     process.exit(1);
 });

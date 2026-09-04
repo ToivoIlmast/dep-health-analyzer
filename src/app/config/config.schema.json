@@ -202,7 +202,8 @@
                                 },
 
                                 "sampleSize": {
-                                    "type": "number"
+                                    "type": "integer",
+                                    "minimum": 2
                                 },
 
                                 "strategy": {

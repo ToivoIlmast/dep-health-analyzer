@@ -17,7 +17,7 @@ export function printHelp(): void {
         --target <path>         Target directory
         --baseline <ref>        Git reference for comparison / start of history
         --mode <mode>           Output mode
-        --points <n>            (history only) Number of commits to sample
+        --points <n>            (history only) Number of commits to sample (>= 2)
         --strategy <strategy>   (history only) Comparison strategy
 
         Modes:

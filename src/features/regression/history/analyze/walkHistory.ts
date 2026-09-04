@@ -58,6 +58,10 @@ function evaluateDelta(args: {
 export async function walkHistory(args: WalkHistoryArgs): Promise<HistoryWalkResult> {
     const { target, baselineRef, headRef, sampleSize, rules, scopes } = args;
 
+    if (sampleSize < 2) {
+        throw new Error(`sampleSize must be at least 2 to compare commits (got ${sampleSize})`);
+    }
+
     if (!validateGitRef(baselineRef)) {
         throw new Error(`Invalid git reference: ${baselineRef}`);
     }

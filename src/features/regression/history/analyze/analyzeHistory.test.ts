@@ -82,6 +82,15 @@ describe('analyzeHistory', () => {
         jest.restoreAllMocks();
     });
 
+    it('rejects sampleSize below 2 before validating the baseline ref or walking any history', async () => {
+        await analyzeHistory({ ...baseArgs, sampleSize: 1 });
+
+        expect(console.error).toHaveBeenCalledWith(
+            expect.stringContaining('must be at least 2 to show a trend')
+        );
+        expect(process.exit).toHaveBeenCalledWith(1);
+    });
+
     it('rejects an invalid baseline ref before walking any history', async () => {
         mockedValidateGitRef.mockReturnValue(false);
 
