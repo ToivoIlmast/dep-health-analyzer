@@ -87,6 +87,21 @@ describe('walkHistory', () => {
         expect(mockedScanProject).not.toHaveBeenCalled();
     });
 
+    it('throws for sampleSize below 2 without touching git at all - a single point can never produce a comparison', async () => {
+        await expect(walkHistory({ ...baseArgs, sampleSize: 1 })).rejects.toThrow(
+            'sampleSize must be at least 2'
+        );
+        expect(mockedValidateGitRef).not.toHaveBeenCalled();
+        expect(mockedGetCommitHistory).not.toHaveBeenCalled();
+        expect(mockedCreateBaselineWorktree).not.toHaveBeenCalled();
+    });
+
+    it('throws for sampleSize of 0', async () => {
+        await expect(walkHistory({ ...baseArgs, sampleSize: 0 })).rejects.toThrow(
+            'sampleSize must be at least 2'
+        );
+    });
+
     it('samples the full commit history down to the requested size', async () => {
         await walkHistory(baseArgs);
 

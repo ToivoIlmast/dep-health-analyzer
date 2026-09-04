@@ -3,6 +3,7 @@ import { CLI_COMMANDS, CLI_FLAG, CliArgs } from '../types';
 import { parseCommand } from './parseCommand';
 import { getArgValue } from './getArgValue';
 import { parseMode } from './parseMode';
+import { parsePoints } from './parsePoints';
 import { parseHistoryStrategy } from './parseHistoryStrategy';
 import { resolveBaselineRef } from './resolveBaselineRef';
 import { HISTORY_STRATEGIES, MODES } from '@shared/types';
@@ -28,10 +29,7 @@ export function parseArgs(config: IConfig): CliArgs {
     const baselineRef = resolveBaselineRef(getArgValue(args, CLI_FLAG.BASELINE));
 
     // these flags are only for history
-    const pointsArg = getArgValue(args, CLI_FLAG.POINTS);
-    const sampleSize = pointsArg
-        ? Number(pointsArg)
-        : (config.features?.regression?.history?.sampleSize ?? 10);
+    const sampleSize = parsePoints(args, config.features?.regression?.history?.sampleSize ?? 10);
     const strategy = parseHistoryStrategy(
         args,
         config.features?.regression?.history?.strategy ?? HISTORY_STRATEGIES.INCREMENTAL
