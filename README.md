@@ -103,6 +103,8 @@ Samples a fixed number of commits along the first-parent chain (the mainline, sk
 - **cumulative** — each point compared against the first sampled point, showing total drift accumulated since the baseline
 - **both** — reports both series side by side
 
+Every mode includes a **Trend Summary** — a classification (stabilizing / worsening / volatile / stable) plus any detected spikes, so the raw per-point numbers don't have to be interpreted by eye.
+
 See [Configuration Reference](docs/CONFIGURATION.md#history-analysis) for every option, with examples.
 
 Available modes:

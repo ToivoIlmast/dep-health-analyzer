@@ -236,6 +236,16 @@ dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mod
 dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode html
 ```
 
+#### Trend Summary
+
+Raw per-point numbers aren't self-interpreting — "39, 43, 0, 2, 1..." doesn't say on its own whether that's fine or worth a closer look. Every mode (`compact`, `full`, `html`) includes a **Trend Summary**, derived from the `incremental` series specifically (risk introduced per sampled window — this is what "spike" and "trend" mean below, regardless of which `strategy` you picked for display):
+
+- **Classification** — `Stabilizing` (risk dropped by 30%+ between the first and second half of the sampled range), `Worsening` (risk rose by 30%+, or went from nothing to something), `Volatile` (no clear direction, but high relative variance), or `Stable` (quiet throughout, or too few points to say).
+- **Spikes** — points where the value is both more than 2x the series' own mean *and* at least 5 findings. The dual condition avoids flagging a small number (like 3) as a "spike" just because the series mean happens to be near zero.
+- **Highest risk window** — the single point with the most findings, shown even when nothing formally qualifies as a spike.
+
+These thresholds (30% for the trend split, 2x + minimum 5 for spikes) are **not currently configurable** — like Risk Assessment's thresholds below, they're fixed in code, calibrated against dep-health's own real commit history rather than picked arbitrarily. A 19-point real series with values `[14,0,86,27,0,30,0,0,1,1,0,1,0,1,0,0,0,50,12]` (mean ~11.8) correctly flags only the four genuinely elevated windows (27, 30, 50, 86) as spikes, and classifies as `Stabilizing` overall since the second half of that range averages much lower than the first.
+
 ---
 
 ## Risk Assessment (HTML report)
