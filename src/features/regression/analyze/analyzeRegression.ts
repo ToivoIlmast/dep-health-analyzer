@@ -5,13 +5,13 @@ import { ciModeReport } from '../ci/reporting/ciModeReport';
 import { htmlModeReport } from '../visualization';
 import { scanProject } from '@core/scanProject';
 import { removeBaselineWorktree } from '../utils/removeBaselineWorktree';
+import { resolveWorktreeTarget } from '../utils/resolveWorktreeTarget';
 import { validateGitRef } from '../utils/validateGitRef';
 import { DependencyInsight, RegressionAnalysisResult, RegressionThresholds } from '../types';
 import type { ScanResult } from '@core/graph/types';
 import { ModeType, MODES, IRegressionScope } from '@shared/types';
 import { buildDependencyInsights } from '../delta/insights/buildDependencyInsights';
 import { execFileSync } from 'node:child_process';
-import path from 'node:path';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
@@ -44,20 +44,6 @@ const handlers: Record<ModeType, ReportHandler> = {
     },
     [MODES.COMPACT]: (ctx) => ciModeReport(ctx),
 };
-
-function resolveBaselineTarget(worktree: string, target: string): string {
-    const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-        encoding: 'utf8',
-    }).trim();
-
-    const currentDir = process.cwd();
-
-    const relativeProjectPath = path.relative(repoRoot, currentDir);
-
-    const normalizedTarget = target.replace(/^\.?\//, '');
-
-    return path.join(worktree, relativeProjectPath, normalizedTarget);
-}
 
 function resolveBaselineInfo(ref: string): {
     sha: string;
@@ -148,7 +134,7 @@ export async function analyzeRegression(
     let baseline: ScanResult;
     try {
         baseline = await scanProject({
-            scanRoot: resolveBaselineTarget(worktree, target),
+            scanRoot: resolveWorktreeTarget(worktree, target),
             projectRoot: worktree,
         });
     } finally {
