@@ -58,6 +58,12 @@
                 "host": "http://localhost:11434",
                 "model": "gemma4:31b-cloud",
                 "language": "finnish"
+            },
+            "history": {
+                "enabled": true,
+                "sampleSize": 10,
+                "strategy": "incremental",
+                "mode": "compact"
             }
         },
         "scc": {

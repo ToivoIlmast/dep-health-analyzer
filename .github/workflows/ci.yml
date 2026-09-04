@@ -56,3 +56,4 @@ jobs:
           node "$GITHUB_WORKSPACE/dist/app/cli.js" --init
           node "$GITHUB_WORKSPACE/dist/app/cli.js" cycles --mode compact
           node "$GITHUB_WORKSPACE/dist/app/cli.js" regression --baseline HEAD~1 --mode compact
+          node "$GITHUB_WORKSPACE/dist/app/cli.js" history --baseline HEAD~1 --points 2 --mode compact

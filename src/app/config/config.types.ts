@@ -49,6 +49,18 @@ export interface ConfigSchema {
           deepInternalResidualDepth?: number;
         };
       }[];
+      history?: {
+        enabled?: boolean;
+        sampleSize?: number;
+        strategy?: "incremental" | "cumulative" | "both";
+        mode?: "full" | "compact" | "html";
+        reporting?: {
+          html?: {
+            enabled?: boolean;
+            outputPath?: string;
+          };
+        };
+      };
     };
     scc?: {
       enabled?: boolean;

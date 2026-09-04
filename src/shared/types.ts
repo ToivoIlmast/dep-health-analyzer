@@ -8,6 +8,14 @@ export type ModeType = (typeof MODES)[keyof typeof MODES];
 
 export type SeverityLevel = 'info' | 'warning' | 'error';
 
+export const HISTORY_STRATEGIES = {
+    INCREMENTAL: 'incremental',
+    CUMULATIVE: 'cumulative',
+    BOTH: 'both',
+} as const;
+
+export type HistoryStrategyType = (typeof HISTORY_STRATEGIES)[keyof typeof HISTORY_STRATEGIES];
+
 export interface IRegressionScope {
     /**
      * Source file glob pattern.
