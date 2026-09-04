@@ -23,7 +23,7 @@ export function printHelp(): void {
         Modes:
         full                    Verbose console output
         compact                 Compact CI-friendly output
-        html                    Generate HTML report (not yet supported for history)
+        html                    Generate HTML report
 
         Strategies (history only):
         incremental             Compare each sampled commit to the previous one
@@ -78,5 +78,11 @@ export function printHelp(): void {
             --points 10 \\
             --strategy cumulative \\
             --mode full
+
+        dep-health-analyzer history \\
+            --baseline HEAD~50 \\
+            --points 10 \\
+            --strategy both \\
+            --mode html
     `);
 }

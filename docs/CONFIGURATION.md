@@ -201,7 +201,9 @@ Controls the `history` command — walking a range of Git history instead of com
 | `enabled` | `boolean` | `true` | Whether the `history` command runs at all. |
 | `sampleSize` | `number` | `10` | How many commits to sample (evenly spaced) between the baseline and the current revision. Overridable per-run with `--points`. |
 | `strategy` | `"incremental"` \| `"cumulative"` \| `"both"` | `"incremental"` | Which comparison to compute and report at each sampled point — see below. Overridable per-run with `--strategy`. |
-| `mode` | `"full"` \| `"compact"` \| `"html"` | `"compact"` | Output format. `html` is not implemented yet — it prints a warning instead of writing a report. |
+| `mode` | `"full"` \| `"compact"` \| `"html"` | `"compact"` | Output format. `html` generates a trend chart — see below. |
+| `reporting.html.enabled` | `boolean` | `true` | Whether `--mode html` is allowed to write a report. If `false`, running with `--mode html` prints a warning and skips the report instead. |
+| `reporting.html.outputPath` | `string` | `"./dep-health-reports/history.html"` | Where the HTML report is written. |
 
 Sampling walks the **first-parent** chain (the mainline of merge commits, not every commit on every merged branch) between the baseline and the current revision, so a history of feature branches merged via pull requests reads as one sequential timeline instead of an arbitrarily-ordered graph.
 
@@ -226,6 +228,12 @@ da75434   84     30           130
 
 ```bash
 dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode full
+```
+
+`--mode html` renders the same points as an interactive line chart (one line per selected strategy, with a native tooltip on every point showing the exact finding count), followed by a summary table with every sampled commit's metadata. It's a hand-rolled inline SVG chart with no external dependency, matching how the `regression` HTML report is already fully self-contained:
+
+```bash
+dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode html
 ```
 
 ---
@@ -303,7 +311,10 @@ Controls the `cycles` command — dependency cycle / SCC detection.
                 "enabled": true,
                 "sampleSize": 10,
                 "strategy": "incremental",
-                "mode": "compact"
+                "mode": "compact",
+                "reporting": {
+                    "html": { "enabled": true, "outputPath": "./dep-health-reports/history.html" }
+                }
             }
         },
         "scc": {

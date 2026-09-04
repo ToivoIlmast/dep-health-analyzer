@@ -109,8 +109,7 @@ Available modes:
 
 - full
 - compact
-
-`html` mode (a trend chart) is not implemented yet.
+- html — generates an interactive trend chart, alongside a summary table for every sampled commit
 
 ---
 
@@ -165,6 +164,7 @@ Reports provide:
 - dependency insights
 - regression summaries
 - risk assessment information (see [Risk Assessment](docs/CONFIGURATION.md#risk-assessment-html-report) for how it's calculated)
+- architectural risk trend charts across sampled Git history
 
 ---
 
