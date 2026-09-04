@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { untrackWorktree } from './activeWorktreeTracker';
 
 export function removeBaselineWorktree(worktree: string): void {
     try {
@@ -14,5 +15,7 @@ export function removeBaselineWorktree(worktree: string): void {
         }
     } catch (_err) {
         console.error('removeBaselineWorktree', _err);
+    } finally {
+        untrackWorktree();
     }
 }
