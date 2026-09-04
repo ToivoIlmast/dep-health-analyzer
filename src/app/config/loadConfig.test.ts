@@ -143,4 +143,73 @@ describe('loadConfig', () => {
 
         expect(() => loadConfig()).toThrow(/boolean/);
     });
+
+    describe('thresholds.internalDepth / thresholds.deepInternalResidualDepth minimums', () => {
+        // A non-positive internalDepth makes `commonDepth >= internalDepth`
+        // trivially true for every possible commonDepth (which is never
+        // negative), which silently disables cross-boundary detection
+        // entirely - not a config edge case worth allowing.
+        it.each([0, -1, -100])(
+            'should throw for a non-positive internalDepth (%i)',
+            (internalDepth) => {
+                const config = { features: { regression: { thresholds: { internalDepth } } } };
+
+                jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+                jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(config));
+                jest.spyOn(console, 'error').mockImplementation();
+
+                expect(() => loadConfig()).toThrow(/internalDepth/);
+            }
+        );
+
+        it('should accept internalDepth of 1 (the minimum meaningful value)', () => {
+            const config = { features: { regression: { thresholds: { internalDepth: 1 } } } };
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(config));
+
+            expect(loadConfig()).toEqual(config);
+        });
+
+        it('should throw for a negative deepInternalResidualDepth', () => {
+            const config = {
+                features: { regression: { thresholds: { deepInternalResidualDepth: -1 } } },
+            };
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(config));
+            jest.spyOn(console, 'error').mockImplementation();
+
+            expect(() => loadConfig()).toThrow(/deepInternalResidualDepth/);
+        });
+
+        it('should accept deepInternalResidualDepth of 0', () => {
+            const config = {
+                features: { regression: { thresholds: { deepInternalResidualDepth: 0 } } },
+            };
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(config));
+
+            expect(loadConfig()).toEqual(config);
+        });
+
+        it('should apply the same minimums inside a scope override', () => {
+            const config = {
+                features: {
+                    regression: {
+                        scopes: [
+                            { match: 'src/**', thresholds: { internalDepth: -1 } },
+                        ],
+                    },
+                },
+            };
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(config));
+            jest.spyOn(console, 'error').mockImplementation();
+
+            expect(() => loadConfig()).toThrow(/internalDepth/);
+        });
+    });
 });

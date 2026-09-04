@@ -93,6 +93,8 @@ Raising `internalDepth` makes the tool more willing to call something `cross-bou
 
 Note the `internal` and `deep-internal` checks are independent, not a single scale: a dependency with `commonDepth >= internalDepth` but a `residualDepth` strictly between `1` and `deepInternalResidualDepth` matches neither and falls through to `cross-boundary`, even though it does share the required common path. With the defaults (`deepInternalResidualDepth: 3`), that gap is `residualDepth` of exactly `2`. Keeping `deepInternalResidualDepth` at `2` closes that gap if you'd rather such cases count as `deep-internal`.
 
+`internalDepth` must be **at least 1**, and `deepInternalResidualDepth` **at least 0** — enforced by the config schema. These aren't arbitrary limits: a `commonDepth` is never negative, so `internalDepth <= 0` makes `commonDepth >= internalDepth` true for every possible input, which disables `cross-boundary` detection **entirely** for files sharing any area at all (not just "less sensitive" — structurally unreachable). `deepInternalResidualDepth` doesn't have that same failure mode — even `0` only ever affects the *same-area, unusually-deep-reach* path to `cross-boundary` (see the gap above), never the *genuinely different top-level areas* path, so `cross-boundary` stays fully reachable for the case that matters most. Its floor of `0` is about the value being semantically meaningless below that (a negative "depth" isn't a real thing), not about a functional break the way `internalDepth`'s floor is.
+
 #### Why two separate numbers
 
 JavaScript and TypeScript have no real "this is a private implementation detail" concept at the module level — anything a file exports is importable from anywhere. Thresholds approximate that missing concept using folder structure instead, since most projects already loosely organize files by how "public" they're meant to be (an `index.ts` near the top of a feature, implementation details nested deeper inside it).
@@ -194,7 +196,7 @@ This is different from lowering severity: an `ignore`d scope's findings never ap
 
 ### History Analysis
 
-Controls the `history` command — walking a range of Git history instead of comparing just two revisions. It reuses `features.regression`'s `thresholds`, `severity`, and `scopes` (a history walk's findings are governed by the same rules as a single-baseline regression check), and only adds a few fields of its own:
+Controls the `history` command — walking a range of Git history instead of comparing just two revisions. It reuses `features.regression`'s `thresholds`, `severity`, `scopes`, and `ai` (a history walk's findings are governed by the same rules as a single-baseline regression check, and `--ai` uses the same Ollama config `regression --ai` does), and only adds a few fields of its own:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
@@ -234,6 +236,22 @@ dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mod
 
 ```bash
 dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode html
+```
+
+#### Trend Summary
+
+Raw per-point numbers aren't self-interpreting — "39, 43, 0, 2, 1..." doesn't say on its own whether that's fine or worth a closer look. Every mode (`compact`, `full`, `html`) includes a **Trend Summary**, derived from the `incremental` series specifically (risk introduced per sampled window — this is what "spike" and "trend" mean below, regardless of which `strategy` you picked for display):
+
+- **Classification** — `Stabilizing` (risk dropped by 30%+ between the first and second half of the sampled range), `Worsening` (risk rose by 30%+, or went from nothing to something), `Volatile` (no clear direction, but high relative variance), or `Stable` (quiet throughout, or too few points to say).
+- **Spikes** — points where the value is both more than 2x the series' own mean *and* at least 5 findings. The dual condition avoids flagging a small number (like 3) as a "spike" just because the series mean happens to be near zero.
+- **Highest risk window** — the single point with the most findings, shown even when nothing formally qualifies as a spike.
+
+These thresholds (30% for the trend split, 2x + minimum 5 for spikes) are **not currently configurable** — like Risk Assessment's thresholds below, they're fixed in code, calibrated against dep-health's own real commit history rather than picked arbitrarily. A 19-point real series with values `[14,0,86,27,0,30,0,0,1,1,0,1,0,1,0,0,0,50,12]` (mean ~11.8) correctly flags only the four genuinely elevated windows (27, 30, 50, 86) as spikes, and classifies as `Stabilizing` overall since the second half of that range averages much lower than the first.
+
+**`--ai`** generates a plain-language narrative from this same Trend Summary data (classification, spikes, worst window — never the raw file-level findings, and never source code) using the same Ollama setup as `regression --ai`:
+
+```bash
+dep-health-analyzer history --baseline HEAD~50 --points 10 --ai
 ```
 
 ---

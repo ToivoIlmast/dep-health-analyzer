@@ -103,6 +103,8 @@ Samples a fixed number of commits along the first-parent chain (the mainline, sk
 - **cumulative** — each point compared against the first sampled point, showing total drift accumulated since the baseline
 - **both** — reports both series side by side
 
+Every mode includes a **Trend Summary** — a classification (stabilizing / worsening / volatile / stable) plus any detected spikes, so the raw per-point numbers don't have to be interpreted by eye.
+
 See [Configuration Reference](docs/CONFIGURATION.md#history-analysis) for every option, with examples.
 
 Available modes:
@@ -115,7 +117,7 @@ Available modes:
 
 ## AI Summaries (Experimental)
 
-Generate concise, human-readable summaries of regression analysis using a local Large Language Model (LLM) running via Ollama.
+Generate concise, human-readable summaries of `regression` or `history` analysis using a local Large Language Model (LLM) running via Ollama — pass `--ai` to either command. Both share the same `features.regression.ai` configuration.
 
 AI summaries are generated exclusively from the observations produced by dep-health-analyzer.
 
@@ -147,6 +149,8 @@ AI summaries may use the following terms:
 | **Hotspot**                  | File with the largest number of newly introduced dependencies.                                 |
 | **Connected areas**          | Project areas connected by newly introduced dependencies.                                      |
 | **Deep-internal dependency** | Dependency that traverses deeply into another module instead of using its public entry points. |
+| **Trend classification**     | (`history` only) Stabilizing, worsening, volatile, or stable — see [History Analysis](#history-analysis-experimental). |
+| **Spike**                    | (`history` only) A sampled point with unusually high risk compared to the rest of the range.   |
 
 These terms describe the analysis itself and are independent of the analyzed project.
 
@@ -240,6 +244,8 @@ Generate an AI summary:
 
 ```bash
 npx dep-health-analyzer regression --ai
+
+npx dep-health-analyzer history --ai
 ```
 
 ---

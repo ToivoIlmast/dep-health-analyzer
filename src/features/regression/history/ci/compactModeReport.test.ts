@@ -92,6 +92,41 @@ describe('compactModeReport', () => {
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('cumulative: 2'));
     });
 
+    it('prints a stable trend line when nothing changes across the sampled history', () => {
+        const logSpy = jest.spyOn(console, 'log');
+
+        compactModeReport({
+            points: [
+                makePoint(),
+                makePoint({ incremental: { findings: [] } }),
+                makePoint({ incremental: { findings: [] } }),
+            ],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+        });
+
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Trend: Stable'));
+    });
+
+    it('prints a worsening trend line with the worst window when risk grows late in the history', () => {
+        const logSpy = jest.spyOn(console, 'log');
+
+        compactModeReport({
+            points: [
+                makePoint({ commit: { sha: 'aaa1111', date: '2026-01-01T00:00:00Z', title: 'a' } }),
+                makePoint({ incremental: { findings: [makeFinding()] } }),
+                makePoint({ incremental: { findings: [makeFinding()] } }),
+                makePoint({
+                    commit: { sha: 'bbb2222', date: '2026-01-04T00:00:00Z', title: 'b' },
+                    incremental: { findings: Array(20).fill(makeFinding()) },
+                }),
+            ],
+            strategy: HISTORY_STRATEGIES.INCREMENTAL,
+        });
+
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Trend: Worsening'));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('bbb2222'));
+    });
+
     it('prints a dash for the baseline point, which has no incremental/cumulative result', () => {
         const logSpy = jest.spyOn(console, 'log');
 

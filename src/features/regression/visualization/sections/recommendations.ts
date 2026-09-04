@@ -1,3 +1,5 @@
+import { escapeHtml } from '@shared/escapeHtml';
+
 type RecommendationsArgs = {
     crossBoundaryCount: number;
     deepInternalCount: number;
@@ -26,7 +28,7 @@ export function recommendations(args: RecommendationsArgs): string {
 
     items.push(`
         Review findings in the most affected area:
-        <strong>${mostAffectedArea}</strong>
+        <strong>${escapeHtml(mostAffectedArea)}</strong>
         (${mostAffectedAreaCount} findings).
     `);
 

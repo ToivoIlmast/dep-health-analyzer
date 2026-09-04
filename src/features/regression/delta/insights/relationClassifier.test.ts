@@ -54,6 +54,38 @@ describe('relationClassifier', () => {
                 })
             ).toBe('cross-boundary');
         });
+
+        it('should still be reachable for genuinely different areas regardless of deepInternalResidualDepth', () => {
+            // A non-positive internalDepth breaks cross-boundary detection
+            // completely (commonDepth is never negative, so commonDepth >=
+            // internalDepth becomes trivially true for every input) - but
+            // deepInternalResidualDepth only ever affects the *other* path to
+            // cross-boundary (same-area files that reach unusually deep), not
+            // this one. Verified empirically before picking schema minimums:
+            // 0, a negative number, and the documented-as-fine value of 2 all
+            // produce identical classification here.
+            const args = {
+                from: 'src/featureA/deep/x.ts',
+                to: 'src/featureB/y.ts',
+                commonDepth: 1,
+                residualDepth: 3,
+                thresholds: { internalDepth: 3, deepInternalResidualDepth: -5 },
+            };
+
+            expect(getRelation(args)).toBe('cross-boundary');
+        });
+
+        it('should make cross-boundary unreachable for same-area files once internalDepth is non-positive', () => {
+            const args = {
+                from: 'src/featureA/x.ts',
+                to: 'src/featureB/y.ts',
+                commonDepth: 1,
+                residualDepth: 5,
+                thresholds: { internalDepth: 0, deepInternalResidualDepth: 3 },
+            };
+
+            expect(getRelation(args)).not.toBe('cross-boundary');
+        });
     });
 
     describe('getInterpretation', () => {

@@ -1,8 +1,56 @@
 import { HISTORY_STRATEGIES, HistoryStrategyType } from '@shared/types';
+import { escapeHtml } from '@shared/escapeHtml';
 import { styles } from '../../visualization/styles';
 import { chartStyles } from './chartStyles';
 import { buildTrendChart } from './buildTrendChart';
+import { getTrendInsights, TrendClassification } from '../analyze/getTrendInsights';
 import { HistoryPoint } from '../types';
+
+const CLASSIFICATION_LABEL: Record<TrendClassification, string> = {
+    stabilizing: 'Stabilizing',
+    worsening: 'Worsening',
+    volatile: 'Volatile',
+    stable: 'Stable',
+};
+
+const CLASSIFICATION_RISK_CLASS: Record<TrendClassification, string> = {
+    stabilizing: 'risk-low',
+    stable: 'risk-low',
+    volatile: 'risk-moderate',
+    worsening: 'risk-high',
+};
+
+function buildTrendSummarySection(points: HistoryPoint[]): string {
+    const { classification, spikes, worstWindow } = getTrendInsights(points);
+    const label = CLASSIFICATION_LABEL[classification];
+    const riskClass = CLASSIFICATION_RISK_CLASS[classification];
+
+    const worstWindowMarkup = worstWindow
+        ? `<p>Highest risk window: <strong>${worstWindow.value}</strong> finding(s) at <code>${worstWindow.commit.sha.slice(0, 7)}</code> (${worstWindow.commit.date.slice(0, 10)}).</p>`
+        : '';
+
+    const spikesMarkup =
+        spikes.length > 0
+            ? `<ul>${spikes
+                  .map(
+                      (spike) =>
+                          `<li><code>${spike.commit.sha.slice(0, 7)}</code> (${spike.commit.date.slice(0, 10)}): ${spike.value} finding(s)</li>`
+                  )
+                  .join('')}</ul>`
+            : '<p>No spikes detected.</p>';
+
+    return `
+        <h2>Trend Summary</h2>
+
+        <p class="risk-banner ${riskClass}">
+            <strong>${label}</strong>
+        </p>
+
+        ${worstWindowMarkup}
+
+        ${spikesMarkup}
+    `;
+}
 
 type BuildHistoryHtmlTemplateArgs = {
     points: HistoryPoint[];
@@ -48,7 +96,7 @@ export function buildHistoryHtmlTemplate(args: BuildHistoryHtmlTemplateArgs): st
             <tr>
                 <td>${point.commit.sha.slice(0, 7)}</td>
                 <td>${point.commit.date}</td>
-                <td>${point.commit.title}</td>
+                <td>${escapeHtml(point.commit.title)}</td>
                 <td>${point.scannedFiles}</td>
                 <td>${point.modules}</td>
                 ${showIncremental ? `<td>${incrementalCount}</td>` : ''}
@@ -74,10 +122,14 @@ export function buildHistoryHtmlTemplate(args: BuildHistoryHtmlTemplateArgs): st
             <h1>Architecture History Report</h1>
 
             <div class="section" id="baselineInformationSection">
-                <p><strong>Target:</strong> ${target}</p>
-                <p><strong>Baseline:</strong> ${baselineRef}</p>
+                <p><strong>Target:</strong> ${escapeHtml(target)}</p>
+                <p><strong>Baseline:</strong> ${escapeHtml(baselineRef)}</p>
                 <p><strong>Sampled points:</strong> ${points.length}</p>
                 <p><strong>Strategy:</strong> ${strategy}</p>
+            </div>
+
+            <div class="section" id="trendSummarySection">
+                ${buildTrendSummarySection(points)}
             </div>
 
             <div class="section" id="trendChartSection">

@@ -1,4 +1,5 @@
-import { getRiskLevel } from './template';
+import { buildRegressionHtmlTemplate, getRiskLevel } from './template';
+import type { DependencyInsight } from '../types';
 
 describe('getRiskLevel', () => {
     it('should return Low when there are no findings at all', () => {
@@ -69,5 +70,65 @@ describe('getRiskLevel', () => {
                 'Low Architectural Risk'
             );
         });
+    });
+});
+
+describe('buildRegressionHtmlTemplate HTML escaping', () => {
+    function makeFinding(overrides: Partial<DependencyInsight> = {}): DependencyInsight {
+        return {
+            from: 'src/a.ts',
+            to: 'src/b.ts',
+            commonDepth: 1,
+            residualDepth: 1,
+            commonParent: 'src',
+            relation: 'cross-boundary',
+            severity: 'warning',
+            interpretation: 'possible cross-boundary dependency',
+            reasoning: [],
+            ...overrides,
+        };
+    }
+
+    it('escapes an HTML-breaking file path in the findings table', () => {
+        const html = buildRegressionHtmlTemplate({
+            delta: [makeFinding({ from: '<script>alert(1)</script>.ts' })],
+            target: '.',
+            baselineRef: 'HEAD~1',
+            currentScannedFiles: 1,
+            baselineScannedFiles: 1,
+        });
+
+        expect(html).not.toContain('<script>alert(1)</script>.ts');
+        expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;.ts');
+    });
+
+    it('escapes an HTML-breaking commonParent in the most-affected-area callouts', () => {
+        const html = buildRegressionHtmlTemplate({
+            delta: [
+                makeFinding({
+                    from: '<img src=x onerror=alert(2)>/a.ts',
+                    commonParent: '<img src=x onerror=alert(2)>',
+                }),
+            ],
+            target: '.',
+            baselineRef: 'HEAD~1',
+            currentScannedFiles: 1,
+            baselineScannedFiles: 1,
+        });
+
+        expect(html).not.toContain('<img src=x onerror=alert(2)>');
+    });
+
+    it('escapes an HTML-breaking target/baseline ref', () => {
+        const html = buildRegressionHtmlTemplate({
+            delta: [],
+            target: '<script>alert(3)</script>',
+            baselineRef: '<script>alert(4)</script>',
+            currentScannedFiles: 1,
+            baselineScannedFiles: 1,
+        });
+
+        expect(html).not.toContain('<script>alert(3)</script>');
+        expect(html).not.toContain('<script>alert(4)</script>');
     });
 });

@@ -19,6 +19,7 @@ export function printHelp(): void {
         --mode <mode>           Output mode
         --points <n>            (history only) Number of commits to sample (>= 2)
         --strategy <strategy>   (history only) Comparison strategy
+        --ai                    (regression/history only) Generate an AI summary via Ollama
 
         Modes:
         full                    Verbose console output
@@ -54,6 +55,10 @@ export function printHelp(): void {
             --target ./src \\
             --mode html
 
+        dep-health-analyzer regression \\
+            --target ./src \\
+            --ai
+
         dep-health-analyzer cycles
 
         dep-health-analyzer cycles \\
@@ -84,5 +89,10 @@ export function printHelp(): void {
             --points 10 \\
             --strategy both \\
             --mode html
+
+        dep-health-analyzer history \\
+            --baseline HEAD~50 \\
+            --points 10 \\
+            --ai
     `);
 }

@@ -1,3 +1,5 @@
+import { escapeHtml } from '@shared/escapeHtml';
+
 type BaselineInformationType = {
     target: string;
     baselineRef: string;
@@ -16,8 +18,8 @@ export function baselineInformation(args: BaselineInformationType): string {
     return `
         <h2>Baseline Information</h2>
 
-        <p><strong>Target:</strong> ${target}</p>
-        <p><strong>Baseline:</strong> ${baselineRef}</p>
+        <p><strong>Target:</strong> ${escapeHtml(target)}</p>
+        <p><strong>Baseline:</strong> ${escapeHtml(baselineRef)}</p>
         <p><strong>Generated:</strong> ${generatedAt}</p>  
     `;
 }

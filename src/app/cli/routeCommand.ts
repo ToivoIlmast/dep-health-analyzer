@@ -1,5 +1,5 @@
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
-import { analyzeHistory, analyzeRegression, explainRegression } from '@features/regression';
+import { analyzeHistory, analyzeRegression, explainHistory, explainRegression } from '@features/regression';
 import { CLI_COMMANDS, CliArgs } from './types';
 import { IConfig } from '../config/types';
 import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
@@ -125,6 +125,24 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 htmlReportOutputPath:
                     historyConfig?.reporting?.html?.outputPath ?? './dep-health-reports/history.html',
             });
+
+            if (ai === true && regressionConfig?.ai?.enabled) {
+                try {
+                    await validateOllamaAIEnvironment({
+                        model: regressionConfig.ai?.model ?? '',
+                        host: regressionConfig.ai?.host,
+                    });
+                    await explainHistory({
+                        data: { points: result.points },
+                        aiConfig: regressionConfig.ai,
+                    });
+                } catch (err) {
+                    console.error(
+                        `${RED}${err instanceof Error ? err.message : 'An unexpected error occurred.'}${RESET}`
+                    );
+                    process.exit(1);
+                }
+            }
 
             results.push(result.failed);
             break;
