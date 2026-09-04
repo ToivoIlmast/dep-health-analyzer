@@ -194,7 +194,7 @@ This is different from lowering severity: an `ignore`d scope's findings never ap
 
 ### History Analysis
 
-Controls the `history` command — walking a range of Git history instead of comparing just two revisions. It reuses `features.regression`'s `thresholds`, `severity`, and `scopes` (a history walk's findings are governed by the same rules as a single-baseline regression check), and only adds a few fields of its own:
+Controls the `history` command — walking a range of Git history instead of comparing just two revisions. It reuses `features.regression`'s `thresholds`, `severity`, `scopes`, and `ai` (a history walk's findings are governed by the same rules as a single-baseline regression check, and `--ai` uses the same Ollama config `regression --ai` does), and only adds a few fields of its own:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
@@ -245,6 +245,12 @@ Raw per-point numbers aren't self-interpreting — "39, 43, 0, 2, 1..." doesn't 
 - **Highest risk window** — the single point with the most findings, shown even when nothing formally qualifies as a spike.
 
 These thresholds (30% for the trend split, 2x + minimum 5 for spikes) are **not currently configurable** — like Risk Assessment's thresholds below, they're fixed in code, calibrated against dep-health's own real commit history rather than picked arbitrarily. A 19-point real series with values `[14,0,86,27,0,30,0,0,1,1,0,1,0,1,0,0,0,50,12]` (mean ~11.8) correctly flags only the four genuinely elevated windows (27, 30, 50, 86) as spikes, and classifies as `Stabilizing` overall since the second half of that range averages much lower than the first.
+
+**`--ai`** generates a plain-language narrative from this same Trend Summary data (classification, spikes, worst window — never the raw file-level findings, and never source code) using the same Ollama setup as `regression --ai`:
+
+```bash
+dep-health-analyzer history --baseline HEAD~50 --points 10 --ai
+```
 
 ---
 
