@@ -46,20 +46,6 @@ const defaultColors = [
     '#64748b',
 ];
 
-function collectAllNodes(graph: Map<string, Set<string>>): Set<string> {
-    const allNodes = new Set<string>();
-
-    for (const [from, neighbors] of graph.entries()) {
-        allNodes.add(from);
-
-        for (const to of neighbors) {
-            allNodes.add(to);
-        }
-    }
-
-    return allNodes;
-}
-
 type BuildNodes = {
     allNodes: Set<string>;
     sccs: string[][];
@@ -135,9 +121,13 @@ export function buildCytoscapeElements(args: BuildCytoscapeElements): {
     const { graph, metrics, sccs } = args;
     const realSccs = sccs.filter((scc) => scc.length > 2);
 
-    const allNodes = collectAllNodes(graph.edges);
     const nodes = buildNodes({
-        allNodes,
+        // graph.nodes tracks every scanned file, including ones with zero
+        // imports and zero importers - deriving the node set from
+        // graph.edges instead (as this used to) silently drops those, since
+        // addEdge only creates an edges-map entry for a file that has at
+        // least one resolvable import.
+        allNodes: graph.nodes,
         metrics,
         sccs: realSccs,
     });

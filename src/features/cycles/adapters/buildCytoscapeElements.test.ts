@@ -283,6 +283,35 @@ describe('buildCytoscapeElements', () => {
         expect(serviceNode?.data.label).toBe('service.ts');
     });
 
+    it('includes a fully isolated file (zero imports, zero importers) - not just nodes that appear in the edges map', () => {
+        // addEdge only ever creates an edges-map entry for a "from" node
+        // that has at least one resolvable import, so a genuinely isolated
+        // file (no imports, imported by nothing) never becomes a key or a
+        // neighbor value anywhere in graph.edges - it only exists in
+        // graph.nodes. Deriving the node set from graph.edges instead of
+        // graph.nodes would silently drop it from the report.
+        const graph: DependencyGraph = {
+            nodes: new Set(['connected.ts', 'consumer.ts', 'lonely.ts']),
+            edges: new Map<string, Set<string>>([['consumer.ts', new Set(['connected.ts'])]]),
+        };
+
+        const sccs: string[][] = [];
+
+        const metrics = new Map<string, ModuleMetrics>([
+            ['connected.ts', { ca: 1, ce: 0, instability: 0 }],
+            ['consumer.ts', { ca: 0, ce: 1, instability: 1 }],
+        ]);
+
+        const result = buildCytoscapeElements({
+            graph,
+            metrics,
+            sccs,
+        });
+
+        expect(result.nodes.length).toBe(3);
+        expect(result.nodes.some((node) => node.data.id === 'lonely.ts')).toBe(true);
+    });
+
     it('handles empty graphs', () => {
         const graph: DependencyGraph = {
             nodes: new Set(),
