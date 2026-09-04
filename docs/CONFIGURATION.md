@@ -56,6 +56,7 @@ Controls the `regression` command — comparing the current dependency graph aga
 | `severity.*` | see below | see below | Default severity per relation category. |
 | `thresholds.*` | see below | see below | Depth thresholds used to classify new dependencies. |
 | `scopes` | array | `[]` | Per-path overrides. See [Scopes](#scopes) below. |
+| `history.*` | see below | see below | Controls the `history` command. See [History Analysis](#history-analysis) below. |
 
 ### Severity and `failOn`
 
@@ -191,6 +192,44 @@ This is different from lowering severity: an `ignore`d scope's findings never ap
 
 ---
 
+### History Analysis
+
+Controls the `history` command — walking a range of Git history instead of comparing just two revisions. It reuses `features.regression`'s `thresholds`, `severity`, and `scopes` (a history walk's findings are governed by the same rules as a single-baseline regression check), and only adds a few fields of its own:
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | `boolean` | `true` | Whether the `history` command runs at all. |
+| `sampleSize` | `number` | `10` | How many commits to sample (evenly spaced) between the baseline and the current revision. Overridable per-run with `--points`. |
+| `strategy` | `"incremental"` \| `"cumulative"` \| `"both"` | `"incremental"` | Which comparison to compute and report at each sampled point — see below. Overridable per-run with `--strategy`. |
+| `mode` | `"full"` \| `"compact"` \| `"html"` | `"compact"` | Output format. `html` is not implemented yet — it prints a warning instead of writing a report. |
+
+Sampling walks the **first-parent** chain (the mainline of merge commits, not every commit on every merged branch) between the baseline and the current revision, so a history of feature branches merged via pull requests reads as one sequential timeline instead of an arbitrarily-ordered graph.
+
+Two strategies answer different questions, and both are always computed internally — `strategy` only picks what gets displayed, so switching between `incremental`, `cumulative`, and `both` never re-walks history:
+
+- **`incremental`** — each sampled point is compared against the *previous* sampled point. Answers "how much risk was introduced in this window of history?" A spike at one point means something worth reviewing happened specifically in that window.
+- **`cumulative`** — each sampled point is compared against the *first* sampled point (the baseline). Answers "how far have we drifted from the baseline overall?" Numbers tend to grow and then plateau rather than spike, since they're a running total, not a per-window count.
+
+Example, sampling 6 points across dep-health's own history from its root commit to a later revision:
+
+```
+Commit    Files  Incremental  Cumulative
+a04ffa3   36     -            -
+9fd349e   76     113          113
+da75434   84     30           130
+0ef022c   84     2            131
+7c7a18c   87     1            132
+04f7642   87     1            131
+```
+
+`incremental` tapers off quickly (113 → 30 → 2 → 1 → 1) — most of the early history was one large burst of initial growth, and later commits mostly stopped introducing new cross-boundary risk. `cumulative` grows and plateaus (113 → 130 → 131 → 132 → 131) — the total distance from the root commit stays roughly the same once growth slows down. Neither number is "wrong" — they answer different questions about the same history.
+
+```bash
+dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode full
+```
+
+---
+
 ## Risk Assessment (HTML report)
 
 The `--mode html` regression report includes a "Risk Assessment" banner (Low / Moderate / High Architectural Risk). It measures how large a share of **this change's** findings are `cross-boundary` — not how large a share of the whole project is cross-boundary. The same absolute change reads the same regardless of how big the surrounding codebase happens to be.
@@ -259,6 +298,12 @@ Controls the `cycles` command — dependency cycle / SCC detection.
                 "host": "http://localhost:11434",
                 "model": "qwen3:14b",
                 "language": "en"
+            },
+            "history": {
+                "enabled": true,
+                "sampleSize": 10,
+                "strategy": "incremental",
+                "mode": "compact"
             }
         },
         "scc": {

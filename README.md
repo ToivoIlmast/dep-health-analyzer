@@ -93,6 +93,27 @@ Available modes:
 
 ---
 
+## History Analysis (Experimental)
+
+Walk a range of Git history and see how regression findings evolved over time, instead of comparing just two revisions.
+
+Samples a fixed number of commits along the first-parent chain (the mainline, skipping over merged branch commits) between a baseline and the current revision, then runs the same regression analysis at each sampled point using one of two comparison strategies:
+
+- **incremental** — each point compared against the previous sampled point, showing risk introduced within that window of history
+- **cumulative** — each point compared against the first sampled point, showing total drift accumulated since the baseline
+- **both** — reports both series side by side
+
+See [Configuration Reference](docs/CONFIGURATION.md#history-analysis) for every option, with examples.
+
+Available modes:
+
+- full
+- compact
+
+`html` mode (a trend chart) is not implemented yet.
+
+---
+
 ## AI Summaries (Experimental)
 
 Generate concise, human-readable summaries of regression analysis using a local Large Language Model (LLM) running via Ollama.
@@ -199,6 +220,12 @@ Compare the current revision against the previous commit:
 
 ```bash
 npx dep-health-analyzer regression --baseline HEAD~1
+```
+
+See how architectural risk evolved over the last 50 commits:
+
+```bash
+npx dep-health-analyzer history --baseline HEAD~50 --points 10
 ```
 
 Generate interactive HTML reports:
