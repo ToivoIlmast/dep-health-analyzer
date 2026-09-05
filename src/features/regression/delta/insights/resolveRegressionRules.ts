@@ -43,7 +43,7 @@ export function resolveRegressionRules(args: ResolveRegressionRulesArgs): Effect
     const normalizedSourcePath = sourcePath.replaceAll('\\', '/');
 
     const matchedScopes = scopes
-        .filter((scope) => minimatch(normalizedSourcePath, scope.match))
+        .filter((scope) => minimatch(normalizedSourcePath, scope.match, { nonegate: true }))
         .sort((a, b) => getSpecificity(a.match) - getSpecificity(b.match));
 
     for (const scope of matchedScopes) {

@@ -136,6 +136,27 @@ describe('resolveRegressionRules', () => {
         });
     });
 
+    it('does not let a leading "!" whole-pattern-negate a scope match into matching everything, including the path it looks like it should exclude', () => {
+        // A config author reaching for the intuitive "everything except
+        // vendor" extglob idiom - without minimatch's `nonegate` guard,
+        // minimatch strips the leading "!", tests the near-never-matching
+        // literal remainder "(src/vendor/**)", and negates that false result
+        // to true for virtually every path, including src/vendor itself -
+        // silently escalating the exact file the scope was meant to exempt.
+        const result = resolveRegressionRules({
+            sourcePath: 'src/vendor/consumer.ts',
+            rules: baseRules,
+            scopes: [
+                {
+                    match: '!(src/vendor/**)',
+                    severity: { 'cross-boundary': 'error' },
+                },
+            ],
+        });
+
+        expect(result.severity['cross-boundary']).toBe('warning');
+    });
+
     it('should ignore non-matching scopes', () => {
         const result = resolveRegressionRules({
             sourcePath: 'src/core/scanProject.ts',
