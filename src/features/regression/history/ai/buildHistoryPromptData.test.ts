@@ -64,4 +64,30 @@ describe('buildHistoryPromptData', () => {
             { commit: 'sha2222', date: '2026-01-01', findingCount: 50 },
         ]);
     });
+
+    it('caps spikes at ten, keeping the ten highest by finding count', () => {
+        const insights: TrendInsights = {
+            classification: 'volatile',
+            spikes: Array.from({ length: 15 }, (_, index) => ({
+                index,
+                commit: makeCommit(`sha${index}`),
+                value: index + 1,
+            })),
+            worstWindow: null,
+        };
+
+        const result = buildHistoryPromptData({ insights, pointCount: 15 });
+
+        expect(result.observations.spikes).toHaveLength(10);
+        expect(result.observations.spikes?.[0]).toEqual({
+            commit: 'sha5',
+            date: '2026-01-01',
+            findingCount: 6,
+        });
+        expect(result.observations.spikes?.[9]).toEqual({
+            commit: 'sha14',
+            date: '2026-01-01',
+            findingCount: 15,
+        });
+    });
 });
