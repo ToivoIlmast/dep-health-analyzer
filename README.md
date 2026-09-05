@@ -258,7 +258,7 @@ Configure severity levels and fail builds when architectural signals exceed the 
 
 Regression analysis helps surface structural changes during code review, cycle detection helps monitor long-term dependency health, and history analysis helps spot when architectural drift crept in across a range of commits.
 
-**`regression` and `history` both need full Git history**, not just the latest commit — they compare the current state against an older revision by checking it out into a temporary `git worktree`. Most CI providers do a shallow clone by default (depth 1), which only has the latest commit and breaks both commands. On GitHub Actions, set `fetch-depth: 0` on the checkout step:
+**`regression` and `history` both need full Git history**, not just the latest commit — they compare the current state against an older revision by checking it out into a temporary `git worktree`. Most CI providers do a shallow clone by default (depth 1), which only has the latest commit and breaks both commands: `history` fails clean with an explanatory error, and both commands warn when they can't find a real previous commit to compare against — but neither can conjure history that was never fetched, so the underlying comparison is still lost. On GitHub Actions, set `fetch-depth: 0` on the checkout step:
 
 ```yaml
 name: Architecture Check
