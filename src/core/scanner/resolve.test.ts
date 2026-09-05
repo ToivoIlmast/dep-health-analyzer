@@ -101,6 +101,57 @@ describe('resolveImport', () => {
         expect(result).toBeNull();
     });
 
+    describe('TypeScript "nodenext"/"node16" output-extension specifiers', () => {
+        // Relative ESM imports under nodenext/node16 module resolution
+        // must name the *compiled output* extension, not the source file
+        // on disk - `import { x } from './helper.js'` legitimately means
+        // `./helper.ts`. Without this, the import silently fails to
+        // resolve (treated as if unresolvable/external) with zero
+        // diagnostic, since it's a relative specifier and never reaches
+        // the EXTERNAL SKIP debug log that only fires for bare specifiers.
+        const dir = 'src/core/scanner/__fixtures__/resolve/nodenext';
+
+        it('resolves a .js specifier to its real .ts source file', () => {
+            const result = resolveImport({
+                fromFile: path.resolve(`${dir}/consumer.ts`),
+                specifier: './helper.js',
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!).toContain(path.join('nodenext', 'helper.ts'));
+        });
+
+        it('resolves a .mjs specifier to its real .mts source file', () => {
+            const result = resolveImport({
+                fromFile: path.resolve(`${dir}/consumer.ts`),
+                specifier: './mjs-target.mjs',
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!).toContain(path.join('nodenext', 'mjs-target.mts'));
+        });
+
+        it('resolves a .cjs specifier to its real .cts source file', () => {
+            const result = resolveImport({
+                fromFile: path.resolve(`${dir}/consumer.ts`),
+                specifier: './cjs-target.cjs',
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!).toContain(path.join('nodenext', 'cjs-target.cts'));
+        });
+
+        it('prefers a real, exactly-matching .js file over swapping to .ts when both exist', () => {
+            const result = resolveImport({
+                fromFile: path.resolve(`${dir}/consumer.ts`),
+                specifier: './dual-extension-target.js',
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!).toContain(path.join('nodenext', 'dual-extension-target.js'));
+        });
+    });
+
     it('should resolve index file through alias', () => {
         const fromFile = path.resolve('src/core/scanner/__fixtures__/resolve/ts-import.ts');
 
