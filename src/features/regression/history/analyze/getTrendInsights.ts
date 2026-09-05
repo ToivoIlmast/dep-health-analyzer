@@ -11,8 +11,9 @@ const SPIKE_RATIO_THRESHOLD = 2;
  * just because it's technically more than double an almost-zero mean.
  * Calibrated against dep-health's own real history: a 19-point incremental
  * series with values [14,0,86,27,0,30,0,0,1,1,0,1,0,1,0,0,0,50,12] (mean
- * ~11.8) correctly flags only 86, 27, 30, 50 - the genuinely elevated
- * windows - not the many near-zero ones.
+ * ~11.8) correctly flags 86, 27, 30, 50, 14, 12 (in outlier-exclusion
+ * passes, see findSpikeIndices) as the genuinely elevated windows - not the
+ * many near-zero ones.
  */
 const MIN_SPIKE_ABSOLUTE = 5;
 /** A >=30% drop between the first and second half counts as "stabilizing". */
@@ -81,6 +82,46 @@ function classifyTrend(values: number[], average: number): TrendClassification {
 }
 
 /**
+ * Finds every point that's a spike relative to the *rest* of the series,
+ * not just relative to the raw overall mean. A single very large outlier
+ * pulls the plain mean up enough to hide a real secondary spike sitting
+ * underneath it (e.g. [500, 40,40,40, 5,5,5,5,5,5] - the mean of 65 masks
+ * the 40s, which are a real 8x jump over the quiet baseline of 5).
+ * Finds spikes against the current mean, removes them, and repeats
+ * against the remaining values - so each pass's mean reflects only the
+ * points not already explained by a bigger spike. Stops once a full pass
+ * finds nothing new, which is guaranteed since each pass either removes
+ * at least one value or terminates the loop.
+ */
+function findSpikeIndices(values: number[]): Set<number> {
+    const spikeIndices = new Set<number>();
+    let remainingIndices = values.map((_, index) => index).filter((index) => !spikeIndices.has(index));
+
+    for (;;) {
+        const remainingValues = remainingIndices.map((index) => values[index] as number);
+        const average = mean(remainingValues);
+
+        if (average <= 0) {
+            break;
+        }
+
+        const newSpikeIndices = remainingIndices.filter((index) => {
+            const value = values[index] as number;
+            return value > average * SPIKE_RATIO_THRESHOLD && value >= MIN_SPIKE_ABSOLUTE;
+        });
+
+        if (newSpikeIndices.length === 0) {
+            break;
+        }
+
+        newSpikeIndices.forEach((index) => spikeIndices.add(index));
+        remainingIndices = remainingIndices.filter((index) => !spikeIndices.has(index));
+    }
+
+    return spikeIndices;
+}
+
+/**
  * Derives interpretive signal from a history walk's incremental series
  * (risk introduced per sampled window) - always the incremental series
  * specifically, regardless of which strategy the user picked for display,
@@ -100,16 +141,17 @@ export function getTrendInsights(points: HistoryPoint[]): TrendInsights {
     const values = withIncremental.map((entry) => entry.point.incremental.findings.length);
     const average = mean(values);
 
-    const spikes: TrendPoint[] = [];
+    const spikeIndices = findSpikeIndices(values);
+    const spikes: TrendPoint[] = withIncremental
+        .map((entry, i) => ({ index: entry.index, commit: entry.point.commit, value: values[i] as number, i }))
+        .filter(({ i }) => spikeIndices.has(i))
+        .map(({ index, commit, value }) => ({ index, commit, value }));
+
     let worstWindow: TrendPoint | null = null;
     let worstValue = 0;
 
     withIncremental.forEach((entry, i) => {
         const value = values[i] as number;
-
-        if (average > 0 && value > average * SPIKE_RATIO_THRESHOLD && value >= MIN_SPIKE_ABSOLUTE) {
-            spikes.push({ index: entry.index, commit: entry.point.commit, value });
-        }
 
         if (value > worstValue) {
             worstValue = value;
