@@ -71,7 +71,7 @@ describe('analyzeHistory', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockedValidateGitRef.mockReturnValue(true);
-        mockedWalkHistory.mockResolvedValue({ points: [makePoint()] });
+        mockedWalkHistory.mockResolvedValue({ points: [makePoint(), makePoint()] });
         jest.spyOn(console, 'log').mockImplementation(() => {});
         jest.spyOn(console, 'warn').mockImplementation(() => {});
         jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -102,7 +102,7 @@ describe('analyzeHistory', () => {
 
     it('does not fail when no findings meet the failOn severity', async () => {
         mockedWalkHistory.mockResolvedValue({
-            points: [makePoint({ incremental: { findings: [makeFinding('info')] } })],
+            points: [makePoint(), makePoint({ incremental: { findings: [makeFinding('info')] } })],
         });
 
         const result = await analyzeHistory({ ...baseArgs, failOn: 'warning' });
@@ -112,7 +112,7 @@ describe('analyzeHistory', () => {
 
     it('fails when an incremental finding meets the failOn severity', async () => {
         mockedWalkHistory.mockResolvedValue({
-            points: [makePoint({ incremental: { findings: [makeFinding('warning')] } })],
+            points: [makePoint(), makePoint({ incremental: { findings: [makeFinding('warning')] } })],
         });
 
         const result = await analyzeHistory({ ...baseArgs, failOn: 'warning' });
@@ -122,7 +122,7 @@ describe('analyzeHistory', () => {
 
     it('ignores cumulative findings when strategy is incremental-only', async () => {
         mockedWalkHistory.mockResolvedValue({
-            points: [makePoint({ cumulative: { findings: [makeFinding('error')] } })],
+            points: [makePoint(), makePoint({ cumulative: { findings: [makeFinding('error')] } })],
         });
 
         const result = await analyzeHistory({
@@ -136,7 +136,7 @@ describe('analyzeHistory', () => {
 
     it('considers cumulative findings when strategy is cumulative', async () => {
         mockedWalkHistory.mockResolvedValue({
-            points: [makePoint({ cumulative: { findings: [makeFinding('error')] } })],
+            points: [makePoint(), makePoint({ cumulative: { findings: [makeFinding('error')] } })],
         });
 
         const result = await analyzeHistory({
@@ -145,6 +145,32 @@ describe('analyzeHistory', () => {
             failOn: 'warning',
         });
 
+        expect(result.failed).toBe(true);
+    });
+
+    it('rejects a collapsed history (fewer than 2 distinct commits) after walking, with a clean error instead of a false "Stable" pass', async () => {
+        mockedWalkHistory.mockResolvedValue({ points: [makePoint()] });
+
+        await analyzeHistory(baseArgs);
+
+        expect(console.error).toHaveBeenCalledWith(
+            expect.stringContaining('Only 1 distinct commit(s) found')
+        );
+        expect(process.exit).toHaveBeenCalledWith(1);
+        expect(mockedCompactModeReport).not.toHaveBeenCalled();
+        expect(mockedFullModeReport).not.toHaveBeenCalled();
+        expect(mockedHtmlModeReport).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty history (0 points) the same way', async () => {
+        mockedWalkHistory.mockResolvedValue({ points: [] });
+
+        const result = await analyzeHistory(baseArgs);
+
+        expect(console.error).toHaveBeenCalledWith(
+            expect.stringContaining('Only 0 distinct commit(s) found')
+        );
+        expect(process.exit).toHaveBeenCalledWith(1);
         expect(result.failed).toBe(true);
     });
 

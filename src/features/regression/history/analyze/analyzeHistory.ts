@@ -85,6 +85,16 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
 
     const { points } = await walkHistory({ target, baselineRef, sampleSize, rules, scopes });
 
+    if (points.length < 2) {
+        console.error(
+            `Only ${points.length} distinct commit(s) found between ${baselineRef} and HEAD - at least 2 are needed to show a trend.\n` +
+                'This usually means a shallow clone (git fetch --unshallow, or fetch-depth: 0 in CI), ' +
+                'a repository with too few commits, or a --baseline that resolves to the same commit as HEAD.'
+        );
+        process.exit(1);
+        return { failed: true, points };
+    }
+
     const failed = shouldFail({ findings: collectFindings(points, strategy), failOn });
 
     if (mode === MODES.HTML) {
