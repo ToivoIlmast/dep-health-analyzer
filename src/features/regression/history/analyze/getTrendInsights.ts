@@ -82,22 +82,37 @@ function classifyTrend(values: number[], average: number): TrendClassification {
 }
 
 /**
+ * At most this many outlier-exclusion passes (see findSpikeIndices) run
+ * before stopping, even if a pass still finds something. Without a cap, a
+ * smoothly/geometrically growing series (e.g. findings doubling each
+ * sampled point) never produces a "quiet remainder" to stop the loop -
+ * removing the top value still leaves a series with the same shape, so
+ * each pass just re-triggers on the new top value, consuming most of the
+ * series from the top down (verified: an uncapped loop flags 12 of 15
+ * points on a pure doubling series). Two passes is exactly enough for the
+ * motivating case - one very large outlier masking a smaller secondary
+ * spike underneath it - without drilling further into what, for a
+ * continuously growing series, is really one continuous trend rather
+ * than discrete anomalies.
+ */
+const MAX_OUTLIER_EXCLUSION_PASSES = 2;
+
+/**
  * Finds every point that's a spike relative to the *rest* of the series,
  * not just relative to the raw overall mean. A single very large outlier
  * pulls the plain mean up enough to hide a real secondary spike sitting
  * underneath it (e.g. [500, 40,40,40, 5,5,5,5,5,5] - the mean of 65 masks
  * the 40s, which are a real 8x jump over the quiet baseline of 5).
  * Finds spikes against the current mean, removes them, and repeats
- * against the remaining values - so each pass's mean reflects only the
- * points not already explained by a bigger spike. Stops once a full pass
- * finds nothing new, which is guaranteed since each pass either removes
- * at least one value or terminates the loop.
+ * against the remaining values (up to MAX_OUTLIER_EXCLUSION_PASSES times)
+ * - so each pass's mean reflects only the points not already explained by
+ * a bigger spike.
  */
 function findSpikeIndices(values: number[]): Set<number> {
     const spikeIndices = new Set<number>();
-    let remainingIndices = values.map((_, index) => index).filter((index) => !spikeIndices.has(index));
+    let remainingIndices = values.map((_, index) => index);
 
-    for (;;) {
+    for (let pass = 0; pass < MAX_OUTLIER_EXCLUSION_PASSES; pass++) {
         const remainingValues = remainingIndices.map((index) => values[index] as number);
         const average = mean(remainingValues);
 

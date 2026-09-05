@@ -125,6 +125,22 @@ describe('getTrendInsights', () => {
         expect(insights.spikes[0]?.value).toBe(50);
     });
 
+    it('does not consume most of a smoothly/geometrically growing series as spikes', () => {
+        // A doubling series never produces a "quiet remainder" - excluding
+        // the top value still leaves a series with the same shape, so an
+        // uncapped outlier-exclusion loop would keep re-triggering on the
+        // new top value and flag most of the series (verified separately:
+        // 12 of 15 points, before the two-pass cap). Two passes limits this
+        // to the two highest points, which is also what a real steadily-
+        // worsening (not spiky) history should surface as "worst window"
+        // material, not a dozen separate "spikes".
+        const doubling = Array.from({ length: 15 }, (_, i) => 5 * 2 ** i);
+        const insights = getTrendInsights(makePoints([null, ...doubling]));
+
+        expect(insights.spikes.length).toBeLessThanOrEqual(4);
+        expect(insights.spikes.map((s) => s.value)).toEqual([10240, 20480, 40960, 81920]);
+    });
+
     it('returns spikes in chronological order even when a later pass finds an earlier point', () => {
         // 500 (last) is found in pass 1, pulling the mean up; 40 (earlier,
         // at index 5) is only found in pass 2 once 500 is excluded. The
