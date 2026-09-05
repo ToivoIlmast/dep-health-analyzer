@@ -58,4 +58,26 @@ describe('resolveBaselineRef', () => {
             expect.stringContaining('HEAD~1 could not be resolved')
         );
     });
+
+    it('verifies a custom fallback ref instead of the hardcoded HEAD~1', () => {
+        (execSync as jest.Mock).mockImplementation(() => undefined);
+
+        expect(resolveBaselineRef(undefined, 'HEAD~9')).toBe('HEAD~9');
+        expect(execSync).toHaveBeenCalledWith(
+            'git rev-parse --verify HEAD~9',
+            expect.anything()
+        );
+    });
+
+    it('mentions the custom fallback ref, not a hardcoded HEAD~1, in the warning when it cannot be resolved', () => {
+        (execSync as jest.Mock).mockImplementation(() => {
+            throw new Error('git error');
+        });
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const result = resolveBaselineRef(undefined, 'HEAD~9');
+
+        expect(result).toBe('HEAD');
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('HEAD~9 could not be resolved'));
+    });
 });

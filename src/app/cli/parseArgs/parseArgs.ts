@@ -25,15 +25,21 @@ export function parseArgs(config: IConfig): CliArgs {
     const mode = parseMode(args, defaultMode);
     const ai = parseAI(args) ?? false;
 
-    // this flag is only for regression and history
-    const baselineRef = resolveBaselineRef(getArgValue(args, CLI_FLAG.BASELINE));
-
     // these flags are only for history
     const sampleSize = parsePoints(args, config.features?.regression?.history?.sampleSize ?? 10);
     const strategy = parseHistoryStrategy(
         args,
         config.features?.regression?.history?.strategy ?? HISTORY_STRATEGIES.INCREMENTAL
     );
+
+    // this flag is only for regression and history - history's default
+    // fallback must reach back sampleSize-1 commits, not a fixed HEAD~1,
+    // otherwise the sampled range is always exactly 2 commits regardless
+    // of --points whenever --baseline isn't given.
+    const baselineRef =
+        command === CLI_COMMANDS.HISTORY
+            ? resolveBaselineRef(getArgValue(args, CLI_FLAG.BASELINE), `HEAD~${sampleSize - 1}`)
+            : resolveBaselineRef(getArgValue(args, CLI_FLAG.BASELINE));
 
     if (command === CLI_COMMANDS.HISTORY) {
         return {
