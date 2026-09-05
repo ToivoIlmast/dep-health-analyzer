@@ -35,3 +35,4 @@ src/app/config/validateConfig.generated.js
 
 # Personal architecture/overview notes - not for the repo
 architecture.md
+audit-report-v0.8.1.md

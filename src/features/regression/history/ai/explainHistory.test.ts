@@ -27,17 +27,29 @@ describe('explainHistory', () => {
         mockedGetTrendInsights.mockReturnValue({ classification: 'stable', spikes: [], worstWindow: null });
     });
 
-    it('should not generate a summary when there are no observations', async () => {
-        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-        mockedBuildHistoryPromptData.mockReturnValue({ observations: {} });
+    it('generates a summary for the smallest possible real input, wiring the real getTrendInsights/buildHistoryPromptData instead of mocks', async () => {
+        mockedGetTrendInsights.mockImplementation(
+            jest.requireActual('../analyze/getTrendInsights').getTrendInsights
+        );
+        mockedBuildHistoryPromptData.mockImplementation(
+            jest.requireActual('./buildHistoryPromptData').buildHistoryPromptData
+        );
         mockedBuildHistoryPrompt.mockReturnValue('prompt');
+        mockedGenerateAISummary.mockResolvedValue();
 
-        await explainHistory({ data: { points: [] }, aiConfig });
+        const points = [
+            {
+                commit: { sha: 'a', date: '2026-01-01', title: 't' },
+                scannedFiles: 1,
+                modules: 1,
+                incremental: null,
+                cumulative: null,
+            },
+        ];
 
-        expect(mockedGenerateAISummary).not.toHaveBeenCalled();
-        expect(consoleLogSpy).toHaveBeenCalledWith('No observations available for AI summary.');
+        await explainHistory({ data: { points }, aiConfig });
 
-        consoleLogSpy.mockRestore();
+        expect(mockedGenerateAISummary).toHaveBeenCalled();
     });
 
     it('should generate a summary from available observations', async () => {

@@ -95,7 +95,7 @@ describe('getTrendInsights', () => {
         const insights = getTrendInsights(makePoints(realIncremental));
 
         expect(insights.classification).toBe('stabilizing');
-        expect(insights.spikes.map((s) => s.value).sort((a, b) => a - b)).toEqual([27, 30, 50, 86]);
+        expect(insights.spikes.map((s) => s.value).sort((a, b) => a - b)).toEqual([12, 14, 27, 30, 50, 86]);
         expect(insights.worstWindow?.value).toBe(86);
     });
 
@@ -104,6 +104,50 @@ describe('getTrendInsights', () => {
         const insights = getTrendInsights(makePoints(realIncremental));
 
         expect(insights.classification).toBe('worsening');
-        expect(insights.spikes.map((s) => s.value).sort((a, b) => a - b)).toEqual([30, 50]);
+        expect(insights.spikes.map((s) => s.value).sort((a, b) => a - b)).toEqual([12, 30, 50]);
+    });
+
+    it('does not let one huge outlier mask a real secondary spike underneath it', () => {
+        // The single 500 pulls the plain mean up to 65 (threshold 130),
+        // hiding the three 40s - a real 8x jump over the quiet baseline of
+        // 5 - from ever being flagged. Excluding 500 and recomputing on the
+        // remainder (mean ~16.7, threshold ~33.3) correctly surfaces them.
+        const insights = getTrendInsights(makePoints([null, 500, 40, 40, 40, 5, 5, 5, 5, 5, 5]));
+
+        expect(insights.spikes.map((s) => s.value).sort((a, b) => a - b)).toEqual([40, 40, 40, 500]);
+        expect(insights.worstWindow?.value).toBe(500);
+    });
+
+    it('stops excluding outliers once the remaining values are quiet, without over-flagging a single spike in an otherwise flat series', () => {
+        const insights = getTrendInsights(makePoints([null, 0, 0, 0, 0, 0, 0, 0, 50]));
+
+        expect(insights.spikes).toHaveLength(1);
+        expect(insights.spikes[0]?.value).toBe(50);
+    });
+
+    it('does not consume most of a smoothly/geometrically growing series as spikes', () => {
+        // A doubling series never produces a "quiet remainder" - excluding
+        // the top value still leaves a series with the same shape, so an
+        // uncapped outlier-exclusion loop would keep re-triggering on the
+        // new top value and flag most of the series (verified separately:
+        // 12 of 15 points, before the two-pass cap). Two passes limits this
+        // to the two highest points, which is also what a real steadily-
+        // worsening (not spiky) history should surface as "worst window"
+        // material, not a dozen separate "spikes".
+        const doubling = Array.from({ length: 15 }, (_, i) => 5 * 2 ** i);
+        const insights = getTrendInsights(makePoints([null, ...doubling]));
+
+        expect(insights.spikes.length).toBeLessThanOrEqual(4);
+        expect(insights.spikes.map((s) => s.value)).toEqual([10240, 20480, 40960, 81920]);
+    });
+
+    it('returns spikes in chronological order even when a later pass finds an earlier point', () => {
+        // 500 (last) is found in pass 1, pulling the mean up; 40 (earlier,
+        // at index 5) is only found in pass 2 once 500 is excluded. The
+        // result should still read in commit order (40 before 500), not
+        // insertion order (500 before 40).
+        const insights = getTrendInsights(makePoints([null, 5, 5, 5, 5, 40, 500]));
+
+        expect(insights.spikes.map((s) => s.value)).toEqual([40, 500]);
     });
 });
