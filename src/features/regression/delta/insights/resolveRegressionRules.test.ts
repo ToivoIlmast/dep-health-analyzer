@@ -96,7 +96,7 @@ describe('resolveRegressionRules', () => {
         expect(result.ignore).toBe(true);
     });
 
-    it('should apply more specific scopes after less specific ones', () => {
+    it('applies later scopes after earlier ones, so a later override wins', () => {
         const result = resolveRegressionRules({
             sourcePath: 'src/features/payments/service.ts',
             rules: baseRules,
@@ -134,6 +134,31 @@ describe('resolveRegressionRules', () => {
                 internal: 'info',
             },
         });
+    });
+
+    it('does not let a longer but broader match outrank a shorter but narrower one declared later - order decides, not string length', () => {
+        // Previously, specificity was measured as raw match-string length,
+        // so this long directory-wide ignore would apply LAST (as the
+        // "more specific" one) regardless of where it was declared,
+        // silently defeating the narrower single-file exception below it.
+        // Declaration order removes that ambiguity entirely: whichever
+        // scope is written later simply applies later.
+        const result = resolveRegressionRules({
+            sourcePath: 'src/some-very-long-directory-name-chosen-for-realism-here/hotfile.ts',
+            rules: baseRules,
+            scopes: [
+                {
+                    match: '**/some-very-long-directory-name-chosen-for-realism-here/**',
+                    ignore: true,
+                },
+                {
+                    match: '**/hotfile.ts',
+                    ignore: false,
+                },
+            ],
+        });
+
+        expect(result.ignore).toBe(false);
     });
 
     it('does not let a leading "!" whole-pattern-negate a scope match into matching everything, including the path it looks like it should exclude', () => {

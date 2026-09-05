@@ -27,10 +27,6 @@ type ResolveRegressionRulesArgs = {
     scopes?: IRegressionScope[];
 };
 
-function getSpecificity(match: string): number {
-    return match.length;
-}
-
 export function resolveRegressionRules(args: ResolveRegressionRulesArgs): EffectiveRegressionRules {
     const { sourcePath, rules, scopes = [] } = args;
 
@@ -42,9 +38,16 @@ export function resolveRegressionRules(args: ResolveRegressionRulesArgs): Effect
 
     const normalizedSourcePath = sourcePath.replaceAll('\\', '/');
 
-    const matchedScopes = scopes
-        .filter((scope) => minimatch(normalizedSourcePath, scope.match, { nonegate: true }))
-        .sort((a, b) => getSpecificity(a.match) - getSpecificity(b.match));
+    // Applied in config declaration order - a later scope's overrides win
+    // over an earlier one's for whatever properties it sets (ignore/
+    // thresholds/severity are each only touched by a scope that actually
+    // specifies them, so unrelated scopes never clobber each other). This
+    // is deterministic by construction: no derived "specificity" measure
+    // to get wrong, and no ambiguity for scopes that happen to tie under
+    // one. Put broader scopes first and more specific overrides later.
+    const matchedScopes = scopes.filter((scope) =>
+        minimatch(normalizedSourcePath, scope.match, { nonegate: true })
+    );
 
     for (const scope of matchedScopes) {
         if (scope.ignore !== undefined) {
