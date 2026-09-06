@@ -69,6 +69,16 @@ describe('extractImports', () => {
 
             expect(result).toEqual(['./a-type', './b-value', './c-type', './d-value']);
         });
+
+        it('excludes a declaration where every named specifier is individually marked `type` (no whole-declaration `type` keyword) - the exact shape @typescript-eslint/consistent-type-imports\' inline-type-imports autofix produces, and is equally erased at compile time', () => {
+            const inlineTypeOnly = path.resolve(
+                'src/core/scanner/__fixtures__/extract/inline-type-only.ts'
+            );
+
+            const result = extractImports(inlineTypeOnly);
+
+            expect(result).toEqual(['./mixed-inline-type', './mixed-inline-type-export']);
+        });
     });
 
     // TODO:
