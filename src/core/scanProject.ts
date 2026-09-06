@@ -9,10 +9,11 @@ import path from 'node:path';
 type ScanProjectArgsType = {
     projectRoot: string;
     scanRoot: string;
+    includeTypeOnlyImports?: boolean;
 };
 
 export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult> {
-    const { projectRoot, scanRoot } = args;
+    const { projectRoot, scanRoot, includeTypeOnlyImports } = args;
     const normalizedRoot = path.resolve(scanRoot);
 
     const files = await discoverFiles(normalizedRoot);
@@ -23,7 +24,7 @@ export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult
     for (const file of files) {
         graph.nodes.add(file);
 
-        const imports = extractImports(file);
+        const imports = extractImports(file, { includeTypeOnlyImports });
 
         for (const specifier of imports) {
             const resolved = resolveImport({ fromFile: file, specifier, tsconfig });

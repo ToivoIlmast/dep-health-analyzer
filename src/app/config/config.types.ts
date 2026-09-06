@@ -75,5 +75,8 @@ export interface ConfigSchema {
       severity?: "info" | "warning" | "error";
       maxSize?: number;
     };
+    typescript?: {
+      includeTypeOnlyImports?: boolean;
+    };
   };
 }

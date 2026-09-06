@@ -292,6 +292,22 @@ Controls the `cycles` command — dependency cycle / SCC detection.
 
 ---
 
+## `features.typescript`
+
+Language-specific scanning options - kept in its own section (rather than under `regression`/`scc`) since it only makes sense for TypeScript/JavaScript projects, not for any other language this tool might analyze in the future.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `includeTypeOnlyImports` | `boolean` | `false` | Whether `import type { X } from '...'` / `export type { X } from '...'` count as real dependency edges. |
+
+`import type`/`export type` are fully erased at compile time - they produce no dependency at all in emitted or bundled output. By default they're excluded from the dependency graph entirely, so `cycles`/`regression`/`history` only see coupling that actually exists at runtime. A cycle or cross-boundary reach that exists *purely* through type-only imports won't be flagged.
+
+Set `includeTypeOnlyImports: true` if you'd rather treat type-level coupling the same as a runtime dependency (e.g. you consider a type-only circular reference between two modules worth knowing about too, even though it compiles away).
+
+This setting applies to both `cycles` and `regression`/`history`, since they all build from the same underlying dependency graph.
+
+---
+
 ## Full example
 
 ```json
@@ -341,6 +357,9 @@ Controls the `cycles` command — dependency cycle / SCC detection.
             "mode": "compact",
             "failOn": "error",
             "reporting": { "html": { "enabled": true, "outputPath": "./dep-health-reports/scc.html" } }
+        },
+        "typescript": {
+            "includeTypeOnlyImports": false
         }
     }
 }

@@ -78,6 +78,7 @@ type AnalyzeRegressionType = {
     isHtmlReportingEnabled: boolean;
     htmlReportOutputPath: string;
     scopes?: Array<IRegressionScope>;
+    includeTypeOnlyImports?: boolean;
 };
 export async function analyzeRegression(
     args: AnalyzeRegressionType
@@ -91,6 +92,7 @@ export async function analyzeRegression(
         isHtmlReportingEnabled,
         htmlReportOutputPath,
         scopes,
+        includeTypeOnlyImports,
     } = args;
 
     if (!validateGitRef(baselineRef) && baselineRef) {
@@ -106,7 +108,11 @@ export async function analyzeRegression(
     console.log();
 
     const currentProjectRoot = process.cwd();
-    const current = await scanProject({ scanRoot: target, projectRoot: currentProjectRoot });
+    const current = await scanProject({
+        scanRoot: target,
+        projectRoot: currentProjectRoot,
+        includeTypeOnlyImports,
+    });
     console.log(`Scanned files: ${current.scannedFiles}`);
     console.log(`Modules: ${current.graph.nodes.size}`);
 
@@ -117,6 +123,7 @@ export async function analyzeRegression(
         baseline = await scanProject({
             scanRoot: resolveWorktreeTarget(worktree, target),
             projectRoot: worktree,
+            includeTypeOnlyImports,
         });
     } finally {
         removeBaselineWorktree(worktree);

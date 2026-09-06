@@ -53,7 +53,33 @@ describe('routeCommand', () => {
             failOn: 'error',
             enableHtmlReport: true,
             htmlReportOutputPath: './reports/cycles.html',
+            includeTypeOnlyImports: false,
         });
+    });
+
+    it('threads features.typescript.includeTypeOnlyImports through to analyzeCycles', async () => {
+        const analyzeCyclesMock = analyzeCycles as jest.Mock;
+
+        analyzeCyclesMock.mockResolvedValue(false);
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.CYCLES,
+                target: './src',
+                mode: MODES.FULL,
+                ai: false,
+            },
+            {
+                features: {
+                    scc: { enabled: true },
+                    typescript: { includeTypeOnlyImports: true },
+                },
+            }
+        );
+
+        expect(analyzeCyclesMock).toHaveBeenCalledWith(
+            expect.objectContaining({ includeTypeOnlyImports: true })
+        );
     });
 
     it('should not call analyzeCycles when scc is disabled', async () => {

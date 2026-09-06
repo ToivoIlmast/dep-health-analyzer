@@ -49,6 +49,28 @@ describe('extractImports', () => {
         }
     });
 
+    describe('type-only imports/exports', () => {
+        const typeOnly = path.resolve('src/core/scanner/__fixtures__/extract/type-only.ts');
+
+        it('excludes `import type`/`export type` by default', () => {
+            const result = extractImports(typeOnly);
+
+            expect(result).toEqual(['./b-value', './d-value']);
+        });
+
+        it('excludes them explicitly when includeTypeOnlyImports is false', () => {
+            const result = extractImports(typeOnly, { includeTypeOnlyImports: false });
+
+            expect(result).toEqual(['./b-value', './d-value']);
+        });
+
+        it('includes them when includeTypeOnlyImports is true', () => {
+            const result = extractImports(typeOnly, { includeTypeOnlyImports: true });
+
+            expect(result).toEqual(['./a-type', './b-value', './c-type', './d-value']);
+        });
+    });
+
     // TODO:
     /*
     it('should ignore exports without module specifier');

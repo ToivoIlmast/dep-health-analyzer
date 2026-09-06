@@ -32,6 +32,7 @@ type AnalyzeHistoryType = {
     scopes?: IRegressionScope[];
     isHtmlReportingEnabled: boolean;
     htmlReportOutputPath: string;
+    includeTypeOnlyImports?: boolean;
 };
 
 export type AnalyzeHistoryResult = {
@@ -66,6 +67,7 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
         scopes,
         isHtmlReportingEnabled,
         htmlReportOutputPath,
+        includeTypeOnlyImports,
     } = args;
 
     if (sampleSize < 2) {
@@ -83,7 +85,14 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
     console.log(`Sampling up to ${sampleSize} point(s), strategy: ${strategy}`);
     console.log();
 
-    const { points } = await walkHistory({ target, baselineRef, sampleSize, rules, scopes });
+    const { points } = await walkHistory({
+        target,
+        baselineRef,
+        sampleSize,
+        rules,
+        scopes,
+        includeTypeOnlyImports,
+    });
 
     if (points.length < 2) {
         console.error(

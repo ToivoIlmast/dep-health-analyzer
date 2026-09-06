@@ -67,5 +67,9 @@ export const defaultConfig = {
             severity: 'error',
             maxSize: 10,
         },
+
+        typescript: {
+            includeTypeOnlyImports: false,
+        },
     },
 } as const;
