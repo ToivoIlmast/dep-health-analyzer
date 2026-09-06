@@ -62,4 +62,40 @@ describe('discoverFiles', () => {
             expect(result.some((file) => file.endsWith('index.ts'))).toBe(true);
         });
     });
+
+    describe('symlinks', () => {
+        let root: string;
+        let outside: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-symlink-'));
+            outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-outside-'));
+
+            fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(root, 'src', 'index.ts'), '');
+            fs.writeFileSync(path.join(outside, 'secret.ts'), '');
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+            fs.rmSync(outside, { recursive: true, force: true });
+        });
+
+        it('does not follow a directory symlink to a location outside the scanned project', async () => {
+            fs.symlinkSync(outside, path.join(root, 'src', 'linked'), 'dir');
+
+            const result = await discoverFiles(root);
+
+            expect(result.some((file) => file.includes('secret.ts'))).toBe(false);
+            expect(result.some((file) => file.endsWith('index.ts'))).toBe(true);
+        });
+
+        it('does not follow a self-referential symlink into a duplicate-inflating loop', async () => {
+            fs.symlinkSync(path.join(root, 'src'), path.join(root, 'src', 'loop'), 'dir');
+
+            const result = await discoverFiles(root);
+
+            expect(result).toHaveLength(1);
+        });
+    });
 });

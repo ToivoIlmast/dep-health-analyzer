@@ -5,6 +5,7 @@ export async function discoverFiles(root: string): Promise<string[]> {
     const files = await fg(['**/*.{js,jsx,ts,tsx}'], {
         cwd: root,
         absolute: true,
+        followSymbolicLinks: false,
         ignore: [
             '**/node_modules/**',
             '**/dist/**',

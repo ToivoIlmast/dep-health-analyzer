@@ -64,6 +64,8 @@ Dependency graphs are built by analyzing `import` / `export` declarations (ES mo
 
 TypeScript path aliases are supported, including `tsconfig.json` configurations that use `extends`.
 
+Relative imports written with an explicit `.js`/`.jsx`/`.mjs`/`.cjs` extension - required by TypeScript's `"nodenext"`/`"node16"` module resolution for ESM output - correctly resolve to the real `.ts`/`.tsx`/`.mts`/`.cts` source file.
+
 CommonJS `require()` and dynamic `import()` are not analyzed yet.
 
 ---

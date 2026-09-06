@@ -5,9 +5,52 @@ import { TsConfigPaths } from './types';
 
 const extensions = ['.ts', '.tsx', '.js', '.jsx'];
 
+/**
+ * TypeScript's "nodenext"/"node16" module resolution requires relative
+ * ESM imports to name the *compiled output* extension, not the source
+ * file on disk - `import { x } from './util.js'` legitimately refers to
+ * `./util.ts`. Maps each such output extension to the source extension(s)
+ * that could produce it, checked before generic extension-appending so a
+ * project that genuinely has a same-named real `.js`/`.jsx`/etc. file
+ * (already handled by the exact-match check above this) isn't affected.
+ */
+const SOURCE_EXTENSIONS_FOR_OUTPUT_EXTENSION: Record<string, string[]> = {
+    '.js': ['.ts', '.tsx'],
+    '.jsx': ['.tsx'],
+    '.mjs': ['.mts'],
+    '.cjs': ['.cts'],
+};
+
+function resolveOutputExtensionSpecifier(base: string): string | null {
+    const outputExt = path.extname(base);
+    const sourceExtensions = SOURCE_EXTENSIONS_FOR_OUTPUT_EXTENSION[outputExt];
+
+    if (!sourceExtensions) {
+        return null;
+    }
+
+    const withoutExt = base.slice(0, -outputExt.length);
+
+    for (const sourceExt of sourceExtensions) {
+        const candidate = `${withoutExt}${sourceExt}`;
+
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            return path.normalize(candidate);
+        }
+    }
+
+    return null;
+}
+
 function resolveFile(base: string): string | null {
     if (fs.existsSync(base) && fs.statSync(base).isFile()) {
         return path.normalize(base);
+    }
+
+    const outputExtensionMatch = resolveOutputExtensionSpecifier(base);
+
+    if (outputExtensionMatch) {
+        return outputExtensionMatch;
     }
 
     for (const ext of extensions) {

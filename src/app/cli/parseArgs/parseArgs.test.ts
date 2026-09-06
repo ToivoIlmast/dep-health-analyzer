@@ -100,4 +100,31 @@ describe('parseArgs', () => {
 
         expect(mockedParseMode).toHaveBeenCalledWith(expect.anything(), MODES.FULL);
     });
+
+    it('resolves history\'s default baseline sampleSize-1 commits back, not a fixed HEAD~1', () => {
+        setArgv('history', '--points', '25');
+        mockedParseCommand.mockReturnValue(CLI_COMMANDS.HISTORY);
+
+        parseArgs({});
+
+        expect(mockedResolveBaselineRef).toHaveBeenCalledWith(undefined, 'HEAD~24');
+    });
+
+    it('still passes an explicit --baseline through for history, ignoring the computed fallback', () => {
+        setArgv('history', '--baseline', 'main', '--points', '25');
+        mockedParseCommand.mockReturnValue(CLI_COMMANDS.HISTORY);
+
+        parseArgs({});
+
+        expect(mockedResolveBaselineRef).toHaveBeenCalledWith('main', 'HEAD~24');
+    });
+
+    it('does not pass a history-specific fallback for the regression command', () => {
+        setArgv('regression');
+        mockedParseCommand.mockReturnValue(CLI_COMMANDS.REGRESSION);
+
+        parseArgs({});
+
+        expect(mockedResolveBaselineRef).toHaveBeenCalledWith(undefined);
+    });
 });
