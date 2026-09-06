@@ -78,6 +78,9 @@
             },
             "severity": "error",
             "maxSize": 10
+        },
+        "typescript": {
+            "includeTypeOnlyImports": false
         }
     }
 }
