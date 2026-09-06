@@ -57,7 +57,7 @@ describe('routeCommand', () => {
         });
     });
 
-    it('threads features.typescript.includeTypeOnlyImports through to analyzeCycles', async () => {
+    it('threads features.scc.typescript.includeTypeOnlyImports through to analyzeCycles', async () => {
         const analyzeCyclesMock = analyzeCycles as jest.Mock;
 
         analyzeCyclesMock.mockResolvedValue(false);
@@ -71,14 +71,50 @@ describe('routeCommand', () => {
             },
             {
                 features: {
-                    scc: { enabled: true },
-                    typescript: { includeTypeOnlyImports: true },
+                    scc: { enabled: true, typescript: { includeTypeOnlyImports: true } },
                 },
             }
         );
 
         expect(analyzeCyclesMock).toHaveBeenCalledWith(
             expect.objectContaining({ includeTypeOnlyImports: true })
+        );
+    });
+
+    it('lets cycles and regression have independent includeTypeOnlyImports values', async () => {
+        const analyzeCyclesMock = analyzeCycles as jest.Mock;
+        const analyzeRegressionMock = jest.mocked(analyzeRegression);
+
+        analyzeCyclesMock.mockResolvedValue(false);
+        analyzeRegressionMock.mockResolvedValue({ failed: false, findings: [] });
+
+        const config = {
+            features: {
+                scc: { enabled: true, typescript: { includeTypeOnlyImports: true } },
+                regression: { enabled: true, typescript: { includeTypeOnlyImports: false } },
+            },
+        };
+
+        await routeCommand(
+            { command: CLI_COMMANDS.CYCLES, target: './src', mode: MODES.FULL, ai: false },
+            config
+        );
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.REGRESSION,
+                target: './src',
+                baselineRef: 'HEAD~1',
+                mode: MODES.FULL,
+                ai: false,
+            },
+            config
+        );
+
+        expect(analyzeCyclesMock).toHaveBeenCalledWith(
+            expect.objectContaining({ includeTypeOnlyImports: true })
+        );
+        expect(analyzeRegressionMock).toHaveBeenCalledWith(
+            expect.objectContaining({ includeTypeOnlyImports: false })
         );
     });
 

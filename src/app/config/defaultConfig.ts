@@ -52,6 +52,10 @@ export const defaultConfig = {
                     },
                 },
             },
+
+            typescript: {
+                includeTypeOnlyImports: false,
+            },
         },
 
         scc: {
@@ -66,10 +70,10 @@ export const defaultConfig = {
             },
             severity: 'error',
             maxSize: 10,
-        },
 
-        typescript: {
-            includeTypeOnlyImports: false,
+            typescript: {
+                includeTypeOnlyImports: false,
+            },
         },
     },
 } as const;

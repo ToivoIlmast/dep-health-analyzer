@@ -11,7 +11,6 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
     const { command, target, mode, ai } = args;
 
     const results: boolean[] = [];
-    const includeTypeOnlyImports = config.features?.typescript?.includeTypeOnlyImports ?? false;
 
     switch (command) {
         case CLI_COMMANDS.CYCLES: {
@@ -28,7 +27,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 enableHtmlReport: config.features?.scc?.reporting?.html?.enabled ?? true,
                 htmlReportOutputPath:
                     config.features?.scc?.reporting?.html?.outputPath ?? './reports/cycles.html',
-                includeTypeOnlyImports,
+                includeTypeOnlyImports: sccConfig.typescript?.includeTypeOnlyImports ?? false,
             });
 
             results.push(!!result);
@@ -67,7 +66,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                     config.features?.regression?.reporting?.html?.outputPath ??
                     './reports/regression.html',
                 scopes: config.features?.regression?.scopes,
-                includeTypeOnlyImports,
+                includeTypeOnlyImports: regressionConfig.typescript?.includeTypeOnlyImports ?? false,
             });
 
             if (ai === true && regressionConfig.ai?.enabled) {
@@ -127,7 +126,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 isHtmlReportingEnabled: historyConfig?.reporting?.html?.enabled ?? true,
                 htmlReportOutputPath:
                     historyConfig?.reporting?.html?.outputPath ?? './dep-health-reports/history.html',
-                includeTypeOnlyImports,
+                includeTypeOnlyImports: regressionConfig?.typescript?.includeTypeOnlyImports ?? false,
             });
 
             if (ai === true && regressionConfig?.ai?.enabled) {

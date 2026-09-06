@@ -246,6 +246,18 @@
                             },
 
                             "additionalProperties": false
+                        },
+
+                        "typescript": {
+                            "type": "object",
+
+                            "properties": {
+                                "includeTypeOnlyImports": {
+                                    "type": "boolean"
+                                }
+                            },
+
+                            "additionalProperties": false
                         }
                     },
 
@@ -301,18 +313,18 @@
 
                         "maxSize": {
                             "type": "number"
-                        }
-                    },
+                        },
 
-                    "additionalProperties": false
-                },
+                        "typescript": {
+                            "type": "object",
 
-                "typescript": {
-                    "type": "object",
+                            "properties": {
+                                "includeTypeOnlyImports": {
+                                    "type": "boolean"
+                                }
+                            },
 
-                    "properties": {
-                        "includeTypeOnlyImports": {
-                            "type": "boolean"
+                            "additionalProperties": false
                         }
                     },
 
