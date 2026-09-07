@@ -88,7 +88,7 @@ These control how a new dependency gets classified:
 - **`sibling`** — the two files live in the exact same directory. Always this, regardless of thresholds.
 - **`internal`** — the files share at least `internalDepth` path segments, and the dependency doesn't reach more than 1 level deeper past that shared point.
 - **`deep-internal`** — the files share at least `internalDepth` path segments, but the dependency reaches `deepInternalResidualDepth` or more levels deeper — i.e. it reaches into another module's internals instead of a shallow/public entry point.
-- **`cross-boundary`** — anything that doesn't match the above. The files don't share enough of a common path to be considered "the same area".
+- **`cross-boundary`** — anything that doesn't match the above. Usually this means the files don't share enough of a common path to be considered "the same area" - but a same-area pair can also land here if its `residualDepth` falls in neither band above (see the gap noted just below).
 
 Raising `internalDepth` makes the tool more willing to call something `cross-boundary` (harder to qualify as "internal"). Lowering `deepInternalResidualDepth` makes it more sensitive to deep internal reaches.
 

@@ -6,6 +6,13 @@ import { getAIErrorMessage } from './getAIErrorMessage';
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
+// Matches both the Ollama client's own default (`http://127.0.0.1:11434`,
+// see the `ollama` package's `defaultHost`) and dep-health's own generated
+// `--init` config default (`defaultConfig.ts`) - shown only when a config
+// omits `host` outright, so the banner never prints the literal string
+// "undefined" for a value that is, in practice, never actually unset.
+const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
+
 const STREAM_TIMEOUT_MS = 1_200_000; // 20 min
 
 interface IGenerateAISummary {
@@ -28,7 +35,7 @@ export async function generateAISummary(args: IGenerateAISummary): Promise<void>
     console.log('\nAI Configuration');
     console.log(`Provider: ${aiConfig?.provider}`);
     console.log(`Model:    ${aiConfig?.model}`);
-    console.log(`Server:   ${aiConfig?.host}`);
+    console.log(`Server:   ${aiConfig?.host ?? DEFAULT_OLLAMA_HOST}`);
 
     const started = Date.now();
     const spinner = ora('\nGenerating AI summary...').start();

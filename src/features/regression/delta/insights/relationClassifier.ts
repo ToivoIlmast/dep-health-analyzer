@@ -82,7 +82,17 @@ export function buildReasoning(args: {
             break;
 
         case 'cross-boundary':
-            reasoning.push('dependency crosses structural boundary');
+            // Unlike the other three cases, `cross-boundary` is not one
+            // condition - it's the fallthrough for two distinct paths
+            // through getRelation(): genuinely insufficient shared path
+            // segments, OR a same-area pair whose residualDepth lands in
+            // neither the `internal` nor `deep-internal` band (the
+            // documented gap - see docs/CONFIGURATION.md#thresholds). A
+            // single causal explanation ("insufficient shared directory
+            // structure") is factually wrong for the gap case, where
+            // commonDepth can be high. State the classification result,
+            // not an inferred cause.
+            reasoning.push('dependency classified as cross-boundary');
             break;
     }
 
