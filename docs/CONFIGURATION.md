@@ -148,7 +148,7 @@ Scopes let you override `severity`, `thresholds`, or skip findings entirely (`ig
 - If multiple scopes match the same file, they're applied **in the order they appear in your config** — a later scope's overrides win over an earlier one's for whatever it sets. Put broad rules first and narrower exceptions after them (like the example above: `src/app/**` and the `visualization`/`ci/reporting` carve-outs come before `src/features/regression/**`'s threshold override, so a file matching both a broad rule and a later, narrower one gets the narrower one's overrides for the properties it actually sets, without disturbing what the broad rule already set for other properties).
 - A `match` starting with `!` is matched literally, not treated as "negate the whole pattern" — minimatch's own negation feature is disabled here on purpose, since a natural-looking "everything except vendor" pattern like `!(src/vendor/**)` would otherwise silently match *everything, including `src/vendor` itself* (the leading `!` gets stripped, the near-never-matching literal remainder gets tested, and that false result gets negated back to true for almost any path). To exclude a directory, match it positively and use `ignore: true` instead — e.g. `{ "match": "src/vendor/**", "ignore": true }` — exactly like the `src/app/**` example above.
 
-**When to use scopes:** composition roots, infrastructure/wiring code, visualization, and reporting layers are usually fine analyzed loosely (`ignore: true` or relaxed severity) — they're expected to reach across the project by design. Core domain logic is usually where you want the default (or tighter) thresholds, since unexpected cross-boundary reaches there are more likely to be real architectural drift worth reviewing.
+**When to use scopes:** composition roots, infrastructure/wiring code, visualization, and reporting layers are usually fine analyzed loosely (`ignore: true` or relaxed severity) — they're expected to reach across the project by design. Core domain logic is usually where you want the default (or tighter) thresholds, since unexpected cross-boundary reaches there are more likely to be findings worth reviewing.
 
 #### The same thresholds mean different things in different projects
 
@@ -213,8 +213,8 @@ Sampling walks the **first-parent** chain (the mainline of merge commits, not ev
 
 Two strategies answer different questions, and both are always computed internally — `strategy` only picks what gets displayed, so switching between `incremental`, `cumulative`, and `both` never re-walks history:
 
-- **`incremental`** — each sampled point is compared against the *previous* sampled point. Answers "how much risk was introduced in this window of history?" A spike at one point means something worth reviewing happened specifically in that window.
-- **`cumulative`** — each sampled point is compared against the *first* sampled point (the baseline). Answers "how far have we drifted from the baseline overall?" Numbers tend to grow and then plateau rather than spike, since they're a running total, not a per-window count.
+- **`incremental`** — each sampled point is compared against the *previous* sampled point. Answers "how many findings were introduced in this window of history?" A spike at one point means something worth reviewing happened specifically in that window.
+- **`cumulative`** — each sampled point is compared against the *first* sampled point (the baseline). Answers "how many findings have accumulated relative to the baseline overall?" Numbers tend to grow and then plateau rather than spike, since they're a running total, not a per-window count.
 
 Example, sampling 6 points across dep-health's own history from its root commit to a later revision:
 
@@ -228,7 +228,7 @@ da75434   84     30           130
 04f7642   87     1            131
 ```
 
-`incremental` tapers off quickly (113 → 30 → 2 → 1 → 1) — most of the early history was one large burst of initial growth, and later commits mostly stopped introducing new cross-boundary risk. `cumulative` grows and plateaus (113 → 130 → 131 → 132 → 131) — the total distance from the root commit stays roughly the same once growth slows down. Neither number is "wrong" — they answer different questions about the same history.
+`incremental` tapers off quickly (113 → 30 → 2 → 1 → 1) — most of the early history was one large burst of initial growth, and later commits mostly stopped introducing new cross-boundary findings. `cumulative` grows and plateaus (113 → 130 → 131 → 132 → 131) — the total distance from the root commit stays roughly the same once growth slows down. Neither number is "wrong" — they answer different questions about the same history.
 
 ```bash
 dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode full

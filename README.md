@@ -101,11 +101,11 @@ Walk a range of Git history and see how regression findings evolved over time, i
 
 Samples a fixed number of commits along the first-parent chain (the mainline, skipping over merged branch commits) between a baseline and the current revision, then runs the same regression analysis at each sampled point using one of two comparison strategies:
 
-- **incremental** — each point compared against the previous sampled point, showing risk introduced within that window of history
-- **cumulative** — each point compared against the first sampled point, showing total drift accumulated since the baseline
+- **incremental** — each point compared against the previous sampled point, showing findings introduced within that window of history
+- **cumulative** — each point compared against the first sampled point, showing findings accumulated since the baseline
 - **both** — reports both series side by side
 
-Every mode includes a **Trend Summary** — a classification (stabilizing / worsening / volatile / stable) plus any detected spikes, so the raw per-point numbers don't have to be interpreted by eye.
+Every mode includes a **Trend Summary** — a classification (Increasing / Decreasing / Fluctuating / No Clear Trend) plus any detected spikes, so the raw per-point numbers don't have to be interpreted by eye.
 
 See [Configuration Reference](docs/CONFIGURATION.md#history-analysis) for every option, with examples.
 
@@ -190,7 +190,7 @@ Compare dependency structure between revisions and review newly introduced archi
 
 ![Regression report](docs/images/full-regression-report.png)
 
-_Reports summarize structural findings, assess potential risk, and suggest areas for review._
+_Reports summarize structural findings and identify areas for review._
 
 ---
 
@@ -228,7 +228,7 @@ Compare the current revision against the previous commit:
 npx dep-health-analyzer regression --baseline HEAD~1
 ```
 
-See how architectural risk evolved over the last 50 commits:
+See how findings changed over the last 50 commits:
 
 ```bash
 npx dep-health-analyzer history --baseline HEAD~50 --points 10
@@ -258,7 +258,7 @@ dep-health-analyzer can be used as a quality gate in CI pipelines.
 
 Configure severity levels and fail builds when architectural signals exceed the thresholds accepted by your team.
 
-Regression analysis helps surface structural changes during code review, cycle detection helps monitor long-term dependency health, and history analysis helps spot when architectural drift crept in across a range of commits.
+Regression analysis helps surface structural changes during code review, cycle detection helps monitor dependency cycles over the long term, and history analysis helps spot how findings changed across a range of commits.
 
 **`regression` and `history` both need full Git history**, not just the latest commit — they compare the current state against an older revision by checking it out into a temporary `git worktree`. Most CI providers do a shallow clone by default (depth 1), which only has the latest commit and breaks both commands: `history` fails clean with an explanatory error, and both commands warn when they can't find a real previous commit to compare against — but neither can conjure history that was never fetched, so the underlying comparison is still lost. On GitHub Actions, set `fetch-depth: 0` on the checkout step:
 
