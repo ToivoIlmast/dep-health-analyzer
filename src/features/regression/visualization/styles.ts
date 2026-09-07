@@ -62,8 +62,14 @@ export const styles = `
         border-radius: 8px;
     }
 
+    /*
+     * A distinct hue per relation type for scannability, deliberately NOT
+     * a good-to-bad gradient (no green="safe"/red="dangerous") - each
+     * color marks a structural category, not a verdict. relation stays a
+     * heuristic classification regardless of which color represents it.
+     */
     .internal {
-        color: #34d399;
+        color: #2dd4bf;
         font-weight: bold;
     }
 
@@ -73,12 +79,12 @@ export const styles = `
     }
 
     .cross-boundary {
-        color: #f87171;
+        color: #818cf8;
         font-weight: bold;
     }
 
     .deep-internal {
-        color: #fbbf24;
+        color: #a78bfa;
         font-weight: bold;
     }
 
@@ -106,41 +112,76 @@ export const styles = `
         color: #9ca3af;
     }
 
-    .warning {
-        color: #f87171;
+    /* Same categorical palette as the relation table above - one color
+       per relation type, not a good/bad gradient. */
+    .count-cross-boundary {
+        color: #818cf8;
     }
 
-    .info {
+    .count-sibling {
         color: #60a5fa;
     }
 
-    .success {
-        color: #34d399;
+    .count-internal {
+        color: #2dd4bf;
     }
 
-    .deep {
-        color: #fbbf24;
+    .count-deep-internal {
+        color: #a78bfa;
     }
 
-    .risk-high {
-        background: rgba(248, 113, 113, 0.12);
-        border-color: #f87171;
-        color: #f87171;
-    }
-    
-    .risk-moderate {
-        background: rgba(251, 191, 36, 0.12);
-        border-color: #fbbf24;
-        color: #fbbf24;
-    }
-    
-    .risk-low {
-        background: rgba(52, 211, 153, 0.12);
-        border-color: #34d399;
-        color: #34d399;
+    /*
+     * Concentration banner: a single hue (blue) at increasing intensity
+     * represents "a larger share of this change's findings are
+     * cross-boundary" - a measurement of magnitude, not a red/yellow/green
+     * verdict on architecture quality.
+     */
+    .concentration-high {
+        background: rgba(59, 130, 246, 0.16);
+        border-color: #3b82f6;
+        color: #3b82f6;
     }
 
-    .risk-banner {
+    .concentration-moderate {
+        background: rgba(96, 165, 250, 0.12);
+        border-color: #60a5fa;
+        color: #60a5fa;
+    }
+
+    .concentration-low {
+        background: rgba(147, 197, 253, 0.1);
+        border-color: #93c5fd;
+        color: #93c5fd;
+    }
+
+    .concentration-banner {
+        margin-top: 16px;
+        padding: 14px 18px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        border: 1px solid;
+    }
+
+    /*
+     * Trend banner (history): highlights a directional change as worth a
+     * look, without ranking one direction as better than another; "no
+     * clear trend" gets the quiet/muted styling since there's nothing to
+     * draw attention to.
+     */
+    .trend-notice {
+        background: rgba(96, 165, 250, 0.12);
+        border-color: #60a5fa;
+        color: #60a5fa;
+    }
+
+    .trend-quiet {
+        background: rgba(156, 163, 175, 0.08);
+        border-color: #9ca3af;
+        color: #9ca3af;
+    }
+
+    .trend-banner {
         margin-top: 16px;
         padding: 14px 18px;
         border-radius: 8px;

@@ -9,9 +9,9 @@ import { recommendations } from './sections/recommendations';
 import { regressionSummary } from './sections/regressionSummary';
 import { riskAssessment } from './sections/riskAssessment';
 import { styles } from './styles';
-import { RiskLevel } from './types';
+import { CrossBoundaryConcentration } from './types';
 
-type GetRiskLevelType = {
+type GetCrossBoundaryConcentrationType = {
     crossBoundaryCount: number;
     totalFindings: number;
 };
@@ -22,32 +22,37 @@ type GetRiskLevelType = {
  * matter how small the actual signal is) - verified against real history:
  * every single-cross-boundary change in dep-health's own commits landed at
  * 33-100%, while repeated signals (4+, 9+) landed at a much more stable
- * 15-45%. Below this count, risk stays Low regardless of percentage.
+ * 15-45%. Below this count, concentration stays Low regardless of percentage.
  */
-const MIN_CROSS_BOUNDARY_FOR_CONCERN = 2;
+const MIN_CROSS_BOUNDARY_FOR_NOTABLE_SHARE = 2;
 
 /**
- * Risk is the share of cross-boundary findings within this change
- * (architectural impact of the change), not within the whole project
- * (architectural density) — the same absolute change should read the
- * same regardless of how large the surrounding codebase happens to be.
+ * Measures the share of cross-boundary findings within this change
+ * (relative to the change itself), not within the whole project
+ * (relative to overall codebase size) — the same absolute change should
+ * read the same regardless of how large the surrounding codebase happens
+ * to be. This is a measurement of concentration, not an architectural
+ * verdict - the tool cannot know whether a given share is a problem for
+ * this specific project.
  */
-export function getRiskLevel(args: GetRiskLevelType): RiskLevel {
+export function getCrossBoundaryConcentration(
+    args: GetCrossBoundaryConcentrationType
+): CrossBoundaryConcentration {
     const { crossBoundaryCount, totalFindings } = args;
 
-    if (totalFindings === 0 || crossBoundaryCount < MIN_CROSS_BOUNDARY_FOR_CONCERN) {
-        return 'Low Architectural Risk';
+    if (totalFindings === 0 || crossBoundaryCount < MIN_CROSS_BOUNDARY_FOR_NOTABLE_SHARE) {
+        return 'Low Cross-Boundary Concentration';
     }
 
-    let riskLevel: RiskLevel = 'Low Architectural Risk';
+    let concentration: CrossBoundaryConcentration = 'Low Cross-Boundary Concentration';
     const percentage = Number(((crossBoundaryCount / totalFindings) * 100).toFixed(2));
     if (percentage > 15) {
-        riskLevel = 'High Architectural Risk';
+        concentration = 'High Cross-Boundary Concentration';
     } else if (percentage > 5) {
-        riskLevel = 'Moderate Architectural Risk';
+        concentration = 'Moderate Cross-Boundary Concentration';
     }
 
-    return riskLevel;
+    return concentration;
 }
 
 type BuildRegressionHtmlTemplate = {
@@ -84,10 +89,13 @@ export function buildRegressionHtmlTemplate(args: BuildRegressionHtmlTemplate): 
         topAreas,
     });
 
-    const riskLevel = getRiskLevel({ crossBoundaryCount, totalFindings: delta.length });
+    const concentration = getCrossBoundaryConcentration({
+        crossBoundaryCount,
+        totalFindings: delta.length,
+    });
     const riskAssessmentSection = riskAssessment({
         crossBoundaryCount,
-        riskLevel,
+        concentration,
     });
 
     const baselineInformationSection = baselineInformation({ target, baselineRef });

@@ -14,26 +14,24 @@ export function recommendations(args: RecommendationsArgs): string {
 
     if (crossBoundaryCount > 0) {
         items.push(`
-            Review ${crossBoundaryCount} cross-boundary dependencies.
-            Verify that boundary crossings are intentional and align with project architecture rules.
+            ${crossBoundaryCount} cross-boundary ${crossBoundaryCount === 1 ? 'dependency was' : 'dependencies were'} introduced in this change.
         `);
     }
 
     if (deepInternalCount > 0) {
         items.push(`
-            Review deep-internal dependencies.
-            Consider exposing public APIs instead of importing nested implementation details.
+            ${deepInternalCount} deep-internal ${deepInternalCount === 1 ? 'dependency reaches' : 'dependencies reach'} beyond a typical shallow entry point.
         `);
     }
 
     items.push(`
-        Review findings in the most affected area:
+        Most affected area:
         <strong>${escapeHtml(mostAffectedArea)}</strong>
         (${mostAffectedAreaCount} findings).
     `);
 
     return `
-        <h2>Suggested Review Actions</h2>
+        <h2>Findings Detail</h2>
 
         <ul>
             ${items.map((item) => `<li>${item}</li>`).join('')}

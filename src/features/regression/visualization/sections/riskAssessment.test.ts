@@ -1,34 +1,37 @@
 import { riskAssessment } from './riskAssessment';
 
 describe('riskAssessment', () => {
-    it('should render the risk level and cross-boundary count', () => {
+    it('should render the concentration level and cross-boundary count', () => {
         const html = riskAssessment({
-            riskLevel: 'High Architectural Risk',
+            concentration: 'High Cross-Boundary Concentration',
             crossBoundaryCount: 9,
         });
 
-        expect(html).toContain('High Architectural Risk');
-        expect(html).toContain('risk-high');
+        expect(html).toContain('High Cross-Boundary Concentration');
+        expect(html).toContain('concentration-high');
         expect(html).toContain('9 cross-boundary dependencies detected.');
     });
 
-    it('should map each risk level to its CSS class', () => {
-        expect(riskAssessment({ riskLevel: 'Low Architectural Risk', crossBoundaryCount: 0 })).toContain(
-            'risk-low'
-        );
+    it('should map each concentration level to its CSS class', () => {
         expect(
-            riskAssessment({ riskLevel: 'Moderate Architectural Risk', crossBoundaryCount: 6 })
-        ).toContain('risk-moderate');
+            riskAssessment({ concentration: 'Low Cross-Boundary Concentration', crossBoundaryCount: 0 })
+        ).toContain('concentration-low');
+        expect(
+            riskAssessment({
+                concentration: 'Moderate Cross-Boundary Concentration',
+                crossBoundaryCount: 6,
+            })
+        ).toContain('concentration-moderate');
     });
 
-    it('should link to the documentation explaining how risk is calculated, opening in a new tab', () => {
+    it('should link to the documentation explaining how the concentration is calculated, opening in a new tab', () => {
         const html = riskAssessment({
-            riskLevel: 'Low Architectural Risk',
+            concentration: 'Low Cross-Boundary Concentration',
             crossBoundaryCount: 0,
         });
 
         expect(html).toContain(
-            'https://github.com/ToivoIlmast/dep-health-analyzer/blob/master/docs/CONFIGURATION.md#risk-assessment-html-report'
+            'https://github.com/ToivoIlmast/dep-health-analyzer/blob/master/docs/CONFIGURATION.md#cross-boundary-concentration-html-report'
         );
         expect(html).toContain('target="_blank"');
         expect(html).toContain('rel="noopener noreferrer"');
