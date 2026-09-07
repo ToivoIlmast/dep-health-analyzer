@@ -57,6 +57,7 @@ Controls the `regression` command — comparing the current dependency graph aga
 | `thresholds.*` | see below | see below | Depth thresholds used to classify new dependencies. |
 | `scopes` | array | `[]` | Per-path overrides. See [Scopes](#scopes) below. |
 | `history.*` | see below | see below | Controls the `history` command. See [History Analysis](#history-analysis) below. |
+| `typescript.includeTypeOnlyImports` | `boolean` | `false` | Whether `import type`/`export type` count as real dependency edges for `regression`/`history`. See [`typescript.includeTypeOnlyImports`](#typescriptincludetypeonlyimports) below. |
 
 ### Severity and `failOn`
 
@@ -287,8 +288,19 @@ Controls the `cycles` command — dependency cycle / SCC detection.
 | `failOn` | `"info"` \| `"warning"` \| `"error"` | `"error"` | The command exits with code `1` if any cycle is detected and `failOn` isn't `"info"`. |
 | `reporting.html.enabled` | `boolean` | `true` | Same meaning as `regression.reporting.html.enabled`. |
 | `reporting.html.outputPath` | `string` | `"./dep-health-reports/scc.html"` | Where the HTML report is written. |
+| `typescript.includeTypeOnlyImports` | `boolean` | `false` | Whether `import type`/`export type` count as real dependency edges for `cycles`. Independent of `regression.typescript.includeTypeOnlyImports` - see [`typescript.includeTypeOnlyImports`](#typescriptincludetypeonlyimports) below. |
 
 > `severity` and `maxSize` are accepted by the schema and can be set without a validation error, but nothing in the current implementation reads them — they don't yet affect behavior. Documented here for accuracy rather than left silently undocumented; treat them as reserved for now, not as working options.
+
+---
+
+#### `typescript.includeTypeOnlyImports`
+
+`import type`/`export type` are fully erased at compile time - they produce no dependency at all in emitted or bundled output. By default they're excluded from the dependency graph entirely, so `cycles`/`regression`/`history` only see coupling that actually exists at runtime. A cycle or cross-boundary reach that exists *purely* through type-only imports won't be flagged.
+
+Set `includeTypeOnlyImports: true` if you'd rather treat type-level coupling the same as a runtime dependency (e.g. you consider a type-only circular reference between two modules worth knowing about too, even though it compiles away).
+
+This field is nested inside each feature - `features.regression.typescript.includeTypeOnlyImports` and `features.scc.typescript.includeTypeOnlyImports` - rather than being one global switch, so `cycles` and `regression`/`history` (which share the same setting, since `history` reuses `regression`'s config) can be tuned independently. A reasonable case for different values: type-only circular references might be worth `cycles` catching as an early code-smell signal, while `regression`/`history` stay strict about only real runtime coupling. Keeping it nested under `typescript` (rather than a flat `includeTypeOnlyImports` field directly on each feature) also marks it clearly as TypeScript-specific - a future language integration (e.g. Python) simply wouldn't have this section, rather than an unexplained option that doesn't apply.
 
 ---
 
@@ -334,13 +346,19 @@ Controls the `cycles` command — dependency cycle / SCC detection.
                 "reporting": {
                     "html": { "enabled": true, "outputPath": "./dep-health-reports/history.html" }
                 }
+            },
+            "typescript": {
+                "includeTypeOnlyImports": false
             }
         },
         "scc": {
             "enabled": true,
             "mode": "compact",
             "failOn": "error",
-            "reporting": { "html": { "enabled": true, "outputPath": "./dep-health-reports/scc.html" } }
+            "reporting": { "html": { "enabled": true, "outputPath": "./dep-health-reports/scc.html" } },
+            "typescript": {
+                "includeTypeOnlyImports": false
+            }
         }
     }
 }

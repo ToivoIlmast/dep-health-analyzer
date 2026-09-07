@@ -49,6 +49,38 @@ describe('extractImports', () => {
         }
     });
 
+    describe('type-only imports/exports', () => {
+        const typeOnly = path.resolve('src/core/scanner/__fixtures__/extract/type-only.ts');
+
+        it('excludes `import type`/`export type` by default', () => {
+            const result = extractImports(typeOnly);
+
+            expect(result).toEqual(['./b-value', './d-value']);
+        });
+
+        it('excludes them explicitly when includeTypeOnlyImports is false', () => {
+            const result = extractImports(typeOnly, { includeTypeOnlyImports: false });
+
+            expect(result).toEqual(['./b-value', './d-value']);
+        });
+
+        it('includes them when includeTypeOnlyImports is true', () => {
+            const result = extractImports(typeOnly, { includeTypeOnlyImports: true });
+
+            expect(result).toEqual(['./a-type', './b-value', './c-type', './d-value']);
+        });
+
+        it('excludes a declaration where every named specifier is individually marked `type` (no whole-declaration `type` keyword) - the exact shape @typescript-eslint/consistent-type-imports\' inline-type-imports autofix produces, and is equally erased at compile time', () => {
+            const inlineTypeOnly = path.resolve(
+                'src/core/scanner/__fixtures__/extract/inline-type-only.ts'
+            );
+
+            const result = extractImports(inlineTypeOnly);
+
+            expect(result).toEqual(['./mixed-inline-type', './mixed-inline-type-export']);
+        });
+    });
+
     // TODO:
     /*
     it('should ignore exports without module specifier');

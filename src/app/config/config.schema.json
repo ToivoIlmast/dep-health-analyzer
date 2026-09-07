@@ -246,6 +246,18 @@
                             },
 
                             "additionalProperties": false
+                        },
+
+                        "typescript": {
+                            "type": "object",
+
+                            "properties": {
+                                "includeTypeOnlyImports": {
+                                    "type": "boolean"
+                                }
+                            },
+
+                            "additionalProperties": false
                         }
                     },
 
@@ -301,6 +313,18 @@
 
                         "maxSize": {
                             "type": "number"
+                        },
+
+                        "typescript": {
+                            "type": "object",
+
+                            "properties": {
+                                "includeTypeOnlyImports": {
+                                    "type": "boolean"
+                                }
+                            },
+
+                            "additionalProperties": false
                         }
                     },
 

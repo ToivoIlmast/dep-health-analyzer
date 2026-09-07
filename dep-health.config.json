@@ -64,6 +64,9 @@
                 "sampleSize": 10,
                 "strategy": "incremental",
                 "mode": "compact"
+            },
+            "typescript": {
+                "includeTypeOnlyImports": false
             }
         },
         "scc": {
@@ -77,7 +80,10 @@
                 }
             },
             "severity": "error",
-            "maxSize": 10
+            "maxSize": 10,
+            "typescript": {
+                "includeTypeOnlyImports": false
+            }
         }
     }
 }

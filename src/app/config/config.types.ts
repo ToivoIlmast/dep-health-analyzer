@@ -61,6 +61,9 @@ export interface ConfigSchema {
           };
         };
       };
+      typescript?: {
+        includeTypeOnlyImports?: boolean;
+      };
     };
     scc?: {
       enabled?: boolean;
@@ -74,6 +77,9 @@ export interface ConfigSchema {
       };
       severity?: "info" | "warning" | "error";
       maxSize?: number;
+      typescript?: {
+        includeTypeOnlyImports?: boolean;
+      };
     };
   };
 }
