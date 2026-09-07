@@ -36,7 +36,7 @@ export function buildHistoryPrompt(args: IBuildHistoryPrompt): string {
 
     Observation meanings
 
-    - trendClassification: describes how the number of findings introduced per sampled window changed over the range - "Decreasing" means it dropped, "Increasing" means it grew or stayed elevated, "Fluctuating" means no clear direction but high variance, "No Clear Trend" means little to no change (including when there isn't enough sampled data to tell).
+    - trendClassification: compares the average number of findings introduced per window in the first half of the sampled range to the second half - "Decreasing" means the second half averaged at least 30% lower, "Increasing" means it averaged at least 30% higher (or went from zero to nonzero), "Fluctuating" means neither of those but the values varied widely across the whole range, "No Clear Trend" means neither a clear rise nor fall between the two halves and no high variability either - this also covers a range with too few sampled points to compare at all.
     - sampledPointCount: how many commits were sampled across the analyzed range.
     - peakWindow: the single sampled point with the highest number of findings introduced in that window - not necessarily a "spike" on its own.
     - spikes: sampled points where the findings introduced were unusually high compared to the rest of the range - each has a commit, a date, and a finding count.

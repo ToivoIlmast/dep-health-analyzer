@@ -137,4 +137,23 @@ describe('generateAISummary', () => {
         consoleErrorSpy.mockRestore();
         exitSpy.mockRestore();
     });
+
+    it('should print the real default Ollama host in the banner, not the literal string "undefined", when host is left unset', async () => {
+        mockChat.mockResolvedValue(makeStream([{ message: { content: 'Summary' }, done: true }]));
+        const stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        const configWithoutHost = { provider: aiConfig.provider, model: aiConfig.model, language: aiConfig.language };
+
+        await generateAISummary({ prompt: 'test prompt', aiConfig: configWithoutHost });
+
+        const serverLine = consoleLogSpy.mock.calls.map((call) => call[0]).find((line) => typeof line === 'string' && line.startsWith('Server:'));
+
+        expect(serverLine).toBeDefined();
+        expect(serverLine).not.toContain('undefined');
+        expect(serverLine).toContain('http://localhost:11434');
+
+        stdoutSpy.mockRestore();
+        consoleLogSpy.mockRestore();
+    });
 });

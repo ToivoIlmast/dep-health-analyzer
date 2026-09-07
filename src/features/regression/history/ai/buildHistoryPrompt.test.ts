@@ -57,7 +57,7 @@ describe('buildHistoryPrompt', () => {
 
         const observationMeaningsLine = prompt
             .split('\n')
-            .find((line) => line.includes('trendClassification: describes'));
+            .find((line) => line.includes('trendClassification: compares'));
 
         expect(observationMeaningsLine).toBeDefined();
         expect(observationMeaningsLine?.toLowerCase()).not.toContain('risk');
@@ -66,5 +66,32 @@ describe('buildHistoryPrompt', () => {
         expect(prompt).toContain(
             'describe an increase or decrease in findings as architecture getting worse or better'
         );
+    });
+
+    it('describes trendClassification in terms that actually match classifyTrend() - a flat-but-high series is "No Clear Trend", not "Increasing"', () => {
+        // A real inaccuracy an independent audit caught: the prompt used to
+        // say "Increasing" means a series "grew OR STAYED ELEVATED" - but
+        // classifyTrend() compares the first half's average to the second
+        // half's, so a flat-but-high series (e.g. [50,50,50,50]) is "stable"
+        // ("No Clear Trend"), never "worsening" ("Increasing"). Likewise
+        // "No Clear Trend" used to be defined as "little to no change",
+        // which doesn't hold for a genuinely oscillating series that still
+        // lands there because its coefficient of variation stays under the
+        // volatility threshold.
+        const prompt = buildHistoryPrompt({
+            analyseData: { observations: {} },
+            aiConfig: { provider: 'ollama', language: 'English' },
+        });
+
+        const observationMeaningsLine = prompt
+            .split('\n')
+            .find((line) => line.includes('trendClassification: compares'))!;
+
+        expect(observationMeaningsLine).toBeDefined();
+        expect(observationMeaningsLine).not.toContain('grew or stayed elevated');
+        expect(observationMeaningsLine).not.toContain('little to no change');
+        expect(observationMeaningsLine).toContain('first half');
+        expect(observationMeaningsLine).toContain('second half');
+        expect(observationMeaningsLine).toContain('30%');
     });
 });

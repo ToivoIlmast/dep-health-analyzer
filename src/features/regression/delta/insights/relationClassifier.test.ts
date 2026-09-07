@@ -133,7 +133,7 @@ describe('relationClassifier', () => {
             expect(reasoning).toContain('deep internal traversal detected');
         });
 
-        it('should build reasoning for cross boundary dependency', () => {
+        it('should build reasoning for cross boundary dependency (genuinely different areas)', () => {
             const reasoning = buildReasoning({
                 relation: 'cross-boundary',
                 commonDepth: 1,
@@ -141,7 +141,25 @@ describe('relationClassifier', () => {
                 commonParent: 'src',
             });
 
-            expect(reasoning).toContain('dependency crosses structural boundary');
+            expect(reasoning).toContain('dependency classified as cross-boundary');
+        });
+
+        it('should build the same neutral reasoning for cross boundary via the documented residualDepth gap (high commonDepth)', () => {
+            // Unlike a causal explanation ("insufficient shared directory
+            // structure"), which is false here - commonDepth is high, well
+            // above what any reasonable internalDepth would require - a
+            // result-stating reasoning line is accurate for BOTH paths to
+            // `cross-boundary`. See docs/CONFIGURATION.md#thresholds for the
+            // gap this reproduces (a same-area pair whose residualDepth
+            // lands in neither the `internal` nor `deep-internal` band).
+            const reasoning = buildReasoning({
+                relation: 'cross-boundary',
+                commonDepth: 5,
+                residualDepth: 2,
+                commonParent: 'src/features/commerce/checkout/payment',
+            });
+
+            expect(reasoning).toContain('dependency classified as cross-boundary');
         });
 
         it('should include common depth, residual depth and common parent', () => {

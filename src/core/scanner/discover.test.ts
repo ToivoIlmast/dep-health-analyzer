@@ -24,6 +24,37 @@ describe('discoverFiles', () => {
         expect(hasNodeModules).toBe(false);
     });
 
+    describe('ignoring test files across all scanned extensions', () => {
+        // A real, confirmed asymmetry: only `.test.ts`/`.spec.ts` were ever
+        // excluded, so `.test.tsx` (a very common React component test
+        // pattern), `.test.js`, `.test.jsx`, and their `.spec.*`
+        // counterparts all leaked into the dependency graph as ordinary
+        // source files - polluting findings/cycles for JS and .tsx-tested
+        // projects while TS-only-tested projects were unaffected.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-testfiles-'));
+            fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+            for (const ext of ['ts', 'tsx', 'js', 'jsx', 'mts', 'cts']) {
+                fs.writeFileSync(path.join(root, 'src', `a.test.${ext}`), '');
+                fs.writeFileSync(path.join(root, 'src', `b.spec.${ext}`), '');
+            }
+            fs.writeFileSync(path.join(root, 'src', 'real.ts'), '');
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('excludes .test.* and .spec.* for every scanned extension', async () => {
+            const result = await discoverFiles(root);
+            const names = result.map((file) => path.basename(file)).sort();
+
+            expect(names).toEqual(['real.ts']);
+        });
+    });
+
     describe('ignoring non-source directories', () => {
         // Real directories with real files, not just an assertion against a
         // fixture that never contained the directory in the first place -
