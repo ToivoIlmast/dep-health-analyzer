@@ -1,4 +1,5 @@
 import { TrendInsights } from '../analyze/getTrendInsights';
+import { getTrendLabel } from '../analyze/describeTrend';
 import { HistoryPromptData } from './types';
 
 /**
@@ -17,12 +18,16 @@ export function buildHistoryPromptData(args: {
     const { insights, pointCount } = args;
 
     const observations: HistoryPromptData['observations'] = {
-        trendClassification: insights.classification,
+        // The AI never sees the raw internal classification id
+        // (e.g. "worsening") - only the neutral label, so it can't
+        // reconstruct or imply an architectural judgement the tool never
+        // made. See describeTrend.ts for why.
+        trendClassification: getTrendLabel(insights.classification),
         sampledPointCount: pointCount,
     };
 
     if (insights.worstWindow) {
-        observations.worstWindow = {
+        observations.peakWindow = {
             commit: insights.worstWindow.commit.sha.slice(0, 7),
             date: insights.worstWindow.commit.date.slice(0, 10),
             findingCount: insights.worstWindow.value,

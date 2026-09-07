@@ -11,19 +11,30 @@ describe('buildHistoryPromptData', () => {
 
         const result = buildHistoryPromptData({ insights, pointCount: 10 });
 
-        expect(result.observations.trendClassification).toBe('stable');
+        expect(result.observations.trendClassification).toBe('No Clear Trend');
         expect(result.observations.sampledPointCount).toBe(10);
     });
 
-    it('omits worstWindow when there is none', () => {
+    it('sends the AI the neutral label, never the raw internal classification id - this is the direct fix for a real case where the AI turned a heuristic finding-count increase into "the risk increased over time" for an architecturally clean project', () => {
+        const insights: TrendInsights = { classification: 'worsening', spikes: [], worstWindow: null };
+
+        const result = buildHistoryPromptData({ insights, pointCount: 5 });
+
+        expect(result.observations.trendClassification).toBe('Increasing');
+        expect(result.observations.trendClassification).not.toBe('worsening');
+        expect(result.observations.trendClassification?.toLowerCase()).not.toContain('risk');
+        expect(result.observations.trendClassification?.toLowerCase()).not.toContain('worsening');
+    });
+
+    it('omits peakWindow when there is none', () => {
         const insights: TrendInsights = { classification: 'stable', spikes: [], worstWindow: null };
 
         const result = buildHistoryPromptData({ insights, pointCount: 5 });
 
-        expect(result.observations.worstWindow).toBeUndefined();
+        expect(result.observations.peakWindow).toBeUndefined();
     });
 
-    it('includes a truncated commit sha and date for worstWindow', () => {
+    it('includes a truncated commit sha and date for peakWindow, under the "peak" name - not "worst" - since the AI should never see a value judgement about which window was "worst"', () => {
         const insights: TrendInsights = {
             classification: 'worsening',
             spikes: [],
@@ -32,11 +43,12 @@ describe('buildHistoryPromptData', () => {
 
         const result = buildHistoryPromptData({ insights, pointCount: 8 });
 
-        expect(result.observations.worstWindow).toEqual({
+        expect(result.observations.peakWindow).toEqual({
             commit: 'abcdef1',
             date: '2026-01-01',
             findingCount: 42,
         });
+        expect(result.observations).not.toHaveProperty('worstWindow');
     });
 
     it('omits spikes when there are none', () => {
