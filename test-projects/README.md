@@ -1,0 +1,103 @@
+# External Validation Corpus
+
+This directory holds 31 small, realistic JavaScript/TypeScript fixture projects used to validate
+`dep-health-analyzer` against a variety of real project shapes - frameworks, ecosystems, monorepo
+layouts, and deliberately tricky dependency-graph structures - instead of only against the
+synthetic unit-test fixtures under `src/**/__tests__`.
+
+**These fixtures are validation environments, not architectural reference implementations.**
+Fixture and directory names (e.g. `layered-app`, `messy-app`, `nightmare-app`, `same-directory-complex`)
+describe the *shape* of a project's dependency graph - they are not a claim that the shape is
+architecturally correct or incorrect, good or bad. `dep-health-analyzer` itself does not know what
+your intended architecture is; neither does this corpus.
+
+## What is and isn't here
+
+- Nothing under `test-projects/` is part of the npm package or the production build. It is entirely
+  ignored by git (`.gitignore`) except for this file and is regenerated on demand from the scripts
+  in `scripts/gen-*.mjs`.
+- Creating and validating this corpus did not change any production analyzer code, CLI behavior, or
+  config schema. It is purely an external test harness living alongside the repository.
+- Each fixture is a real, standalone git repository (its own `.git`, its own commit history) with a
+  realistic `package.json`, `tsconfig.json` (where applicable), and `dep-health.config.json`.
+
+## Regenerating the corpus
+
+Fixtures are produced by small Node.js generator scripts, not hand-authored file by file, so the
+whole corpus (or any single fixture) can be regenerated deterministically:
+
+```bash
+node scripts/gen-basic.mjs        # vanilla-js, vanilla-ts, node-commonjs, node-esm
+node scripts/gen-frontend.mjs     # react-js, react-ts, vue-js, vue-ts, angular-ts
+node scripts/gen-backend.mjs      # express-js, express-ts, nestjs-ts
+node scripts/gen-fullstack.mjs    # nextjs-ts, vite-react-ts, vite-vue-ts, svelte-ts, astro-ts
+node scripts/gen-libraries.mjs    # typescript-library, typescript-cli
+node scripts/gen-monorepos.mjs    # monorepo-npm, monorepo-pnpm
+node scripts/gen-structural.mjs   # layered-app, feature-oriented-app, flat-app, messy-app
+node scripts/gen-stress.mjs       # cyclic-app, nightmare-app
+node scripts/gen-traps.mjs        # same-directory-complex, deep-but-valid, cross-boundary-but-valid
+node scripts/gen-history-lab.mjs  # history-laboratory
+node scripts/gen-readmes.mjs      # adds/refreshes each fixture's own README.md
+```
+
+All generators share `scripts/test-projects-toolkit.mjs` (file writing, git init/commit helpers,
+`package.json`/`tsconfig.json`/`dep-health.config.json` scaffolding). Regenerating a fixture deletes
+and recreates its directory from scratch, including its git history - the generator scripts are the
+source of truth, not the files on disk.
+
+## Running dep-health against a fixture
+
+From the repository root, after building the CLI (`npm run build`):
+
+```bash
+node dist/app/cli/index.js regression --path test-projects/<name>
+node dist/app/cli/index.js cycles --path test-projects/<name>
+node dist/app/cli/index.js history --path test-projects/<name> --points <N>
+```
+
+Most fixtures need no `npm install` (they only reference `typescript`/framework type packages as
+`devDependencies` for realism; the analyzer itself resolves relative imports without needing
+`node_modules` present). Monorepo fixtures reference workspace packages by alias
+(`@corpus/*`) and are the intended way to exercise the analyzer's current single-tsconfig scan scope.
+
+## What the corpus covers
+
+- **Ecosystems / module systems:** plain ESM, CommonJS, TypeScript with `import type`.
+- **Frameworks:** React, Vue, Angular, Express, NestJS, Next.js, Vite (React/Vue), Svelte, Astro -
+  in both JavaScript and TypeScript where the framework supports it.
+- **Libraries/tooling:** a small npm-library-shaped project and a CLI-shaped project.
+- **Monorepos:** npm workspaces and pnpm workspaces, each with per-package `tsconfig.json`.
+- **Structural diversity:** layered, feature-oriented, flat, and "messy" (organically grown,
+  inconsistent) layouts.
+- **Graph stress:** a fixture whose history introduces and removes several distinct cycle shapes,
+  and a larger synthetic fixture combining a ring cycle, a high-fan-in hub module, a deep chain, and
+  cross-directory fan-out.
+- **Heuristic traps:** fixtures built specifically to probe assumptions the analyzer must not make -
+  that same-directory implies no cycles, that path depth implies a violation, or that reaching across
+  directories implies bad design.
+- **History laboratory:** one fixture with an exact, documented 12-commit sequence, each commit
+  isolating one class of structural event (add module, add dependency, introduce/remove cycle,
+  type-only dependency, file move, cross-directory dependency, refactor, batches of change).
+
+Every fixture's own `README.md` documents its purpose, structural characteristics, the history
+events in its commit log, and the analyzer observations expected from it - phrased as observations
+("a cycle should appear at commit N"), never as verdicts ("this fixture has bad architecture").
+
+## Known, pre-existing limitations this corpus deliberately surfaces
+
+These are documented, already-tracked characteristics of the analyzer, not new bugs discovered by
+building this corpus:
+
+- **`.vue`, `.svelte`, and `.astro` files are never scanned.** `src/core/scanner/discover.ts` globs
+  only `.js/.jsx/.ts/.tsx`. Any dependency edge that exists solely inside a single-file component's
+  template/script block is invisible to the analyzer. See `vue-js`, `vue-ts`, `vite-vue-ts`,
+  `svelte-ts`, and `astro-ts`.
+- **CommonJS `require()` calls are not resolved as dependency edges.** See `node-commonjs`.
+- **A single project-wide `tsconfig.json` is loaded per scan; cross-package aliases in a monorepo are
+  not resolved.** See `monorepo-npm` and `monorepo-pnpm`.
+
+## Bug reports found via this corpus
+
+Any analyzer bug found while validating fixtures against dep-health is tracked in the project's
+memory/audit notes, not fixed as part of building this corpus - the corpus's job is to make such
+issues reproducible, not to fix them in the same pass.
