@@ -151,8 +151,8 @@ AI summaries may use the following terms:
 | **Hotspot**                  | File with the largest number of newly introduced dependencies.                                 |
 | **Connected areas**          | Project areas connected by newly introduced dependencies.                                      |
 | **Deep-internal dependency** | Dependency that traverses deeply into another module instead of using its public entry points. |
-| **Trend classification**     | (`history` only) Stabilizing, worsening, volatile, or stable — see [History Analysis](#history-analysis-experimental). |
-| **Spike**                    | (`history` only) A sampled point with unusually high risk compared to the rest of the range.   |
+| **Trend classification**     | (`history` only) Increasing, Decreasing, Fluctuating, or No Clear Trend — how the number of findings per sampled window changed, see [History Analysis](#history-analysis-experimental). |
+| **Spike**                    | (`history` only) A sampled point with an unusually high finding count compared to the rest of the range. |
 
 These terms describe the analysis itself and are independent of the analyzed project.
 
@@ -169,8 +169,8 @@ Reports provide:
 - architectural metrics
 - dependency insights
 - regression summaries
-- risk assessment information (see [Risk Assessment](docs/CONFIGURATION.md#risk-assessment-html-report) for how it's calculated)
-- architectural risk trend charts across sampled Git history
+- cross-boundary concentration information (see [Cross-Boundary Concentration](docs/CONFIGURATION.md#cross-boundary-concentration-html-report) for how it's calculated)
+- findings trend charts across sampled Git history
 
 ---
 
