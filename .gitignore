@@ -36,3 +36,11 @@ src/app/config/validateConfig.generated.js
 # Personal architecture/overview notes - not for the repo
 architecture.md
 audit-report-v0.8.1.md
+
+# External validation corpus - generated fixture projects, regenerated
+# locally via scripts/gen-*.mjs. Not part of the npm package or
+# production build. The explanatory README is tracked; the generated
+# fixture projects themselves (and their own per-fixture READMEs,
+# regenerated alongside them) are not.
+test-projects/*
+!test-projects/README.md
