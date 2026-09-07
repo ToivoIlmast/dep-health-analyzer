@@ -1,13 +1,10 @@
 import { AggregatedFinding } from './types';
 
-const GREEN = '\x1b[32m';
-const RESET = '\x1b[0m';
-
 export function printFindings(findings: AggregatedFinding[]): void {
     console.log('\nArchitectural Findings:\n');
 
     if (findings.length === 0) {
-        console.log(`${GREEN}No architectural findings detected.${RESET}\n`);
+        console.log('No architectural findings detected.\n');
         return;
     }
 

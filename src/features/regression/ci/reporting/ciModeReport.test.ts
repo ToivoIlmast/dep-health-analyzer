@@ -18,7 +18,7 @@ describe('ciModeReport', () => {
         jest.restoreAllMocks();
     });
 
-    it('should report architectural regression', () => {
+    it('should report that cross-boundary or deep-internal findings were introduced', () => {
         const logSpy = jest.spyOn(console, 'log').mockImplementation();
 
         ciModeReport({
@@ -26,11 +26,11 @@ describe('ciModeReport', () => {
         });
 
         expect(logSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Architectural regression detected')
+            expect.stringContaining('Cross-boundary or deep-internal findings were introduced')
         );
     });
 
-    it('should report no significant architectural regression', () => {
+    it('should report that no cross-boundary or deep-internal findings were introduced', () => {
         const logSpy = jest.spyOn(console, 'log').mockImplementation();
 
         ciModeReport({
@@ -38,7 +38,7 @@ describe('ciModeReport', () => {
         });
 
         expect(logSpy).toHaveBeenCalledWith(
-            expect.stringContaining('No significant architectural regression detected')
+            expect.stringContaining('No cross-boundary or deep-internal findings were introduced')
         );
     });
 });
