@@ -26,7 +26,9 @@
         "lint:fix": "eslint . --fix",
         "tff": "npm run jest && npm run lint:fix && npm run build",
         "generate:config-types": "json2ts -i src/app/config/config.schema.json -o src/app/config/config.types.ts",
-        "generate:config-validator": "node scripts/generateConfigValidator.js"
+        "generate:config-validator": "node scripts/generateConfigValidator.js",
+        "test-projects:generate": "node scripts/gen-basic.mjs && node scripts/gen-frontend.mjs && node scripts/gen-backend.mjs && node scripts/gen-fullstack.mjs && node scripts/gen-libraries.mjs && node scripts/gen-monorepos.mjs && node scripts/gen-structural.mjs && node scripts/gen-stress.mjs && node scripts/gen-traps.mjs && node scripts/gen-history-lab.mjs && node scripts/gen-readmes.mjs",
+        "test-projects:validate": "node scripts/validate-test-projects.mjs"
     },
     "bin": {
         "dep-health-analyzer": "dist/app/cli.js"
