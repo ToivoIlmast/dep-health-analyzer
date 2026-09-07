@@ -63,6 +63,77 @@ describe('discoverFiles', () => {
         });
     });
 
+    describe('.mts / .cts source files', () => {
+        // Regression coverage for a real false negative: `resolve.ts` already
+        // maps `import './x.mjs'` to a real `x.mts` file on disk, but until
+        // `.mts`/`.cts` were part of this glob, that file's own imports were
+        // never extracted - silently dropping edges (and cycles) that pass
+        // through it, even though README's Import Resolution section already
+        // promised `.mts`/`.cts` support.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-mts-cts-'));
+            fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(root, 'src', 'a.mts'), '');
+            fs.writeFileSync(path.join(root, 'src', 'b.cts'), '');
+            fs.writeFileSync(path.join(root, 'src', 'c.ts'), '');
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('discovers .mts files', async () => {
+            const result = await discoverFiles(root);
+
+            expect(result.some((file) => file.endsWith('a.mts'))).toBe(true);
+        });
+
+        it('discovers .cts files', async () => {
+            const result = await discoverFiles(root);
+
+            expect(result.some((file) => file.endsWith('b.cts'))).toBe(true);
+        });
+
+        it('still discovers plain .ts files alongside .mts/.cts', async () => {
+            const result = await discoverFiles(root);
+
+            expect(result.some((file) => file.endsWith('c.ts'))).toBe(true);
+            expect(result).toHaveLength(3);
+        });
+    });
+
+    describe('build output stays excluded even with .mts/.cts included', () => {
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-build-'));
+            fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
+            fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+            fs.mkdirSync(path.join(root, 'node_modules', 'x'), { recursive: true });
+            fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+
+            fs.writeFileSync(path.join(root, 'dist', 'compiled.mts'), '');
+            fs.writeFileSync(path.join(root, 'build', 'compiled.cts'), '');
+            fs.writeFileSync(path.join(root, 'node_modules', 'x', 'index.mts'), '');
+            fs.writeFileSync(path.join(root, 'src', 'index.mts'), '');
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('does not scan dist/, build/, or node_modules/ for the new extensions', async () => {
+            const result = await discoverFiles(root);
+
+            expect(result.some((file) => file.includes(`${path.sep}dist${path.sep}`))).toBe(false);
+            expect(result.some((file) => file.includes(`${path.sep}build${path.sep}`))).toBe(false);
+            expect(result.some((file) => file.includes('node_modules'))).toBe(false);
+            expect(result.some((file) => file.endsWith('src' + path.sep + 'index.mts'))).toBe(true);
+        });
+    });
+
     describe('symlinks', () => {
         let root: string;
         let outside: string;

@@ -20,6 +20,37 @@ function genMonorepoNpm() {
     const dir = freshRepo('monorepo-npm');
     writePackageJson(dir, { name: 'monorepo-npm', version: '1.0.0', private: true, workspaces: ['packages/*'] });
     write(dir, 'tsconfig.base.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, composite: true } }, null, 2) + '\n');
+    // A realistic root tsconfig.json - the standard TypeScript "project
+    // references / solution style" pattern for a monorepo (files: [],
+    // references only, no baseUrl/paths). This is deliberate: it lets a
+    // controlled experiment isolate the real limitation - dep-health-analyzer
+    // resolves a bare specifier ONLY through this root tsconfig's own
+    // `compilerOptions.paths` (see resolve.ts's resolveAlias), never through
+    // node_modules/package.json resolution the way Node or a bundler would.
+    // A real npm/pnpm workspace resolves `@corpus/*` at runtime via
+    // node_modules symlinks, not via tsconfig `paths` - so even a normal,
+    // idiomatic root tsconfig.json like this one does not make cross-package
+    // imports resolvable here. Adding `paths` mirroring every workspace
+    // package DOES make them resolve (verified) - this fixture intentionally
+    // omits that, because doing it by hand is not how real monorepos wire
+    // this up.
+    write(
+        dir,
+        'tsconfig.json',
+        JSON.stringify(
+            {
+                files: [],
+                references: [
+                    { path: 'packages/shared' },
+                    { path: 'packages/core' },
+                    { path: 'packages/ui' },
+                    { path: 'packages/cli' },
+                ],
+            },
+            null,
+            2
+        ) + '\n'
+    );
     gitignoreNodeModules(dir);
     writeDepHealthConfig(dir);
 
@@ -57,6 +88,17 @@ function genMonorepoPnpm() {
     writePackageJson(dir, { name: 'monorepo-pnpm', version: '1.0.0', private: true });
     write(dir, 'pnpm-workspace.yaml', `packages:\n  - 'packages/*'\n`);
     write(dir, 'tsconfig.base.json', JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, composite: true } }, null, 2) + '\n');
+    // See monorepo-npm's identical root tsconfig.json for why this is here
+    // and deliberately has no baseUrl/paths.
+    write(
+        dir,
+        'tsconfig.json',
+        JSON.stringify(
+            { files: [], references: [{ path: 'packages/shared' }, { path: 'packages/core' }, { path: 'packages/cli' }] },
+            null,
+            2
+        ) + '\n'
+    );
     gitignoreNodeModules(dir);
     writeDepHealthConfig(dir);
 

@@ -200,12 +200,12 @@ const readmes = {
     },
     'monorepo-npm': {
         ecosystem: 'npm workspaces monorepo',
-        purpose: 'Package-to-package dependencies via workspace aliases (`@corpus/*`), each package with its own tsconfig.json extending a shared base.',
-        characteristics: ['packages/{shared,core,ui,cli}, root tsconfig.base.json, per-package tsconfig.json with `references`'],
+        purpose: 'Package-to-package dependencies via workspace aliases (`@corpus/*`), each package with its own tsconfig.json extending a shared base, plus a realistic root tsconfig.json using the standard TypeScript "project references / solution style" pattern (`files: [], references: [...]`, no `baseUrl`/`paths`).',
+        characteristics: ['packages/{shared,core,ui,cli}, root tsconfig.json (references-only) + tsconfig.base.json, per-package tsconfig.json with `references`'],
         history: ['shared package baseline, then core depending on shared, then ui depending on core, then cli depending on both core and ui (fan-in across packages)'],
         observations: [
-            'KNOWN, ALREADY-DOCUMENTED LIMITATION (see the project\'s own audit backlog): scanProject.ts loads exactly one tsconfig.json per scan, from a single fixed root - it does not resolve the nearest tsconfig.json per file the way real tsc does. Expect cross-package `@corpus/*` aliased imports to resolve as EXTERNAL (invisible), not as real dependency edges, even though they are completely valid, non-buggy code.',
-            'This fixture is expected to concretely demonstrate that pre-existing, already-tracked limitation - it is not a new bug to fix under this task.',
+            'PRECISELY-SCOPED, VERIFIED LIMITATION: `resolveAlias()` in resolve.ts resolves a bare specifier ONLY through the scanned root\'s own `tsconfig.json` `compilerOptions.paths` - never through node_modules/package.json resolution. A real npm/pnpm workspace resolves `@corpus/*` at runtime via node_modules symlinks, not via tsconfig `paths`, so even this fixture\'s realistic, idiomatic root tsconfig.json (references-only, matching TypeScript\'s own documented monorepo pattern) does not make the 4 cross-package imports resolve - only the 3 intra-package ones do (verified: `Dependencies: 3`, not 7).',
+            'CONTROLLED, VERIFIED COUNTER-CASE (do not assume the opposite from this fixture): manually adding `compilerOptions.paths` mapping each `@corpus/<name>` to its real source file to this same root tsconfig.json DOES make all 4 cross-package imports resolve (verified: `Dependencies: 6`). The limitation is specifically "no node_modules-based bare-specifier resolution", not "cross-package aliases can never work" - a project that hand-maintains matching tsconfig paths is not affected.',
         ],
     },
     'monorepo-pnpm': {
@@ -213,7 +213,7 @@ const readmes = {
         purpose: 'Same as monorepo-npm, using `workspace:*` protocol and pnpm-workspace.yaml, to confirm the analyzer is not npm-specific (and shares the same limitation either way).',
         characteristics: ['packages/{shared,core,cli}, pnpm-workspace.yaml, workspace:* dependency ranges'],
         history: ['shared baseline, then core depending on shared via workspace:*, then cli depending on core'],
-        observations: ['same cross-package tsconfig-resolution limitation as monorepo-npm applies here - the package manager (npm vs pnpm) is not the variable being tested, the multi-tsconfig shape is'],
+        observations: ['same verified bare-specifier resolution limitation as monorepo-npm applies here (see its README) - the package manager (npm vs pnpm) is not the variable being tested, the lack of node_modules-based resolution is'],
     },
     'layered-app': {
         ecosystem: 'Plain TypeScript, no framework',
@@ -290,11 +290,13 @@ const readmes = {
             'shared/hub added, reached by 8 modules, itself reaching back into module0 (mutual dependency concentration)',
             '10-level-deep chain added under src/deep/',
             'areaA/areaB cross-directory fan-out added, both reaching into shared/hub',
-            'a partial fix: module0 no longer depends on module1 (ring shrinks, does not disappear)',
+            'a partial fix: module0 no longer depends on module1',
             '4 more modules added afterward, each extending the chain and touching the hub again',
         ],
         observations: [
-            'cycles should detect the (now-shrunk) ring as one large SCC, plus shared/hub\'s mutual reach with module0-area as part of the same or an adjacent component',
+            'VERIFIED, PRECISE (walked every commit personally - do not assume from the history text alone): breaking a single edge of a simple ring destroys the ENTIRE ring as an SCC, it does not "shrink" it - a ring has no redundant edges, so cutting any one of them makes the whole thing acyclic. Confirmed by walking every commit: max SCC size goes 0 (baseline) -> 18 (ring wired up) -> 19 (hub added, now also mutually reaching module0) -> 19 (deep chain, no change) -> 19 (areaA/areaB, no change) -> 2 (after the "partial fix" commit) -> 2 (unchanged through the 4 trailing commits).',
+            'the max SCC of 2 remaining after the "partial fix" is NOT a remnant of the 18-module ring - it is the separate shared/hub <-> module0 mutual dependency (hub.ts imports fn0 from module0; module0.ts imports ping from hub), introduced in the earlier "add a shared hub module" commit and never touched by the fix. The 18-module ring itself is fully gone by that point.',
+            'the fixture\'s peak structural complexity (max SCC = 19, spanning both the ring and the hub) exists for 3 consecutive commits in the middle of the history, not at HEAD - a validator or reader that only checks the final state will see max SCC = 2 and miss the fixture\'s actual stress-test value',
             'this is a genuine test of `cycles`\' algorithm at a larger, denser scale than the rest of the corpus - not expected to crash (round 4\'s known stack-overflow limitation needs ~4,649 nodes in a LINEAR chain; this fixture\'s ~40 nodes should be well within safe range even considering its cyclic density)',
         ],
     },
@@ -315,7 +317,7 @@ const readmes = {
         history: ['a 5-level-deep adapter file baseline, then paymentService one level up, then checkoutService, then commerceFacade at the feature root (each importing progressively deeper), then a second adapter added alongside the first'],
         observations: [
             'commerceFacade -> checkoutService (residual depth 1) and checkoutService -> paymentService (residual depth 1) both classify as `internal` - a shared prefix plus a shallow reach does not produce `cross-boundary`',
-            'CONFIRMED ANALYZER BEHAVIOR WORTH NOTING (found via this fixture, not fixed here - see the corpus README\'s "Bug reports found via this corpus"): paymentService -> adapters/paypal/paypalAdapter has residual depth 2, which lands in a gap between the `getRelation()` thresholds (`residualDepth <= 1` -> internal, `residualDepth >= deepInternalResidualDepth` [default 3] -> deep-internal) and falls through to `cross-boundary`, even though every file involved shares the same `features/commerce` prefix five levels deep. This looks like an unintentional threshold gap rather than an intended distinction - residual depth exactly 2 is treated identically to a dependency reaching a completely unrelated top-level area.',
+            'DOCUMENTED, INTENTIONAL BEHAVIOR (see docs/CONFIGURATION.md#thresholds - "Note the internal and deep-internal checks are independent..."): paymentService -> adapters/paypal/paypalAdapter has residual depth 2, which the `internal` (`residualDepth <= 1`) and `deep-internal` (`residualDepth >= deepInternalResidualDepth`, default 3) bands are explicitly documented as not covering, so it classifies as `cross-boundary` even though every file involved shares the same `features/commerce` prefix five levels deep. This is a known, documented gap between two independent threshold checks (with a worked example in CONFIGURATION.md), not a defect - a second independent audit confirmed the gap is intentional and thoroughly documented, and this repository does not treat it as a bug.',
             'this fixture still demonstrates the intended point for residual depth 1: path depth alone does not produce a cross-boundary classification when the shared prefix is deep enough and the reach is shallow',
         ],
     },
@@ -327,6 +329,29 @@ const readmes = {
         observations: [
             'services -> core, controllers -> services, and features/reporting -> two different services should all classify as `cross-boundary` under default thresholds',
             'this is the direct test that a `cross-boundary` classification is reported as a structural fact ("this reaches across an inferred boundary") - the fixture\'s own design intends every one of these reaches, so none of them should read as evidence of "bad" architecture in the tool\'s output',
+        ],
+    },
+    'mts-cts': {
+        ecosystem: 'Plain TypeScript, no framework, "nodenext" module resolution',
+        purpose: 'Regression fixture for a real, previously-undetected false negative: `.mts`/`.cts` are TypeScript\'s per-file module-format overrides (a file that must stay pure ESM, or pure CJS, regardless of the package\'s own "type" field) - a real pattern in published TypeScript libraries with mixed ESM/CJS output. `resolve.ts` already maps a `.mjs`/`.cjs` specifier to the real `.mts`/`.cts` source file, but until that file was itself scanned as source, its own outgoing imports - including ones completing a real cycle - went undetected.',
+        characteristics: [
+            'src/core.ts + src/logger.ts (plain .ts), src/esmBoundary.mts (forced ESM output), src/cjsBoundary.cts (forced CJS output), src/index.ts entry point',
+            '"module": "NodeNext" / "moduleResolution": "NodeNext" in tsconfig.json - the real-world reason `.mts`/`.cts` files and `.mjs`/`.cjs` specifiers exist together',
+        ],
+        history: [
+            'baseline: plain .ts core and logger, no .mts/.cts yet',
+            'add src/esmBoundary.mts depending on core.ts via its .mjs output specifier',
+            'add src/cjsBoundary.cts depending on core.ts via its .cjs output specifier',
+            'introduce a real cycle: core.ts -> esmBoundary.mts -> core.ts (through a .mjs specifier)',
+            'fix: remove that cycle',
+            'introduce a second real cycle: core.ts -> cjsBoundary.cts -> core.ts (through a .cjs specifier) - left in place at HEAD',
+            'add src/index.ts wiring both boundary modules together',
+        ],
+        observations: [
+            'at HEAD: `cycles` should report exactly 1 cycle (core.ts <-> cjsBoundary.cts), `Scanned files: 5` (all 5 .ts/.mts/.cts files, not just the 3 plain .ts ones)',
+            'checking out the "introduce a real cycle: core.ts -> esmBoundary.mts" commit directly: `cycles` should also report exactly 1 cycle there (core.ts <-> esmBoundary.mts) - proving both the .mts and the .cts direction are independently detected, not just one of them',
+            'before this was fixed, BOTH cycles were invisible: `.mts`/`.cts` files were never scanned as source (only ever reachable as a resolution TARGET), so neither boundary module\'s own outgoing import back to core.ts was ever extracted, and `cycles` reported 0 with exit code 0 at every commit in this history',
+            'src/index.ts -> esmBoundary.mts and src/index.ts -> cjsBoundary.cts should both resolve as ordinary one-way dependencies, exactly like importing from a plain .ts file',
         ],
     },
     'history-laboratory': {

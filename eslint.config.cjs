@@ -15,6 +15,7 @@ module.exports = [
             'static/**',
             'docs/**',
             'scripts/**',
+            'test-projects/**',
             'dep-health-reports/**',
             'src/app/config/validateConfig.generated.js',
         ],
