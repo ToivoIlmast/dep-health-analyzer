@@ -59,7 +59,7 @@ describe('fullModeReport', () => {
             strategy: HISTORY_STRATEGIES.INCREMENTAL,
         });
 
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Classification: Stable'));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Classification: No Clear Trend'));
     });
 
     it('lists every detected spike with its commit and date', () => {

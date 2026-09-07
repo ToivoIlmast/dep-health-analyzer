@@ -93,7 +93,7 @@ describe('buildHistoryHtmlTemplate', () => {
         });
 
         expect(html).toContain('Trend Summary');
-        expect(html).toContain('Stable');
+        expect(html).toContain('No Clear Trend');
     });
 
     it('lists spikes with their commit sha in the trend summary', () => {

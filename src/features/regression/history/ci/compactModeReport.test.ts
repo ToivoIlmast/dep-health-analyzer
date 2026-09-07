@@ -45,11 +45,11 @@ describe('compactModeReport', () => {
         });
 
         expect(logSpy).toHaveBeenCalledWith(
-            expect.stringContaining('No architectural drift detected')
+            expect.stringContaining('No new findings were introduced')
         );
     });
 
-    it('reports drift when any point has incremental findings under the incremental strategy', () => {
+    it('reports new findings when any point has incremental findings under the incremental strategy', () => {
         const logSpy = jest.spyOn(console, 'log');
 
         compactModeReport({
@@ -58,7 +58,7 @@ describe('compactModeReport', () => {
         });
 
         expect(logSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Architectural drift detected')
+            expect.stringContaining('New findings were introduced')
         );
     });
 
@@ -71,7 +71,7 @@ describe('compactModeReport', () => {
         });
 
         expect(logSpy).toHaveBeenCalledWith(
-            expect.stringContaining('No architectural drift detected')
+            expect.stringContaining('No new findings were introduced')
         );
     });
 
@@ -104,10 +104,10 @@ describe('compactModeReport', () => {
             strategy: HISTORY_STRATEGIES.INCREMENTAL,
         });
 
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Trend: Stable'));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Trend: No Clear Trend'));
     });
 
-    it('prints a worsening trend line with the worst window when risk grows late in the history', () => {
+    it('prints an increasing trend line with the peak window when findings grow late in the history', () => {
         const logSpy = jest.spyOn(console, 'log');
 
         compactModeReport({
@@ -123,7 +123,7 @@ describe('compactModeReport', () => {
             strategy: HISTORY_STRATEGIES.INCREMENTAL,
         });
 
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Trend: Worsening'));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Trend: Increasing'));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('bbb2222'));
     });
 

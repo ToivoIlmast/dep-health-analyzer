@@ -1,30 +1,28 @@
 import { HISTORY_STRATEGIES, HistoryStrategyType } from '@shared/types';
 import { HistoryPoint } from '../types';
-import { getTrendInsights } from '../analyze/getTrendInsights';
+import { getTrendInsights, TrendClassification } from '../analyze/getTrendInsights';
+import { getTrendLabel } from '../analyze/describeTrend';
 
-const RED = '\x1b[31m';
-const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
 
-const CLASSIFICATION_LABEL: Record<string, string> = {
-    stabilizing: 'Stabilizing',
-    worsening: 'Worsening',
-    volatile: 'Volatile',
-    stable: 'Stable',
-};
-
-const CLASSIFICATION_COLOR: Record<string, string> = {
-    stabilizing: GREEN,
-    stable: GREEN,
+/**
+ * Visual highlight means "this changed / is worth a look", not "this is
+ * good or bad" - a directional change (up, down, or fluctuating) gets the
+ * same neutral attention color; "no clear trend" gets none, since there's
+ * nothing to draw the eye to.
+ */
+const NOTICE_COLOR: Record<TrendClassification, string> = {
+    worsening: YELLOW,
+    stabilizing: YELLOW,
     volatile: YELLOW,
-    worsening: RED,
+    stable: '',
 };
 
 function formatTrendLine(points: HistoryPoint[]): string {
     const { classification, worstWindow } = getTrendInsights(points);
-    const label = CLASSIFICATION_LABEL[classification];
-    const color = CLASSIFICATION_COLOR[classification];
+    const label = getTrendLabel(classification);
+    const color = NOTICE_COLOR[classification];
 
     if (!worstWindow) {
         return `${color}Trend: ${label}${RESET}`;
@@ -67,15 +65,15 @@ export function compactModeReport(args: { points: HistoryPoint[]; strategy: Hist
 
     console.log(`\n${formatTrendLine(points)}`);
 
-    const hasRisk = points.some((point) => {
-        const incrementalRisk = showIncremental && (countFor(point, 'incremental') ?? 0) > 0;
-        const cumulativeRisk = showCumulative && (countFor(point, 'cumulative') ?? 0) > 0;
-        return incrementalRisk || cumulativeRisk;
+    const hasFindings = points.some((point) => {
+        const hasIncrementalFindings = showIncremental && (countFor(point, 'incremental') ?? 0) > 0;
+        const hasCumulativeFindings = showCumulative && (countFor(point, 'cumulative') ?? 0) > 0;
+        return hasIncrementalFindings || hasCumulativeFindings;
     });
 
-    if (hasRisk) {
-        console.log(`\n${RED}Architectural drift detected across the sampled history.${RESET}\n`);
+    if (hasFindings) {
+        console.log(`\n${YELLOW}New findings were introduced across the sampled history.${RESET}\n`);
     } else {
-        console.log(`\n${GREEN}No architectural drift detected across the sampled history.${RESET}\n`);
+        console.log(`\nNo new findings were introduced across the sampled history.\n`);
     }
 }

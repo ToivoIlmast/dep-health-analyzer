@@ -4,29 +4,31 @@ import { styles } from '../../visualization/styles';
 import { chartStyles } from './chartStyles';
 import { buildTrendChart } from './buildTrendChart';
 import { getTrendInsights, TrendClassification } from '../analyze/getTrendInsights';
+import { getTrendLabel } from '../analyze/describeTrend';
 import { HistoryPoint } from '../types';
 
-const CLASSIFICATION_LABEL: Record<TrendClassification, string> = {
-    stabilizing: 'Stabilizing',
-    worsening: 'Worsening',
-    volatile: 'Volatile',
-    stable: 'Stable',
-};
-
-const CLASSIFICATION_RISK_CLASS: Record<TrendClassification, string> = {
-    stabilizing: 'risk-low',
-    stable: 'risk-low',
-    volatile: 'risk-moderate',
-    worsening: 'risk-high',
+/**
+ * The banner highlights that the trend is worth a look - a directional
+ * change (up, down, or fluctuating) all get the same neutral "notice"
+ * styling. "No clear trend" gets the plain/quiet styling instead, since
+ * there's nothing to draw attention to. None of these classes assert
+ * that the change is architecturally good or bad - only whether it's a
+ * notable change at all.
+ */
+const CLASSIFICATION_BANNER_CLASS: Record<TrendClassification, string> = {
+    stabilizing: 'trend-notice',
+    worsening: 'trend-notice',
+    volatile: 'trend-notice',
+    stable: 'trend-quiet',
 };
 
 function buildTrendSummarySection(points: HistoryPoint[]): string {
     const { classification, spikes, worstWindow } = getTrendInsights(points);
-    const label = CLASSIFICATION_LABEL[classification];
-    const riskClass = CLASSIFICATION_RISK_CLASS[classification];
+    const label = getTrendLabel(classification);
+    const bannerClass = CLASSIFICATION_BANNER_CLASS[classification];
 
     const worstWindowMarkup = worstWindow
-        ? `<p>Highest risk window: <strong>${worstWindow.value}</strong> finding(s) at <code>${worstWindow.commit.sha.slice(0, 7)}</code> (${worstWindow.commit.date.slice(0, 10)}).</p>`
+        ? `<p>Highest finding count: <strong>${worstWindow.value}</strong> finding(s) at <code>${worstWindow.commit.sha.slice(0, 7)}</code> (${worstWindow.commit.date.slice(0, 10)}).</p>`
         : '';
 
     const spikesMarkup =
@@ -42,7 +44,7 @@ function buildTrendSummarySection(points: HistoryPoint[]): string {
     return `
         <h2>Trend Summary</h2>
 
-        <p class="risk-banner ${riskClass}">
+        <p class="trend-banner ${bannerClass}">
             <strong>${label}</strong>
         </p>
 
@@ -133,7 +135,7 @@ export function buildHistoryHtmlTemplate(args: BuildHistoryHtmlTemplateArgs): st
             </div>
 
             <div class="section" id="trendChartSection">
-                <h2>Architectural Risk Trend</h2>
+                <h2>Findings Over Time</h2>
                 ${chartMarkup}
             </div>
 
