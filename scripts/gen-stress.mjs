@@ -106,7 +106,7 @@ function genNightmareApp() {
 
     // A fix pass: break part of the ring to reduce (not eliminate) entanglement
     write(dir, 'src/module0.ts', `import { ping } from './shared/hub';\n\nping();\n\nexport function fn0(): number {\n    return 0;\n}\n`);
-    commit(dir, 'partial fix: module0 no longer depends on module1, shrinking (not removing) the ring');
+    commit(dir, 'partial fix: module0 no longer depends on module1, breaking the 18-module ring entirely (the remaining max SCC of 2 is the separate shared/hub <-> module0 dependency)');
 
     // Then more findings added afterward
     for (let i = 10; i < 14; i++) {
