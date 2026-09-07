@@ -11,12 +11,11 @@ export function architecturalHealthSummary(args: ArchitecturalHealthSummaryType)
     const { crossBoundaryCount, deepInternalCount, deltaLength, internalCount, siblingCount } =
         args;
     return `
-        <h2>Architectural Health Summary</h2>
+        <h2>Findings by Relation Type</h2>
 
         <p>
-            This report contains heuristic architectural signals.
-            Findings may indicate increasing coupling,
-            architectural drift, or dependency complexity.
+            This report contains heuristic structural signals, based on
+            file-path geometry - not a verified architectural evaluation.
         </p>
 
         <div class="summary-grid">
@@ -31,7 +30,7 @@ export function architecturalHealthSummary(args: ArchitecturalHealthSummaryType)
             </div>
 
             <div class="summary-card">
-                <div class="summary-value warning">
+                <div class="summary-value count-cross-boundary">
                     ${crossBoundaryCount}
                 </div>
 
@@ -41,7 +40,7 @@ export function architecturalHealthSummary(args: ArchitecturalHealthSummaryType)
             </div>
 
             <div class="summary-card">
-                <div class="summary-value info">
+                <div class="summary-value count-sibling">
                     ${siblingCount}
                 </div>
 
@@ -51,7 +50,7 @@ export function architecturalHealthSummary(args: ArchitecturalHealthSummaryType)
             </div>
 
             <div class="summary-card">
-                <div class="summary-value success">
+                <div class="summary-value count-internal">
                     ${internalCount}
                 </div>
 
@@ -61,7 +60,7 @@ export function architecturalHealthSummary(args: ArchitecturalHealthSummaryType)
             </div>
 
             <div class="summary-card">
-                <div class="summary-value deep">
+                <div class="summary-value count-deep-internal">
                     ${deepInternalCount}
                 </div>
 
@@ -69,6 +68,6 @@ export function architecturalHealthSummary(args: ArchitecturalHealthSummaryType)
                     Deep Internal
                 </div>
             </div>
-        </div> 
+        </div>
         `;
 }

@@ -148,7 +148,7 @@ Scopes let you override `severity`, `thresholds`, or skip findings entirely (`ig
 - If multiple scopes match the same file, they're applied **in the order they appear in your config** — a later scope's overrides win over an earlier one's for whatever it sets. Put broad rules first and narrower exceptions after them (like the example above: `src/app/**` and the `visualization`/`ci/reporting` carve-outs come before `src/features/regression/**`'s threshold override, so a file matching both a broad rule and a later, narrower one gets the narrower one's overrides for the properties it actually sets, without disturbing what the broad rule already set for other properties).
 - A `match` starting with `!` is matched literally, not treated as "negate the whole pattern" — minimatch's own negation feature is disabled here on purpose, since a natural-looking "everything except vendor" pattern like `!(src/vendor/**)` would otherwise silently match *everything, including `src/vendor` itself* (the leading `!` gets stripped, the near-never-matching literal remainder gets tested, and that false result gets negated back to true for almost any path). To exclude a directory, match it positively and use `ignore: true` instead — e.g. `{ "match": "src/vendor/**", "ignore": true }` — exactly like the `src/app/**` example above.
 
-**When to use scopes:** composition roots, infrastructure/wiring code, visualization, and reporting layers are usually fine analyzed loosely (`ignore: true` or relaxed severity) — they're expected to reach across the project by design. Core domain logic is usually where you want the default (or tighter) thresholds, since unexpected cross-boundary reaches there are more likely to be real architectural drift worth reviewing.
+**When to use scopes:** composition roots, infrastructure/wiring code, visualization, and reporting layers are usually fine analyzed loosely (`ignore: true` or relaxed severity) — they're expected to reach across the project by design. Core domain logic is usually where you want the default (or tighter) thresholds, since unexpected cross-boundary reaches there are more likely to be findings worth reviewing.
 
 #### The same thresholds mean different things in different projects
 
@@ -213,8 +213,8 @@ Sampling walks the **first-parent** chain (the mainline of merge commits, not ev
 
 Two strategies answer different questions, and both are always computed internally — `strategy` only picks what gets displayed, so switching between `incremental`, `cumulative`, and `both` never re-walks history:
 
-- **`incremental`** — each sampled point is compared against the *previous* sampled point. Answers "how much risk was introduced in this window of history?" A spike at one point means something worth reviewing happened specifically in that window.
-- **`cumulative`** — each sampled point is compared against the *first* sampled point (the baseline). Answers "how far have we drifted from the baseline overall?" Numbers tend to grow and then plateau rather than spike, since they're a running total, not a per-window count.
+- **`incremental`** — each sampled point is compared against the *previous* sampled point. Answers "how many findings were introduced in this window of history?" A spike at one point means something worth reviewing happened specifically in that window.
+- **`cumulative`** — each sampled point is compared against the *first* sampled point (the baseline). Answers "how many findings have accumulated relative to the baseline overall?" Numbers tend to grow and then plateau rather than spike, since they're a running total, not a per-window count.
 
 Example, sampling 6 points across dep-health's own history from its root commit to a later revision:
 
@@ -228,7 +228,7 @@ da75434   84     30           130
 04f7642   87     1            131
 ```
 
-`incremental` tapers off quickly (113 → 30 → 2 → 1 → 1) — most of the early history was one large burst of initial growth, and later commits mostly stopped introducing new cross-boundary risk. `cumulative` grows and plateaus (113 → 130 → 131 → 132 → 131) — the total distance from the root commit stays roughly the same once growth slows down. Neither number is "wrong" — they answer different questions about the same history.
+`incremental` tapers off quickly (113 → 30 → 2 → 1 → 1) — most of the early history was one large burst of initial growth, and later commits mostly stopped introducing new cross-boundary findings. `cumulative` grows and plateaus (113 → 130 → 131 → 132 → 131) — the total distance from the root commit stays roughly the same once growth slows down. Neither number is "wrong" — they answer different questions about the same history.
 
 ```bash
 dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mode full
@@ -242,15 +242,15 @@ dep-health-analyzer history --baseline HEAD~50 --points 10 --strategy both --mod
 
 #### Trend Summary
 
-Raw per-point numbers aren't self-interpreting — "39, 43, 0, 2, 1..." doesn't say on its own whether that's fine or worth a closer look. Every mode (`compact`, `full`, `html`) includes a **Trend Summary**, derived from the `incremental` series specifically (risk introduced per sampled window — this is what "spike" and "trend" mean below, regardless of which `strategy` you picked for display):
+Raw per-point numbers aren't self-interpreting — "39, 43, 0, 2, 1..." doesn't say on its own whether that's fine or worth a closer look. Every mode (`compact`, `full`, `html`) includes a **Trend Summary**, derived from the `incremental` series specifically (findings introduced per sampled window — this is what "spike" and "trend" mean below, regardless of which `strategy` you picked for display). This describes how the *count* of heuristic findings changed over the sampled range — it is not, and cannot be, a verdict on whether the project's architecture actually got better or worse; that depends on intent this tool has no way to know.
 
-- **Classification** — `Stabilizing` (risk dropped by 30%+ between the first and second half of the sampled range), `Worsening` (risk rose by 30%+, or went from nothing to something), `Volatile` (no clear direction, but high relative variance), or `Stable` (quiet throughout, or too few points to say).
+- **Classification** — `Decreasing` (the average findings per window dropped by 30%+ between the first and second half of the sampled range), `Increasing` (rose by 30%+, or went from nothing to something), `Fluctuating` (no clear direction, but high relative variance), or `No Clear Trend` (quiet throughout, or too few points to say - these are genuinely different situations that share one label, since neither observed a directional change).
 - **Spikes** — points where the value is both more than 2x a mean *and* at least 5 findings. The dual condition avoids flagging a small number (like 3) as a "spike" just because the mean happens to be near zero. The mean is **not** the whole series' plain average: spikes are found against the current mean, excluded, and the search repeats against the remainder — otherwise one very large outlier would pull the average up enough to hide a real secondary spike underneath it (e.g. `[500, 40, 40, 40, 5, 5, 5, 5, 5, 5]` has two distinct elevated windows, not one — the plain mean of 65 would otherwise mask the three 40s, which are a real 8x jump over the quiet baseline of 5).
-- **Highest risk window** — the single point with the most findings, shown even when nothing formally qualifies as a spike.
+- **Highest finding count** — the single point with the most findings, shown even when nothing formally qualifies as a spike.
 
-These thresholds (30% for the trend split, 2x + minimum 5 for spikes) are **not currently configurable** — like Risk Assessment's thresholds below, they're fixed in code, calibrated against dep-health's own real commit history rather than picked arbitrarily. A 19-point real series with values `[14,0,86,27,0,30,0,0,1,1,0,1,0,1,0,0,0,50,12]` (mean ~11.8) flags six genuinely elevated windows as spikes — 86, 27, 30, 50 against the full series' mean, then 14 and 12 against the mean of the remaining, quieter values once those four are excluded — and classifies as `Stabilizing` overall since the second half of that range averages much lower than the first.
+These thresholds (30% for the trend split, 2x + minimum 5 for spikes) are **not currently configurable** — like the Cross-Boundary Concentration thresholds below, they're fixed in code, calibrated against dep-health's own real commit history rather than picked arbitrarily. A 19-point real series with values `[14,0,86,27,0,30,0,0,1,1,0,1,0,1,0,0,0,50,12]` (mean ~11.8) flags six genuinely elevated windows as spikes — 86, 27, 30, 50 against the full series' mean, then 14 and 12 against the mean of the remaining, quieter values once those four are excluded — and classifies as `Decreasing` overall since the second half of that range averages much lower than the first.
 
-**`--ai`** generates a plain-language narrative from this same Trend Summary data (classification, spikes, worst window — never the raw file-level findings, and never source code) using the same Ollama setup as `regression --ai`:
+**`--ai`** generates a plain-language narrative from this same Trend Summary data (classification, spikes, peak window — never the raw file-level findings, and never source code) using the same Ollama setup as `regression --ai`. The AI is explicitly instructed to describe the finding-count change only, never to reframe it as an architecture-quality verdict:
 
 ```bash
 dep-health-analyzer history --baseline HEAD~50 --points 10 --ai
@@ -258,11 +258,13 @@ dep-health-analyzer history --baseline HEAD~50 --points 10 --ai
 
 ---
 
-## Risk Assessment (HTML report)
+## Cross-Boundary Concentration (HTML report)
 
-The `--mode html` regression report includes a "Risk Assessment" banner (Low / Moderate / High Architectural Risk). It measures how large a share of **this change's** findings are `cross-boundary` — not how large a share of the whole project is cross-boundary. The same absolute change reads the same regardless of how big the surrounding codebase happens to be.
+The `--mode html` regression report includes a "Cross-Boundary Concentration" banner (Low / Moderate / High). It measures how large a share of **this change's** findings are `cross-boundary` — not how large a share of the whole project is cross-boundary. The same absolute change reads the same regardless of how big the surrounding codebase happens to be.
 
-Below **2** cross-boundary findings, risk always stays Low, no matter the percentage. A single cross-boundary finding in a 1-3 finding change is 33-100% by percentage alone, which is just noise from a tiny denominator, not a real signal of a trend. Once there are 2 or more cross-boundary findings, the percentage of `cross-boundary` findings among all findings in the change decides the rest: above 15% is High, above 5% is Moderate, otherwise Low.
+This is a measurement of concentration, not an architectural verdict: `cross-boundary` is itself a structural heuristic based on file-path geometry (see [Thresholds](#thresholds) above), not a confirmed violation. A high concentration of cross-boundary findings in a change is worth a look — it does not mean the change is architecturally wrong for your specific project.
+
+Below **2** cross-boundary findings, the level always stays Low, no matter the percentage. A single cross-boundary finding in a 1-3 finding change is 33-100% by percentage alone, which is just noise from a tiny denominator, not a real signal of a trend. Once there are 2 or more cross-boundary findings, the percentage of `cross-boundary` findings among all findings in the change decides the rest: above 15% is High, above 5% is Moderate, otherwise Low.
 
 These numbers (2 minimum, 5%/15% bands) are **not currently configurable** — unlike `thresholds` and `severity` above, they're fixed in code. They were checked against dep-health's own commit history before being set, not picked arbitrarily:
 
@@ -273,7 +275,7 @@ These numbers (2 minimum, 5%/15% bands) are **not currently configurable** — u
 | 4 cross-boundary out of 26 findings | 4 | 26 | High | At or above the minimum; 15.4% crosses the High threshold. |
 | 9 cross-boundary out of 20 findings | 9 | 20 | High | 45% — a real, repeated signal, not noise. |
 
-The first two rows are real dep-health commits that used to read "High Architectural Risk" under an earlier, unqualified percentage — a real change with one incidental cross-boundary finding shouldn't top the risk scale the same way a change with many does.
+The first two rows are real dep-health commits that used to read "High" under an earlier, unqualified percentage — a real change with one incidental cross-boundary finding shouldn't top the scale the same way a change with many does.
 
 ---
 

@@ -12,9 +12,9 @@ export function resolveBaselineRef(value?: string, fallbackRef = 'HEAD~1'): stri
     } catch {
         console.warn(
             `${YELLOW}\nNote: ${fallbackRef} could not be resolved (a shallow clone, or a repository ` +
-                'with too few commits) - comparing against HEAD itself. This can only find real drift ' +
-                'if you have uncommitted changes; otherwise the comparison is against an identical ' +
-                `tree and will always report no findings.\n${RESET}`
+                'with too few commits) - comparing against HEAD itself. This can only find real changes ' +
+                'relative to the baseline if you have uncommitted changes; otherwise the comparison is ' +
+                `against an identical tree and will always report no findings.\n${RESET}`
         );
         return 'HEAD';
     }

@@ -2,25 +2,19 @@ import { HISTORY_STRATEGIES, HistoryStrategyType } from '@shared/types';
 import { aggregation } from '../../ci/reporting/defaultModeReport/aggregation';
 import { printFindings } from '../../ci/reporting/defaultModeReport/printFindings';
 import { getTrendInsights } from '../analyze/getTrendInsights';
+import { getTrendLabel } from '../analyze/describeTrend';
 import { HistoryPoint } from '../types';
-
-const CLASSIFICATION_LABEL: Record<string, string> = {
-    stabilizing: 'Stabilizing',
-    worsening: 'Worsening',
-    volatile: 'Volatile',
-    stable: 'Stable',
-};
 
 function printTrendSummary(points: HistoryPoint[]): void {
     const { classification, spikes, worstWindow } = getTrendInsights(points);
 
     console.log('Trend Summary\n');
-    console.log(`  Classification: ${CLASSIFICATION_LABEL[classification]}`);
+    console.log(`  Classification: ${getTrendLabel(classification)}`);
 
     if (worstWindow) {
         const sha = worstWindow.commit.sha.slice(0, 7);
         const date = worstWindow.commit.date.slice(0, 10);
-        console.log(`  Highest risk window: ${worstWindow.value} finding(s) at ${sha} (${date})`);
+        console.log(`  Highest finding count: ${worstWindow.value} finding(s) at ${sha} (${date})`);
     }
 
     if (spikes.length > 0) {

@@ -45,7 +45,26 @@ describe('buildHistoryPrompt', () => {
         });
 
         expect(prompt).toContain('trendClassification');
-        expect(prompt).toContain('worstWindow');
+        expect(prompt).toContain('peakWindow');
         expect(prompt).toContain('spikes');
+    });
+
+    it('never DEFINES trendClassification in terms of "risk", and explicitly forbids reframing a findings-count change as architecture getting better/worse - the direct fix for a real case where the AI said "the risk increased over time" about an architecturally clean, zero-cycle project purely because heuristic findings went up', () => {
+        const prompt = buildHistoryPrompt({
+            analyseData: { observations: {} },
+            aiConfig: { provider: 'ollama', language: 'English' },
+        });
+
+        const observationMeaningsLine = prompt
+            .split('\n')
+            .find((line) => line.includes('trendClassification: describes'));
+
+        expect(observationMeaningsLine).toBeDefined();
+        expect(observationMeaningsLine?.toLowerCase()).not.toContain('risk');
+        expect(prompt).toContain('Increasing');
+        expect(prompt).toContain('Decreasing');
+        expect(prompt).toContain(
+            'describe an increase or decrease in findings as architecture getting worse or better'
+        );
     });
 });

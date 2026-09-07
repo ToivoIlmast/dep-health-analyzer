@@ -157,4 +157,87 @@ describe('relationClassifier', () => {
             expect(reasoning).toContain('Common Parent = src');
         });
     });
+
+    describe('semantic neutrality (dep-health observes structure, it does not judge architecture)', () => {
+        const JUDGEMENT_WORDS = [
+            'bad',
+            'good',
+            'wrong',
+            'correct',
+            'incorrect',
+            'safe',
+            'unsafe',
+            'violat',
+            'should',
+            'must not',
+            "shouldn't",
+            'improve',
+            'fix this',
+        ];
+
+        function assertNoJudgement(text: string) {
+            const lower = text.toLowerCase();
+            for (const word of JUDGEMENT_WORDS) {
+                expect(lower).not.toContain(word);
+            }
+        }
+
+        it('classifies a features -> core reach as cross-boundary without asserting it is a violation - it is a structural observation, not a verdict, since the tool has no way to know this project\'s intended architecture', () => {
+            const relation = getRelation({
+                from: 'src/features/auth/index.ts',
+                to: 'src/core/logger.ts',
+                commonDepth: 1,
+                residualDepth: 1,
+                thresholds,
+            });
+
+            expect(relation).toBe('cross-boundary');
+            assertNoJudgement(getInterpretation(relation));
+            assertNoJudgement(
+                buildReasoning({
+                    relation,
+                    commonDepth: 1,
+                    residualDepth: 1,
+                    commonParent: 'src',
+                }).join(' ')
+            );
+        });
+
+        it('classifies a same-directory dependency as sibling without asserting it is safe - two files sharing a directory can still be part of a large cycle or tangled component; "sibling" only describes path geometry', () => {
+            const relation = getRelation({
+                from: 'src/blob/a.ts',
+                to: 'src/blob/b.ts',
+                commonDepth: 2,
+                residualDepth: 0,
+                thresholds,
+            });
+
+            expect(relation).toBe('sibling');
+            assertNoJudgement(getInterpretation(relation));
+            assertNoJudgement(
+                buildReasoning({
+                    relation,
+                    commonDepth: 2,
+                    residualDepth: 0,
+                    commonParent: 'src/blob',
+                }).join(' ')
+            );
+        });
+
+        it('never describes any relation type in terms of architectural correctness - exhaustive over every possible classification', () => {
+            const relations = ['internal', 'sibling', 'deep-internal', 'cross-boundary'] as const;
+
+            for (const relation of relations) {
+                assertNoJudgement(getInterpretation(relation));
+                assertNoJudgement(
+                    buildReasoning({
+                        relation,
+                        commonDepth: 1,
+                        residualDepth: 1,
+                        commonParent: 'src',
+                    }).join(' ')
+                );
+            }
+        });
+    });
 });

@@ -10,8 +10,8 @@ export function buildHistoryPrompt(args: IBuildHistoryPrompt): string {
     const { analyseData, aiConfig } = args;
 
     return `You are generating a human-readable summary for dep-health's history command,
-    which samples points across a project's Git history and detects how
-    architectural regression risk changed over that range.
+    which samples points across a project's Git history and reports how
+    the number of heuristic structural findings changed over that range.
 
     You must reason completely in secret.
     DO NOT output any <think> tags and DO NOT text your internal reasoning process.
@@ -36,14 +36,20 @@ export function buildHistoryPrompt(args: IBuildHistoryPrompt): string {
 
     Observation meanings
 
-    - trendClassification: "stabilizing" means risk introduced per sampled window dropped over the range; "worsening" means it grew or stayed elevated; "volatile" means no clear direction but high variance; "stable" means little to no risk throughout.
+    - trendClassification: describes how the number of findings introduced per sampled window changed over the range - "Decreasing" means it dropped, "Increasing" means it grew or stayed elevated, "Fluctuating" means no clear direction but high variance, "No Clear Trend" means little to no change (including when there isn't enough sampled data to tell).
     - sampledPointCount: how many commits were sampled across the analyzed range.
-    - worstWindow: the single sampled point with the highest number of findings introduced in that window - not necessarily a "spike" on its own.
+    - peakWindow: the single sampled point with the highest number of findings introduced in that window - not necessarily a "spike" on its own.
     - spikes: sampled points where the findings introduced were unusually high compared to the rest of the range - each has a commit, a date, and a finding count.
 
     Terminology
 
-    Refer to "trendClassification" values exactly as given (stabilizing / worsening / volatile / stable), do not invent synonyms for them.
+    Refer to "trendClassification" values exactly as given (Increasing / Decreasing / Fluctuating / No Clear Trend), do not invent synonyms for them.
+
+    trendClassification describes a change in the COUNT of heuristic
+    findings only. It is not a statement about architecture quality, and
+    findings themselves are structural heuristics, not confirmed
+    violations - never translate it into words like "risk", "worse",
+    "better", "degraded", or "improved".
 
     Task
 
@@ -77,11 +83,12 @@ export function buildHistoryPrompt(args: IBuildHistoryPrompt): string {
     - invent facts;
     - speculate about what code changes caused a spike;
     - infer impact;
-    - infer risk beyond the given trendClassification;
+    - infer architectural risk, health, or quality from trendClassification or any other observation;
     - infer architectural consequences;
     - explain why changes happened;
     - evaluate architecture quality;
     - recommend refactorings;
+    - describe an increase or decrease in findings as architecture getting worse or better;
     - calculate statistics;
     - derive additional metrics;
     - calculate totals;
