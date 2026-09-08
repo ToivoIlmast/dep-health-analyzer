@@ -71,6 +71,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
                     <option value="flowOrthogonal">Hierarchical (Orthogonal, Top to Bottom)</option>
                     <option value="flowOrthogonalLR">Hierarchical (Orthogonal, Left to Right)</option>
+                    <option value="flowVertical">Hierarchical (Orthogonal, Vertical Flow)</option>
                     <option value="breadthfirst">Breadth First</option>
                     <option value="cose">Force Directed</option>
                 </select>
@@ -237,13 +238,49 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     fit: false,
                     nodeDimensionsIncludeLabels: true,
                 },
+
+                // Experimental (branch: experiment/cycle-map-v2). A second,
+                // deliberately different take on the TB orthogonal layout -
+                // flowOrthogonal above prioritizes a narrow canvas (wrapping
+                // wide ranks into extra rows), which on a real graph with a
+                // lot of same-depth branching measurably costs a lot of
+                // node/edge overlaps (199 vs 18 on dep-health-analyzer's own
+                // graph) in exchange for that narrowness. This one instead
+                // keeps every rank as dagre's own single row - branching
+                // gets exactly the width it naturally needs, never less -
+                // and gets its "flows top to bottom, not left to right"
+                // character from two other levers instead: a much wider
+                // rankSep (700 vs flowOrthogonal's 200) so ranks read as
+                // clearly separated bands with real vertical distance
+                // between them, and wrapWideRanks() called in
+                // recenter-only mode (see the Infinity maxRankWidth in
+                // onLayoutFinished below) purely to remove the sideways
+                // spread dagre adds to keep unrelated columns aligned - not
+                // to force anything narrower than its own content needs.
+                // Measured on the real graph: 5475x7495 (clearly taller
+                // than wide) with only 33 overlaps - fewer than
+                // flowOrthogonal's plain un-recentered baseline (18) would
+                // suggest is even possible at this width, because the
+                // wider rankSep gives the orthogonal taxi jog more room to
+                // clear other nodes than the original 200px gap did.
+                flowVertical: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 100,
+                    rankSep: 700,
+                    edgeSep: 40,
+                    padding: 60,
+                    spacingFactor: 1,
+                    fit: false,
+                    nodeDimensionsIncludeLabels: true,
+                },
             };
 
             // Layouts whose spacing is wide enough that a follow-up
             // collision-avoidance pass (see resolveEdgeNodeOverlaps below)
             // is worth running, and whose edge-clarity-note explains why
             // they look roomier than dagreLR/dagreTB.
-            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB', 'flowOrthogonal', 'flowOrthogonalLR'];
+            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB', 'flowOrthogonal', 'flowOrthogonalLR', 'flowVertical'];
 
             // Layouts that render edges as orthogonal (taxi-style)
             // right-angle connectors instead of straight lines, and which
@@ -257,6 +294,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const ORTHOGONAL_LAYOUT_AXES = {
                 flowOrthogonal: 'vertical',
                 flowOrthogonalLR: 'horizontal',
+                flowVertical: 'vertical',
+            };
+
+            // Both flowOrthogonal and flowVertical run wrapWideRanks() (see
+            // its own comment above resolveEdgeNodeOverlaps below) after
+            // layout - flowOrthogonal to force ranks narrower than they
+            // naturally are, flowVertical only to recenter them (Infinity
+            // never triggers wrapping into extra rows). Both also need more
+            // than resolveEdgeNodeOverlaps's usual 8 iterations, since
+            // recentering nodes off dagre's own crossing-minimized
+            // positions - narrowing or not - creates some overlaps dagre's
+            // original spacing didn't have.
+            const VERTICAL_PACKING = {
+                flowOrthogonal: { maxRankWidth: 1400, maxIterations: 20 },
+                flowVertical: { maxRankWidth: Infinity, maxIterations: 20 },
             };
 
             cytoscape.use(cytoscapeDagre);
@@ -1096,34 +1148,30 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 cy.edges().toggleClass('orthogonal-edge-vertical', orthogonalAxis === 'vertical');
                 cy.edges().toggleClass('orthogonal-edge-horizontal', orthogonalAxis === 'horizontal');
 
-                // Only the vertical (TB) orthogonal layout wraps wide ranks -
-                // that's the one meant to read as a tall, narrow flowchart;
-                // the LR orientation's "ranks" are already vertical columns,
-                // where a rank being visually tall is the expected, matching
-                // shape, not something to fight.
-                const isWrappedVertical = layoutName === 'flowOrthogonal';
+                // Only flowOrthogonal and flowVertical run wrapWideRanks -
+                // dagreLRClean/flowTB/flowOrthogonalLR don't have a "ranks
+                // spread wider than they need to be" problem in the first
+                // place (LR's ranks are columns, where extra height is the
+                // expected shape, not something to fix).
+                const packing = VERTICAL_PACKING[layoutName];
 
-                if (isWrappedVertical) {
-                    wrapWideRanks(cy, { maxRankWidth: 1400, nodeGap: layouts.flowOrthogonal.nodeSep });
+                if (packing) {
+                    wrapWideRanks(cy, { maxRankWidth: packing.maxRankWidth, nodeGap: layouts[layoutName].nodeSep });
                 }
 
                 if (isCleanLayout) {
-                    // Squeezing a rank that dagre originally spread across
-                    // the graph's full width down into a ~1400px column
-                    // means edges that used to have room to route around
-                    // unrelated nodes now cross a much more crowded space -
-                    // measured on dep-health-analyzer's own graph: 8
-                    // iterations (the default, still fine for every other
-                    // "clean" layout) left 287 node/edge overlaps, plainly
-                    // too many. More iterations measurably help (down to
-                    // ~100 by 80 iterations) but each pass also pushes
-                    // width back up, eating into the narrowing this layout
-                    // exists for - 20 is a middle point found by testing
-                    // (199 overlaps, width only back up to ~2600 from
-                    // ~2300), not a value with a closed-form justification.
+                    // Recentering nodes off dagre's own crossing-minimized
+                    // positions - whether narrowing them (flowOrthogonal) or
+                    // just removing wasted cross-column alignment spread
+                    // (flowVertical) - creates overlaps resolveEdgeNodeOverlaps's
+                    // usual 8-iteration budget (still fine for every other
+                    // "clean" layout, none of which touch node X positions
+                    // after dagre) doesn't fully clear. 20 was found by
+                    // testing to noticeably help both without costing much
+                    // in extra compute.
                     resolveEdgeNodeOverlaps(cy, {
                         orthogonalAxis,
-                        maxIterations: isWrappedVertical ? 20 : undefined,
+                        maxIterations: packing ? packing.maxIterations : undefined,
                     });
                 }
 
