@@ -12,6 +12,8 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
                 data: {
                     id: '</script><script>alert(1)</script>.ts',
                     label: '</script><script>alert(1)</script>.ts',
+                    dir: '',
+                    typeColor: '#9ca3af',
                 },
             },
         ];
@@ -23,7 +25,9 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
     });
 
     it('still embeds the real node data, just safely encoded', () => {
-        const nodes: CytoscapeNode[] = [{ data: { id: 'src/a.ts', label: 'a.ts' } }];
+        const nodes: CytoscapeNode[] = [
+            { data: { id: 'src/a.ts', label: 'a.ts', dir: '', typeColor: '#9ca3af' } },
+        ];
         const edges: CytoscapeEdge[] = [];
 
         const html = buildHtmlTemplate({ nodes, edges });

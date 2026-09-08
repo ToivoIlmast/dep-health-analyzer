@@ -78,6 +78,15 @@ export const styles = `
         z-index: 999;
     }
 
+    #hint .legend-swatch {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+
     #edge-clarity-note {
         position: absolute;
         bottom: 16px;

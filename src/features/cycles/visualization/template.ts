@@ -44,7 +44,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             0.00 = stable module<br />
             1.00 = highly unstable module
             <br /><br />
-    
+
+            <strong>Module type</strong> (best-effort, from its file path)<br />
+            <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px;">
+                <div><span class="legend-swatch" style="background: #3b82f6;"></span>Entry / Root</div>
+                <div><span class="legend-swatch" style="background: #22c55e;"></span>Core module</div>
+                <div><span class="legend-swatch" style="background: #a855f7;"></span>Feature module</div>
+                <div><span class="legend-swatch" style="background: #9ca3af;"></span>Utility module</div>
+                <div><span class="legend-swatch" style="background: #f97316;"></span>Script / Tooling</div>
+            </div>
+            <br />
+
             <label style="display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" id="highlight-toggle" checked />
                 Highlight connected modules
@@ -230,14 +240,38 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     {
                         selector: 'node',
                         style: {
-                            'label': 'data(label)',
+                            // A second, smaller line showing the module's
+                            // directory (e.g. "src/features/cycles") under
+                            // its filename - data(label) alone (used
+                            // as-is for the tooltip title elsewhere) stays
+                            // just the filename, so this only affects what's
+                            // drawn on the node itself.
+                            'label': function (ele) {
+                                const dir = ele.data('dir');
+                                return dir ? ele.data('label') + '\\n' + dir : ele.data('label');
+                            },
                             'font-size': '10px',
                             'text-valign': 'center',
                             'text-halign': 'center',
-                            'background-color': 'gray',  
-                            'width': 'data(size)',
-                            'height': 'data(size)',
-                            'opacity': '0.5',                  
+                            'text-wrap': 'wrap',
+                            'text-max-width': '130px',
+                            'line-height': 1.3,
+                            // Experimental (branch: experiment/cycle-map-v2).
+                            // Rounded-rectangle "block diagram" nodes sized to
+                            // fit their (now two-line) label content, colored
+                            // by a best-effort module-type classification
+                            // (see classifyModuleType() in
+                            // buildCytoscapeElements.ts) instead of a flat
+                            // gray - a plain functional/architectural role
+                            // signal, distinct from '.scc' below, which still
+                            // overrides this for any node that's actually
+                            // part of a real cycle.
+                            'shape': 'round-rectangle',
+                            'background-color': 'data(typeColor)',
+                            'width': 'label',
+                            'height': 'label',
+                            'padding': '10px',
+                            'opacity': '0.9',
                         },
                     },
     
@@ -275,10 +309,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     {
                         selector: '.scc',
                         style: {
+                            // Only overrides color/opacity now - width/height
+                            // stay on the base 'node' rule's label-based
+                            // auto-sizing above, so a cyclic node still gets
+                            // a rectangle that actually fits its two-line
+                            // label instead of reverting to the old
+                            // degree-based circle size.
                             'background-color': 'data(color)',
-                            'width': 'data(size)',
-                            'height': 'data(size)', 
-                            'opacity': '1'
+                            'opacity': '1',
                         },
                     },
     
@@ -326,6 +364,83 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 layout: layouts.dagreLR,
             });
 
+            // Shared with redrawMinimapStatic below, so the minimap's edge
+            // drawing matches the same geometry collision-avoidance checks
+            // against - one straight segment normally, or the same 3-segment
+            // vertical/horizontal/vertical taxi path (matching '.orthogonal-edge'
+            // below: taxi-direction: vertical, taxi-turn: 50%) whenever an
+            // ORTHOGONAL_LAYOUTS layout is active.
+            function computeEdgePathSegments(p1, p2, orthogonal) {
+                if (!orthogonal) {
+                    return [{ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }];
+                }
+
+                const turnY = p1.y + (p2.y - p1.y) * 0.5;
+
+                return [
+                    { x1: p1.x, y1: p1.y, x2: p1.x, y2: turnY },
+                    { x1: p1.x, y1: turnY, x2: p2.x, y2: turnY },
+                    { x1: p2.x, y1: turnY, x2: p2.x, y2: p2.y },
+                ];
+            }
+
+            // Liang-Barsky line-clipping: true if any part of the segment
+            // lies inside the axis-aligned rectangle centered at
+            // (rectX, rectY). Nodes became rounded rectangles sized to fit
+            // a (now two-line) label instead of small degree-sized circles -
+            // a wide, short box is a poor fit for the "distance to a circle
+            // of radius = width/2" test this used to use, which was
+            // measured to make almost every long-labeled node on the real
+            // project register as "overlapping" any edge merely passing
+            // within half its (now often 100px+) text width, regardless of
+            // whether that edge was anywhere near the box vertically.
+            function segmentIntersectsRect(x1, y1, x2, y2, rectX, rectY, halfWidth, halfHeight) {
+                const left = rectX - halfWidth;
+                const right = rectX + halfWidth;
+                const top = rectY - halfHeight;
+                const bottom = rectY + halfHeight;
+
+                let t0 = 0;
+                let t1 = 1;
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const edges = [
+                    [-dx, x1 - left],
+                    [dx, right - x1],
+                    [-dy, y1 - top],
+                    [dy, bottom - y1],
+                ];
+
+                for (const [p, q] of edges) {
+                    if (p === 0) {
+                        if (q < 0) {
+                            return false;
+                        }
+                        continue;
+                    }
+
+                    const r = q / p;
+
+                    if (p < 0) {
+                        if (r > t1) {
+                            return false;
+                        }
+                        if (r > t0) {
+                            t0 = r;
+                        }
+                    } else {
+                        if (r < t0) {
+                            return false;
+                        }
+                        if (r < t1) {
+                            t1 = r;
+                        }
+                    }
+                }
+
+                return t0 <= t1;
+            }
+
             // Experimental (branch: experiment/cycle-map-v2): pushes any node
             // that a straight A->B edge would otherwise pass through out of
             // that edge's way, perpendicular to the edge line. Only ever
@@ -354,28 +469,6 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     return { x: x1 + t * dx, y: y1 + t * dy };
                 }
 
-                // A straight edge is one segment, source to target. An
-                // orthogonal ('.orthogonal-edge', taxi-direction: vertical,
-                // taxi-turn: 50%) edge is the same 3-segment path cytoscape
-                // itself renders for those settings - vertical, then
-                // horizontal at the vertical midpoint, then vertical again -
-                // so collision-avoidance checks the path actually on screen
-                // instead of the (now visually meaningless) straight line
-                // between the two endpoints.
-                function getEdgeSegments(p1, p2) {
-                    if (!orthogonal) {
-                        return [{ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }];
-                    }
-
-                    const turnY = p1.y + (p2.y - p1.y) * 0.5;
-
-                    return [
-                        { x1: p1.x, y1: p1.y, x2: p1.x, y2: turnY },
-                        { x1: p1.x, y1: turnY, x2: p2.x, y2: turnY },
-                        { x1: p2.x, y1: turnY, x2: p2.x, y2: p2.y },
-                    ];
-                }
-
                 for (let iteration = 0; iteration < maxIterations; iteration++) {
                     let movedAny = false;
 
@@ -384,7 +477,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         const target = edge.target();
                         const p1 = source.position();
                         const p2 = target.position();
-                        const segments = getEdgeSegments(p1, p2);
+                        const segments = computeEdgePathSegments(p1, p2, orthogonal);
 
                         cy.nodes().forEach((node) => {
                             if (node.id() === source.id() || node.id() === target.id()) {
@@ -392,18 +485,30 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             }
 
                             const pos = node.position();
-                            const radius = node.width() / 2;
-                            const clearance = radius + margin;
+                            const halfWidth = node.width() / 2;
+                            const halfHeight = node.height() / 2;
 
-                            // A node can only ever be in the way of one bend
-                            // of the path at a time - check every segment
-                            // and act on whichever one it's actually
-                            // closest to.
+                            // Whether the node's actual rectangle (not a
+                            // width/2-radius circle around it) is crossed by
+                            // any of the edge's segments - see
+                            // segmentIntersectsRect() above for why this
+                            // replaced the old circle-distance check.
+                            let intersectsAny = false;
                             let closest = null;
                             let bestSegment = null;
                             let distance = Infinity;
 
                             segments.forEach((seg) => {
+                                if (
+                                    segmentIntersectsRect(
+                                        seg.x1, seg.y1, seg.x2, seg.y2,
+                                        pos.x, pos.y,
+                                        halfWidth + margin, halfHeight + margin,
+                                    )
+                                ) {
+                                    intersectsAny = true;
+                                }
+
                                 const c = closestPointOnSegment(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2);
                                 const dx = pos.x - c.x;
                                 const dy = pos.y - c.y;
@@ -416,9 +521,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                                 }
                             });
 
-                            if (distance >= clearance) {
+                            if (!intersectsAny) {
                                 return;
                             }
+
+                            // The intersection test above is exact; this
+                            // "how far to push" distance is still the same
+                            // reasonable approximation as before (based on
+                            // the closest point on whichever segment is
+                            // nearest), just using the larger of the
+                            // rectangle's two half-dimensions as the
+                            // clearance radius instead of a fixed circle.
+                            const clearance = Math.max(halfWidth, halfHeight) + margin;
 
                             const awayX = pos.x - closest.x;
                             const awayY = pos.y - closest.y;
@@ -636,7 +750,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 };
             }
 
-            function redrawMinimapStatic(cy) {
+            function redrawMinimapStatic(cy, isOrthogonal) {
                 if (!minimapCtx) {
                     return;
                 }
@@ -651,17 +765,32 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 minimapStaticCtx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
                 minimapStaticCtx.lineWidth = 1;
 
+                // Mirrors the real graph's own routing (computeEdgePathSegments,
+                // shared above) so a straight-edge layout's minimap shows
+                // straight lines and an orthogonal layout's minimap shows the
+                // same right-angle connectors, just schematic at this scale.
                 cy.edges().forEach((edge) => {
                     const p1 = edge.source().position();
                     const p2 = edge.target().position();
-                    const a = toMinimapPoint(p1.x, p1.y, transform);
-                    const b = toMinimapPoint(p2.x, p2.y, transform);
+                    const segments = computeEdgePathSegments(p1, p2, isOrthogonal);
 
                     minimapStaticCtx.beginPath();
-                    minimapStaticCtx.moveTo(a.x, a.y);
-                    minimapStaticCtx.lineTo(b.x, b.y);
+                    segments.forEach((seg) => {
+                        const a = toMinimapPoint(seg.x1, seg.y1, transform);
+                        const b = toMinimapPoint(seg.x2, seg.y2, transform);
+
+                        minimapStaticCtx.moveTo(a.x, a.y);
+                        minimapStaticCtx.lineTo(b.x, b.y);
+                    });
                     minimapStaticCtx.stroke();
                 });
+
+                // Small rectangles, not dots - a schematic echo of the real
+                // graph's rounded-rectangle nodes, colored the same way
+                // (module-type color, or the cycle's color for a '.scc'
+                // node) so the minimap actually looks like a miniature of
+                // the real map instead of an abstract dot-graph over it.
+                const MINIMAP_NODE_SIZE = 4;
 
                 cy.nodes().forEach((node) => {
                     const pos = node.position();
@@ -669,11 +798,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                     minimapStaticCtx.fillStyle = node.hasClass('scc')
                         ? node.data('color') || '#ef4444'
-                        : '#9ca3af';
+                        : node.data('typeColor') || '#9ca3af';
 
-                    minimapStaticCtx.beginPath();
-                    minimapStaticCtx.arc(point.x, point.y, 1.6, 0, Math.PI * 2);
-                    minimapStaticCtx.fill();
+                    minimapStaticCtx.fillRect(
+                        point.x - MINIMAP_NODE_SIZE / 2,
+                        point.y - MINIMAP_NODE_SIZE / 2,
+                        MINIMAP_NODE_SIZE,
+                        MINIMAP_NODE_SIZE,
+                    );
                 });
 
                 redrawMinimapViewport(cy);
@@ -792,7 +924,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
 
                 applyInitialView(cy);
-                redrawMinimapStatic(cy);
+                redrawMinimapStatic(cy, isOrthogonal);
             }
 
             // The initial 'dagre' layout passed into the cytoscape()
