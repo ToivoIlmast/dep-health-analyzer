@@ -69,7 +69,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <option value="dagreTB">Dagre TB</option>
                     <option value="dagreLRClean">Dagre LR (straight edges, no overlap)</option>
                     <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
-                    <option value="flowOrthogonal">Hierarchical (Orthogonal)</option>
+                    <option value="flowOrthogonal">Hierarchical (Orthogonal, Top to Bottom)</option>
+                    <option value="flowOrthogonalLR">Hierarchical (Orthogonal, Left to Right)</option>
                     <option value="breadthfirst">Breadth First</option>
                     <option value="cose">Force Directed</option>
                 </select>
@@ -193,8 +194,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 // Experimental (branch: experiment/cycle-map-v2). Same TB
                 // ranking as flowTB - only the edge curve-style differs (see
-                // the '.orthogonal-edge' style rule and ORTHOGONAL_LAYOUTS
-                // below), toggled to cytoscape core's native 'taxi' style
+                // the '.orthogonal-edge-vertical' style rule and
+                // ORTHOGONAL_LAYOUT_AXES below), toggled to cytoscape core's
+                // native 'taxi' style
                 // for this layout only. rankSep is wider than flowTB's: a
                 // taxi edge's horizontal jog sits entirely within the gap
                 // between two ranks, so that gap needs to comfortably fit
@@ -212,19 +214,50 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     fit: false,
                     nodeDimensionsIncludeLabels: true,
                 },
+
+                // Experimental (branch: experiment/cycle-map-v2). The LR
+                // counterpart of flowOrthogonal above - same idea, rotated
+                // 90 degrees. rankSep (here, the horizontal gap between
+                // columns) is wider still: nodes are now label-width
+                // rectangles rather than small circles, so the gap between
+                // columns needs to clear whole boxes (often 100px+ wide)
+                // plus room for the taxi path's vertical jog, not just a
+                // small fixed node diameter. nodeSep (vertical gap within a
+                // column) can stay closer to flowOrthogonal's TB nodeSep
+                // value since box height is driven by two lines of text,
+                // not by column direction.
+                flowOrthogonalLR: {
+                    name: 'dagre',
+                    rankDir: 'LR',
+                    nodeSep: 70,
+                    rankSep: 220,
+                    edgeSep: 40,
+                    padding: 60,
+                    spacingFactor: 1,
+                    fit: false,
+                    nodeDimensionsIncludeLabels: true,
+                },
             };
 
             // Layouts whose spacing is wide enough that a follow-up
             // collision-avoidance pass (see resolveEdgeNodeOverlaps below)
             // is worth running, and whose edge-clarity-note explains why
             // they look roomier than dagreLR/dagreTB.
-            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB', 'flowOrthogonal'];
+            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB', 'flowOrthogonal', 'flowOrthogonalLR'];
 
             // Layouts that render edges as orthogonal (taxi-style)
-            // right-angle connectors instead of straight lines - see the
-            // '.orthogonal-edge' style rule below, toggled onto every edge
-            // when one of these layouts is active.
-            const ORTHOGONAL_LAYOUTS = ['flowOrthogonal'];
+            // right-angle connectors instead of straight lines, and which
+            // axis each one's taxi path primarily moves along first -
+            // 'vertical' for a TB layout (so a cyclic back-edge whose
+            // target sits ABOVE its source still routes sensibly, rather
+            // than being forced to visually go "the wrong way" the way an
+            // explicit 'downward' direction would), 'horizontal' for the LR
+            // one for the same reason (source/target order along x can
+            // point either way for a back-edge too).
+            const ORTHOGONAL_LAYOUT_AXES = {
+                flowOrthogonal: 'vertical',
+                flowOrthogonalLR: 'horizontal',
+            };
 
             cytoscape.use(cytoscapeDagre);
 
@@ -289,18 +322,30 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     // Experimental (branch: experiment/cycle-map-v2). Cytoscape
                     // core's own 'taxi' curve-style - vertical/horizontal
                     // segments meeting at right angles, no third-party edge
-                    // routing library needed. Toggled onto every edge only
-                    // while an ORTHOGONAL_LAYOUTS layout is active (see
+                    // routing library needed. Exactly one of these two
+                    // classes is toggled onto every edge while the matching
+                    // ORTHOGONAL_LAYOUT_AXES layout is active (see
                     // onLayoutFinished below); every other layout keeps the
-                    // plain straight '.edge' style above. 'vertical' (not
-                    // 'downward') so a cyclic back-edge whose target actually
-                    // sits ABOVE its source still routes sensibly instead of
-                    // being forced to visually go the wrong way.
+                    // plain straight '.edge' style above. 'vertical'/
+                    // 'horizontal' (not 'downward'/'rightward') so a cyclic
+                    // back-edge whose target actually sits above/left of its
+                    // source still routes sensibly instead of being forced
+                    // to visually go the wrong way.
                     {
-                        selector: '.orthogonal-edge',
+                        selector: '.orthogonal-edge-vertical',
                         style: {
                             'curve-style': 'taxi',
                             'taxi-direction': 'vertical',
+                            'taxi-turn': '50%',
+                            'taxi-turn-min-distance': 20,
+                        },
+                    },
+
+                    {
+                        selector: '.orthogonal-edge-horizontal',
+                        style: {
+                            'curve-style': 'taxi',
+                            'taxi-direction': 'horizontal',
                             'taxi-turn': '50%',
                             'taxi-turn-min-distance': 20,
                         },
@@ -366,22 +411,34 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             // Shared with redrawMinimapStatic below, so the minimap's edge
             // drawing matches the same geometry collision-avoidance checks
-            // against - one straight segment normally, or the same 3-segment
-            // vertical/horizontal/vertical taxi path (matching '.orthogonal-edge'
-            // below: taxi-direction: vertical, taxi-turn: 50%) whenever an
-            // ORTHOGONAL_LAYOUTS layout is active.
-            function computeEdgePathSegments(p1, p2, orthogonal) {
-                if (!orthogonal) {
-                    return [{ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }];
+            // against - one straight segment normally, or the matching
+            // 3-segment taxi path (vertical/horizontal/vertical, or
+            // horizontal/vertical/horizontal) for whichever axis
+            // ORTHOGONAL_LAYOUT_AXES maps the active layout to, mirroring
+            // the '.orthogonal-edge-vertical'/'-horizontal' styles below
+            // (taxi-turn: 50% either way).
+            function computeEdgePathSegments(p1, p2, orthogonalAxis) {
+                if (orthogonalAxis === 'vertical') {
+                    const turnY = p1.y + (p2.y - p1.y) * 0.5;
+
+                    return [
+                        { x1: p1.x, y1: p1.y, x2: p1.x, y2: turnY },
+                        { x1: p1.x, y1: turnY, x2: p2.x, y2: turnY },
+                        { x1: p2.x, y1: turnY, x2: p2.x, y2: p2.y },
+                    ];
                 }
 
-                const turnY = p1.y + (p2.y - p1.y) * 0.5;
+                if (orthogonalAxis === 'horizontal') {
+                    const turnX = p1.x + (p2.x - p1.x) * 0.5;
 
-                return [
-                    { x1: p1.x, y1: p1.y, x2: p1.x, y2: turnY },
-                    { x1: p1.x, y1: turnY, x2: p2.x, y2: turnY },
-                    { x1: p2.x, y1: turnY, x2: p2.x, y2: p2.y },
-                ];
+                    return [
+                        { x1: p1.x, y1: p1.y, x2: turnX, y2: p1.y },
+                        { x1: turnX, y1: p1.y, x2: turnX, y2: p2.y },
+                        { x1: turnX, y1: p2.y, x2: p2.x, y2: p2.y },
+                    ];
+                }
+
+                return [{ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }];
             }
 
             // Liang-Barsky line-clipping: true if any part of the segment
@@ -452,7 +509,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             function resolveEdgeNodeOverlaps(cy, options) {
                 const margin = (options && options.margin) || 14;
                 const maxIterations = (options && options.maxIterations) || 8;
-                const orthogonal = !!(options && options.orthogonal);
+                const orthogonalAxis = (options && options.orthogonalAxis) || null;
 
                 function closestPointOnSegment(px, py, x1, y1, x2, y2) {
                     const dx = x2 - x1;
@@ -477,7 +534,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         const target = edge.target();
                         const p1 = source.position();
                         const p2 = target.position();
-                        const segments = computeEdgePathSegments(p1, p2, orthogonal);
+                        const segments = computeEdgePathSegments(p1, p2, orthogonalAxis);
 
                         cy.nodes().forEach((node) => {
                             if (node.id() === source.id() || node.id() === target.id()) {
@@ -750,7 +807,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 };
             }
 
-            function redrawMinimapStatic(cy, isOrthogonal) {
+            function redrawMinimapStatic(cy, orthogonalAxis) {
                 if (!minimapCtx) {
                     return;
                 }
@@ -772,7 +829,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 cy.edges().forEach((edge) => {
                     const p1 = edge.source().position();
                     const p2 = edge.target().position();
-                    const segments = computeEdgePathSegments(p1, p2, isOrthogonal);
+                    const segments = computeEdgePathSegments(p1, p2, orthogonalAxis);
 
                     minimapStaticCtx.beginPath();
                     segments.forEach((seg) => {
@@ -909,22 +966,24 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             };
 
             function onLayoutFinished(cy, layoutName) {
-                const isOrthogonal = ORTHOGONAL_LAYOUTS.includes(layoutName);
+                const orthogonalAxis = ORTHOGONAL_LAYOUT_AXES[layoutName] || null;
                 const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
 
-                // The '.orthogonal-edge' style (curve-style: taxi) is only
-                // ever wanted while one of ORTHOGONAL_LAYOUTS is active -
+                // Exactly one of '.orthogonal-edge-vertical'/'-horizontal'
+                // (curve-style: taxi) is ever wanted at a time, matching
+                // whichever ORTHOGONAL_LAYOUT_AXES layout is active -
                 // switching to any other layout must fall back to the plain
                 // straight '.edge' style, not keep the previous layout's
                 // taxi routing.
-                cy.edges().toggleClass('orthogonal-edge', isOrthogonal);
+                cy.edges().toggleClass('orthogonal-edge-vertical', orthogonalAxis === 'vertical');
+                cy.edges().toggleClass('orthogonal-edge-horizontal', orthogonalAxis === 'horizontal');
 
                 if (isCleanLayout) {
-                    resolveEdgeNodeOverlaps(cy, { orthogonal: isOrthogonal });
+                    resolveEdgeNodeOverlaps(cy, { orthogonalAxis });
                 }
 
                 applyInitialView(cy);
-                redrawMinimapStatic(cy, isOrthogonal);
+                redrawMinimapStatic(cy, orthogonalAxis);
             }
 
             // The initial 'dagre' layout passed into the cytoscape()
@@ -948,7 +1007,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                         if (edgeClarityNote) {
                             edgeClarityNote.hidden = !isCleanLayout;
-                            edgeClarityNote.textContent = ORTHOGONAL_LAYOUTS.includes(layoutName)
+                            edgeClarityNote.textContent = ORTHOGONAL_LAYOUT_AXES[layoutName]
                                 ? EDGE_CLARITY_MESSAGES.orthogonal
                                 : EDGE_CLARITY_MESSAGES.straight;
                         }
