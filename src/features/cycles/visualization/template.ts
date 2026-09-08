@@ -1139,6 +1139,25 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 orthogonal: 'Edges route as right-angle connectors, spread out to stay clear of other modules.',
             };
 
+            // Each geometry step below (wrapWideRanks, resolveEdgeNodeOverlaps,
+            // applyInitialView, redrawMinimapStatic) runs in its own
+            // try/catch. Real bug found after shipping this HUD: this
+            // function used to run these as a single unguarded sequence,
+            // called once synchronously before any of the tap/click
+            // handlers further down the script were registered (see the
+            // call site below, now moved to the very end of the script for
+            // the same reason) - a thrown error partway through this
+          // function used to abort the ENTIRE top-level script, silently
+            // skipping every line after it, including the minimap's own
+            // click/drag wiring and every cy.on('tap', ...) handler
+            // (updateSelectedModulePanel included). That made two entirely
+            // unrelated-looking symptoms - a blank minimap and a
+            // never-updating "Selected module" panel - actually the same
+            // root cause. Isolating each step means a failure in one
+            // (e.g. an environment-specific quirk in node.width()/height()
+            // for the label-based auto-sizing, which depends on that
+            // browser's own font metrics) can't take down the others, and
+            // definitely can't take down code that hasn't even run yet.
             function onLayoutFinished(cy, layoutName) {
                 const orthogonalAxis = ORTHOGONAL_LAYOUT_AXES[layoutName] || null;
                 const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
@@ -1160,7 +1179,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const packing = VERTICAL_PACKING[layoutName];
 
                 if (packing) {
-                    wrapWideRanks(cy, { maxRankWidth: packing.maxRankWidth, nodeGap: layouts[layoutName].nodeSep });
+                    try {
+                        wrapWideRanks(cy, { maxRankWidth: packing.maxRankWidth, nodeGap: layouts[layoutName].nodeSep });
+                    } catch (error) {
+                        console.error('wrapWideRanks failed, continuing with dagre\\'s own positions:', error);
+                    }
                 }
 
                 if (isCleanLayout) {
@@ -1173,23 +1196,29 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     // after dagre) doesn't fully clear. 20 was found by
                     // testing to noticeably help both without costing much
                     // in extra compute.
-                    resolveEdgeNodeOverlaps(cy, {
-                        orthogonalAxis,
-                        maxIterations: packing ? packing.maxIterations : undefined,
-                    });
+                    try {
+                        resolveEdgeNodeOverlaps(cy, {
+                            orthogonalAxis,
+                            maxIterations: packing ? packing.maxIterations : undefined,
+                        });
+                    } catch (error) {
+                        console.error('resolveEdgeNodeOverlaps failed, continuing without it:', error);
+                    }
                 }
 
-                applyInitialView(cy);
-                redrawMinimapStatic(cy, orthogonalAxis);
-            }
+                try {
+                    applyInitialView(cy);
+                } catch (error) {
+                    console.error('applyInitialView failed, falling back to a plain fit:', error);
+                    cy.fit(undefined, 40);
+                }
 
-            // The initial 'dagre' layout passed into the cytoscape()
-            // constructor above runs synchronously as part of construction,
-            // so its 'layoutstop' can fire before any listener registered
-            // after the fact would be attached in time to catch it -
-            // calling this directly, once, covers the initial-load case
-            // regardless of that timing.
-            onLayoutFinished(cy, 'flowOrthogonal');
+                try {
+                    redrawMinimapStatic(cy, orthogonalAxis);
+                } catch (error) {
+                    console.error('redrawMinimapStatic failed - minimap may be blank:', error);
+                }
+            }
 
             const layoutSelect = document.getElementById('layout-select');
             const edgeClarityNote = document.getElementById('edge-clarity-note');
@@ -1442,6 +1471,20 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     updateSelectedModulePanel(null);
                 }
             });
+
+            // Deliberately the LAST statement in the script, not the
+            // first: the initial 'dagre' layout passed into the
+            // cytoscape() constructor runs synchronously as part of
+            // construction, so onLayoutFinished's own work (spacing
+            // adjustments, the initial view, the minimap's first draw)
+            // needs to happen once up front regardless - but every event
+            // handler above (node tap/hover, minimap click-drag, the
+            // layout <select>, "Fit Graph") is now already registered
+            // before this runs, so even if something inside
+            // onLayoutFinished's own try/catch-wrapped steps still
+            // surfaces a problem, none of that wiring is at risk of
+            // silently never having been attached in the first place.
+            onLayoutFinished(cy, 'flowOrthogonal');
         </script>
     </body>
     </html>
