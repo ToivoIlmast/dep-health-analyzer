@@ -37,6 +37,7 @@ src/app/config/validateConfig.generated.js
 architecture.md
 audit-report-v0.8.1.md
 docs/BACKLOG.md
+docs/release-notes/
 
 # External validation corpus - generated fixture projects, regenerated
 # locally via scripts/gen-*.mjs. Not part of the npm package or

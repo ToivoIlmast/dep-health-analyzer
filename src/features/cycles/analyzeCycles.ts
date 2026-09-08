@@ -58,16 +58,25 @@ type AnalyzeCyclesType = {
     enableHtmlReport: boolean;
     htmlReportOutputPath: string;
     includeTypeOnlyImports?: boolean;
+    exclude?: string[];
 };
 
 export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
-    const { target, mode, failOn, enableHtmlReport, htmlReportOutputPath, includeTypeOnlyImports } =
-        args;
+    const {
+        target,
+        mode,
+        failOn,
+        enableHtmlReport,
+        htmlReportOutputPath,
+        includeTypeOnlyImports,
+        exclude,
+    } = args;
 
     const result = await scanProject({
         scanRoot: target,
         projectRoot: process.cwd(),
         includeTypeOnlyImports,
+        exclude,
     });
     const cycles = detectCycles(result.graph);
     result.cycles = cycles;

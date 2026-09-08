@@ -79,6 +79,7 @@ type AnalyzeRegressionType = {
     htmlReportOutputPath: string;
     scopes?: Array<IRegressionScope>;
     includeTypeOnlyImports?: boolean;
+    exclude?: string[];
 };
 export async function analyzeRegression(
     args: AnalyzeRegressionType
@@ -93,6 +94,7 @@ export async function analyzeRegression(
         htmlReportOutputPath,
         scopes,
         includeTypeOnlyImports,
+        exclude,
     } = args;
 
     if (!validateGitRef(baselineRef) && baselineRef) {
@@ -112,6 +114,7 @@ export async function analyzeRegression(
         scanRoot: target,
         projectRoot: currentProjectRoot,
         includeTypeOnlyImports,
+        exclude,
     });
     console.log(`Scanned files: ${current.scannedFiles}`);
     console.log(`Modules: ${current.graph.nodes.size}`);
@@ -124,6 +127,7 @@ export async function analyzeRegression(
             scanRoot: resolveWorktreeTarget(worktree, target),
             projectRoot: worktree,
             includeTypeOnlyImports,
+            exclude,
         });
     } finally {
         removeBaselineWorktree(worktree);

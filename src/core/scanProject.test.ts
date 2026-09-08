@@ -119,4 +119,58 @@ describe('scanProject', () => {
             expect(edgesCount).toBe(1);
         });
     });
+
+    describe('exclude (config: top-level exclude, shared by every command)', () => {
+        // A real gap found while dogfooding: dep-health's own repo scanning
+        // itself was silently sweeping up the entire test-projects/ external
+        // validation corpus as if it were project source. discoverFiles()'s
+        // own `exclude` param only keeps an excluded file from being
+        // scanned as a *source* of its own imports - it says nothing about
+        // a *resolved import target*. Without the check in scanProject.ts,
+        // a file outside the excluded path that still imports something
+        // inside it would add the "excluded" file straight back into the
+        // graph as a node, defeating the point of excluding it at all.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-scanproject-exclude-'));
+            fs.mkdirSync(path.join(root, 'vendor'), { recursive: true });
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('does not add an excluded file to the graph even when a kept file still imports it', async () => {
+            fs.writeFileSync(
+                path.join(root, 'main.ts'),
+                `import { helper } from './vendor/helper';\nexport const x = helper;\n`
+            );
+            fs.writeFileSync(path.join(root, 'vendor', 'helper.ts'), `export const helper = 1;\n`);
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root, exclude: ['vendor/**'] });
+
+            expect(result.scannedFiles).toBe(1);
+            expect(result.graph.nodes.has(path.join(root, 'vendor', 'helper.ts'))).toBe(false);
+
+            let edgesCount = 0;
+            for (const deps of result.graph.edges.values()) {
+                edgesCount += deps.size;
+            }
+            expect(edgesCount).toBe(0);
+        });
+
+        it('scans everything, unaffected, when exclude is omitted', async () => {
+            fs.writeFileSync(
+                path.join(root, 'main.ts'),
+                `import { helper } from './vendor/helper';\nexport const x = helper;\n`
+            );
+            fs.writeFileSync(path.join(root, 'vendor', 'helper.ts'), `export const helper = 1;\n`);
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.scannedFiles).toBe(2);
+            expect(result.graph.nodes.has(path.join(root, 'vendor', 'helper.ts'))).toBe(true);
+        });
+    });
 });
