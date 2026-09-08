@@ -59,6 +59,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <option value="dagreTB">Dagre TB</option>
                     <option value="dagreLRClean">Dagre LR (straight edges, no overlap)</option>
                     <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
+                    <option value="flowOrthogonal">Hierarchical (Orthogonal)</option>
                     <option value="breadthfirst">Breadth First</option>
                     <option value="cose">Force Directed</option>
                 </select>
@@ -179,13 +180,41 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     fit: false,
                     nodeDimensionsIncludeLabels: true,
                 },
+
+                // Experimental (branch: experiment/cycle-map-v2). Same TB
+                // ranking as flowTB - only the edge curve-style differs (see
+                // the '.orthogonal-edge' style rule and ORTHOGONAL_LAYOUTS
+                // below), toggled to cytoscape core's native 'taxi' style
+                // for this layout only. rankSep is wider than flowTB's: a
+                // taxi edge's horizontal jog sits entirely within the gap
+                // between two ranks, so that gap needs to comfortably fit
+                // the jog clear of whatever sits at the very top/bottom
+                // edge of the nodes on either side of it, not just clear
+                // the node bodies themselves.
+                flowOrthogonal: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 100,
+                    rankSep: 200,
+                    edgeSep: 40,
+                    padding: 60,
+                    spacingFactor: 1,
+                    fit: false,
+                    nodeDimensionsIncludeLabels: true,
+                },
             };
 
             // Layouts whose spacing is wide enough that a follow-up
             // collision-avoidance pass (see resolveEdgeNodeOverlaps below)
             // is worth running, and whose edge-clarity-note explains why
             // they look roomier than dagreLR/dagreTB.
-            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB'];
+            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB', 'flowOrthogonal'];
+
+            // Layouts that render edges as orthogonal (taxi-style)
+            // right-angle connectors instead of straight lines - see the
+            // '.orthogonal-edge' style rule below, toggled onto every edge
+            // when one of these layouts is active.
+            const ORTHOGONAL_LAYOUTS = ['flowOrthogonal'];
 
             cytoscape.use(cytoscapeDagre);
 
@@ -220,6 +249,26 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             'line-color': '#888',
                             'target-arrow-color': '#888',
                             'width': 1.5,
+                        },
+                    },
+
+                    // Experimental (branch: experiment/cycle-map-v2). Cytoscape
+                    // core's own 'taxi' curve-style - vertical/horizontal
+                    // segments meeting at right angles, no third-party edge
+                    // routing library needed. Toggled onto every edge only
+                    // while an ORTHOGONAL_LAYOUTS layout is active (see
+                    // onLayoutFinished below); every other layout keeps the
+                    // plain straight '.edge' style above. 'vertical' (not
+                    // 'downward') so a cyclic back-edge whose target actually
+                    // sits ABOVE its source still routes sensibly instead of
+                    // being forced to visually go the wrong way.
+                    {
+                        selector: '.orthogonal-edge',
+                        style: {
+                            'curve-style': 'taxi',
+                            'taxi-direction': 'vertical',
+                            'taxi-turn': '50%',
+                            'taxi-turn-min-distance': 20,
                         },
                     },
     
@@ -288,6 +337,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             function resolveEdgeNodeOverlaps(cy, options) {
                 const margin = (options && options.margin) || 14;
                 const maxIterations = (options && options.maxIterations) || 8;
+                const orthogonal = !!(options && options.orthogonal);
 
                 function closestPointOnSegment(px, py, x1, y1, x2, y2) {
                     const dx = x2 - x1;
@@ -304,6 +354,28 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     return { x: x1 + t * dx, y: y1 + t * dy };
                 }
 
+                // A straight edge is one segment, source to target. An
+                // orthogonal ('.orthogonal-edge', taxi-direction: vertical,
+                // taxi-turn: 50%) edge is the same 3-segment path cytoscape
+                // itself renders for those settings - vertical, then
+                // horizontal at the vertical midpoint, then vertical again -
+                // so collision-avoidance checks the path actually on screen
+                // instead of the (now visually meaningless) straight line
+                // between the two endpoints.
+                function getEdgeSegments(p1, p2) {
+                    if (!orthogonal) {
+                        return [{ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }];
+                    }
+
+                    const turnY = p1.y + (p2.y - p1.y) * 0.5;
+
+                    return [
+                        { x1: p1.x, y1: p1.y, x2: p1.x, y2: turnY },
+                        { x1: p1.x, y1: turnY, x2: p2.x, y2: turnY },
+                        { x1: p2.x, y1: turnY, x2: p2.x, y2: p2.y },
+                    ];
+                }
+
                 for (let iteration = 0; iteration < maxIterations; iteration++) {
                     let movedAny = false;
 
@@ -312,6 +384,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         const target = edge.target();
                         const p1 = source.position();
                         const p2 = target.position();
+                        const segments = getEdgeSegments(p1, p2);
 
                         cy.nodes().forEach((node) => {
                             if (node.id() === source.id() || node.id() === target.id()) {
@@ -322,17 +395,33 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             const radius = node.width() / 2;
                             const clearance = radius + margin;
 
-                            const closest = closestPointOnSegment(
-                                pos.x, pos.y, p1.x, p1.y, p2.x, p2.y
-                            );
+                            // A node can only ever be in the way of one bend
+                            // of the path at a time - check every segment
+                            // and act on whichever one it's actually
+                            // closest to.
+                            let closest = null;
+                            let bestSegment = null;
+                            let distance = Infinity;
 
-                            const awayX = pos.x - closest.x;
-                            const awayY = pos.y - closest.y;
-                            const distance = Math.sqrt(awayX * awayX + awayY * awayY);
+                            segments.forEach((seg) => {
+                                const c = closestPointOnSegment(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2);
+                                const dx = pos.x - c.x;
+                                const dy = pos.y - c.y;
+                                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                                if (dist < distance) {
+                                    distance = dist;
+                                    closest = c;
+                                    bestSegment = seg;
+                                }
+                            });
 
                             if (distance >= clearance) {
                                 return;
                             }
+
+                            const awayX = pos.x - closest.x;
+                            const awayY = pos.y - closest.y;
 
                             // The node sits (near-)exactly on the line - push it
                             // perpendicular to the edge direction instead of
@@ -344,8 +433,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             const currentLength = distance || 0.0001;
 
                             if (distance < 0.5) {
-                                const edgeDx = p2.x - p1.x;
-                                const edgeDy = p2.y - p1.y;
+                                const edgeDx = bestSegment.x2 - bestSegment.x1;
+                                const edgeDy = bestSegment.y2 - bestSegment.y1;
                                 const edgeLength = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1;
                                 const side = node.id().length % 2 === 0 ? 1 : -1;
 
@@ -682,9 +771,24 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             });
             // -------------------------------------------------------------
 
-            function onLayoutFinished(cy, isCleanLayout) {
+            const EDGE_CLARITY_MESSAGES = {
+                straight: 'Nodes were spread out to keep every edge a straight line clear of other modules.',
+                orthogonal: 'Edges route as right-angle connectors, spread out to stay clear of other modules.',
+            };
+
+            function onLayoutFinished(cy, layoutName) {
+                const isOrthogonal = ORTHOGONAL_LAYOUTS.includes(layoutName);
+                const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
+
+                // The '.orthogonal-edge' style (curve-style: taxi) is only
+                // ever wanted while one of ORTHOGONAL_LAYOUTS is active -
+                // switching to any other layout must fall back to the plain
+                // straight '.edge' style, not keep the previous layout's
+                // taxi routing.
+                cy.edges().toggleClass('orthogonal-edge', isOrthogonal);
+
                 if (isCleanLayout) {
-                    resolveEdgeNodeOverlaps(cy);
+                    resolveEdgeNodeOverlaps(cy, { orthogonal: isOrthogonal });
                 }
 
                 applyInitialView(cy);
@@ -697,7 +801,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // after the fact would be attached in time to catch it -
             // calling this directly, once, covers the initial-load case
             // regardless of that timing.
-            onLayoutFinished(cy, false);
+            onLayoutFinished(cy, 'dagreLR');
 
             const layoutSelect = document.getElementById('layout-select');
             const edgeClarityNote = document.getElementById('edge-clarity-note');
@@ -712,10 +816,13 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                         if (edgeClarityNote) {
                             edgeClarityNote.hidden = !isCleanLayout;
+                            edgeClarityNote.textContent = ORTHOGONAL_LAYOUTS.includes(layoutName)
+                                ? EDGE_CLARITY_MESSAGES.orthogonal
+                                : EDGE_CLARITY_MESSAGES.straight;
                         }
 
                         runningLayout.one('layoutstop', () => {
-                            onLayoutFinished(cy, isCleanLayout);
+                            onLayoutFinished(cy, layoutName);
                         });
 
                         runningLayout.run();
