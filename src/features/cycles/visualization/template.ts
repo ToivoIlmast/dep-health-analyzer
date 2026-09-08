@@ -58,6 +58,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <option value="dagreLR">Dagre LR</option>
                     <option value="dagreTB">Dagre TB</option>
                     <option value="dagreLRClean">Dagre LR (straight edges, no overlap)</option>
+                    <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
                     <option value="breadthfirst">Breadth First</option>
                     <option value="cose">Force Directed</option>
                 </select>
@@ -143,14 +144,48 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     fit: false,
                     padding: 40,
                 },
-            
+
                 cose: {
                     name: 'cose',
                     animate: true,
                     fit: false,
                     padding: 40,
                 },
+
+                // Experimental (branch: experiment/cycle-map-v2). A flowchart
+                // reading of the same dagre engine already used above, not a
+                // new layout algorithm: rankDir 'TB' turns dependency depth
+                // into a top-to-bottom visual hierarchy (A depends on B, C ->
+                // B and C draw below A), which reads as "flow" the way LR
+                // reads as "timeline". Left at dagre's own defaults for
+                // ranker/align/acyclicer - 'network-simplex' ranking plus
+                // averaging all four corner alignments is already dagre's
+                // own recommended crossing-minimizing configuration, and
+                // overriding it produced no measured improvement (see the
+                // delivery notes for this change) at the cost of a skewed,
+                // less balanced layout. Spacing is widened the same way
+                // dagreLRClean widens LR spacing, for the same reason: more
+                // room between nodes/ranks up front means
+                // resolveEdgeNodeOverlaps() below has to push things around
+                // less to keep every straight edge clear of unrelated nodes.
+                flowTB: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 90,
+                    rankSep: 170,
+                    edgeSep: 40,
+                    padding: 60,
+                    spacingFactor: 1,
+                    fit: false,
+                    nodeDimensionsIncludeLabels: true,
+                },
             };
+
+            // Layouts whose spacing is wide enough that a follow-up
+            // collision-avoidance pass (see resolveEdgeNodeOverlaps below)
+            // is worth running, and whose edge-clarity-note explains why
+            // they look roomier than dagreLR/dagreTB.
+            const CLEAN_LAYOUTS = ['dagreLRClean', 'flowTB'];
 
             cytoscape.use(cytoscapeDagre);
 
@@ -672,7 +707,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     'change',
                     function () {
                         const layoutName = this.value;
-                        const isCleanLayout = layoutName === 'dagreLRClean';
+                        const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
                         const runningLayout = cy.layout(layouts[layoutName]);
 
                         if (edgeClarityNote) {
