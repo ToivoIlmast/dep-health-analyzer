@@ -33,6 +33,7 @@ type AnalyzeHistoryType = {
     isHtmlReportingEnabled: boolean;
     htmlReportOutputPath: string;
     includeTypeOnlyImports?: boolean;
+    exclude?: string[];
 };
 
 export type AnalyzeHistoryResult = {
@@ -68,6 +69,7 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
         isHtmlReportingEnabled,
         htmlReportOutputPath,
         includeTypeOnlyImports,
+        exclude,
     } = args;
 
     if (sampleSize < 2) {
@@ -92,6 +94,7 @@ export async function analyzeHistory(args: AnalyzeHistoryType): Promise<AnalyzeH
         rules,
         scopes,
         includeTypeOnlyImports,
+        exclude,
     });
 
     if (points.length < 2) {

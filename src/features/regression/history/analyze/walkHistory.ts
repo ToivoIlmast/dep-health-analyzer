@@ -31,6 +31,7 @@ type WalkHistoryArgs = {
     rules: RegressionRules;
     scopes?: IRegressionScope[];
     includeTypeOnlyImports?: boolean;
+    exclude?: string[];
 };
 
 function evaluateDelta(args: {
@@ -57,7 +58,8 @@ function evaluateDelta(args: {
  * than this function picking a single strategy.
  */
 export async function walkHistory(args: WalkHistoryArgs): Promise<HistoryWalkResult> {
-    const { target, baselineRef, headRef, sampleSize, rules, scopes, includeTypeOnlyImports } = args;
+    const { target, baselineRef, headRef, sampleSize, rules, scopes, includeTypeOnlyImports, exclude } =
+        args;
 
     if (sampleSize < 2) {
         throw new Error(`sampleSize must be at least 2 to compare commits (got ${sampleSize})`);
@@ -86,6 +88,7 @@ export async function walkHistory(args: WalkHistoryArgs): Promise<HistoryWalkRes
                 scanRoot: resolveWorktreeTarget(worktree, target),
                 projectRoot: worktree,
                 includeTypeOnlyImports,
+                exclude,
             });
 
             baselineScan ??= scan;

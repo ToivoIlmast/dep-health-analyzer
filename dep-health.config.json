@@ -1,5 +1,6 @@
 {
     "$schema": "./src/app/config/config.schema.json",
+    "exclude": ["test-projects/**"],
     "features": {
         "regression": {
             "enabled": true,

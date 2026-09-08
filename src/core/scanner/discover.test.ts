@@ -165,6 +165,73 @@ describe('discoverFiles', () => {
         });
     });
 
+    describe('exclude option (config: top-level `exclude`, shared by every command)', () => {
+        // A real gap found while dogfooding: dep-health's own repo scanning
+        // itself was silently sweeping up the entire test-projects/ external
+        // validation corpus (a gitignored but not scanner-ignored directory)
+        // as if it were project source - 397 "scanned files" for a ~140-file
+        // real codebase, and every "cycle" the tool reported on itself was
+        // actually a deliberately-cyclic corpus fixture, not real dep-health
+        // code. There was no config option to add a project-specific
+        // exclude before this. `exclude` lives at the config root (not
+        // nested per-feature like `typescript.includeTypeOnlyImports`) -
+        // what counts as "part of this project" doesn't change depending on
+        // which command is scanning it.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-exclude-'));
+            fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+            fs.mkdirSync(path.join(root, 'test-projects', 'fixture-a'), { recursive: true });
+
+            fs.writeFileSync(path.join(root, 'src', 'index.ts'), '');
+            fs.writeFileSync(path.join(root, 'src', 'specific-file.ts'), '');
+            fs.writeFileSync(path.join(root, 'test-projects', 'fixture-a', 'file.ts'), '');
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('scans everything when no exclude is given', async () => {
+            const result = await discoverFiles(root);
+
+            expect(result.some((file) => file.includes('test-projects'))).toBe(true);
+            expect(result).toHaveLength(3);
+        });
+
+        it('excludes a directory glob without touching the built-in ignores', async () => {
+            const result = await discoverFiles(root, ['test-projects/**']);
+
+            expect(result.some((file) => file.includes('test-projects'))).toBe(false);
+            expect(result.some((file) => file.endsWith('src' + path.sep + 'index.ts'))).toBe(true);
+            expect(result).toHaveLength(2);
+        });
+
+        it('excludes one specific file by exact relative path', async () => {
+            const result = await discoverFiles(root, ['src/specific-file.ts']);
+
+            expect(result.some((file) => file.endsWith('specific-file.ts'))).toBe(false);
+            expect(result.some((file) => file.endsWith('src' + path.sep + 'index.ts'))).toBe(true);
+            expect(result).toHaveLength(2);
+        });
+
+        it('applies multiple exclude patterns together', async () => {
+            const result = await discoverFiles(root, ['test-projects/**', 'src/specific-file.ts']);
+
+            expect(result.some((file) => file.includes('test-projects'))).toBe(false);
+            expect(result.some((file) => file.endsWith('specific-file.ts'))).toBe(false);
+            expect(result.some((file) => file.endsWith('src' + path.sep + 'index.ts'))).toBe(true);
+            expect(result).toHaveLength(1);
+        });
+
+        it('has no effect when a pattern matches nothing', async () => {
+            const result = await discoverFiles(root, ['nonexistent-directory/**']);
+
+            expect(result).toHaveLength(3);
+        });
+    });
+
     describe('symlinks', () => {
         let root: string;
         let outside: string;

@@ -28,6 +28,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 htmlReportOutputPath:
                     config.features?.scc?.reporting?.html?.outputPath ?? './reports/cycles.html',
                 includeTypeOnlyImports: sccConfig.typescript?.includeTypeOnlyImports ?? false,
+                exclude: config.exclude,
             });
 
             results.push(!!result);
@@ -67,6 +68,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                     './reports/regression.html',
                 scopes: config.features?.regression?.scopes,
                 includeTypeOnlyImports: regressionConfig.typescript?.includeTypeOnlyImports ?? false,
+                exclude: config.exclude,
             });
 
             if (ai === true && regressionConfig.ai?.enabled) {
@@ -127,6 +129,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 htmlReportOutputPath:
                     historyConfig?.reporting?.html?.outputPath ?? './dep-health-reports/history.html',
                 includeTypeOnlyImports: regressionConfig?.typescript?.includeTypeOnlyImports ?? false,
+                exclude: config.exclude,
             });
 
             if (ai === true && regressionConfig?.ai?.enabled) {

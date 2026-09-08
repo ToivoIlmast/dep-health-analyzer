@@ -7,6 +7,7 @@
 
 export interface ConfigSchema {
   $schema?: string;
+  exclude?: string[];
   features?: {
     regression?: {
       enabled?: boolean;

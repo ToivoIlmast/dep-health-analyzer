@@ -24,6 +24,7 @@ The `$schema` field at the top of a generated config gives you autocomplete and 
 ```json
 {
     "$schema": "...",
+    "exclude": ["test-projects/**"],
     "features": {
         "regression": { ... },
         "scc": { ... }
@@ -33,7 +34,37 @@ The `$schema` field at the top of a generated config gives you autocomplete and 
 
 Both `features.regression` and `features.scc` are optional — omit either one and that feature simply won't run when you invoke its command. Every field documented below is optional too; anything you don't set falls back to the tool's default.
 
+`exclude` (`string[]`, default `[]`) is the one setting that lives outside `features` rather than inside a specific one: extra glob patterns to exclude from scanning, on top of the scanner's built-in ignores (`node_modules/`, `dist/`, `build/`, `.git/`, test files, `coverage/`, etc.). It's shared by every command (`cycles`, `regression`, `history`) rather than duplicated per feature, because what counts as "part of this project" doesn't change depending on which analysis is running - unlike `typescript.includeTypeOnlyImports` below, which genuinely can (and is documented to) differ between `cycles` and `regression`/`history`. See [`exclude`](#exclude) below for the full explanation and a worked example.
+
 Unknown fields anywhere in the config are rejected by the schema (`additionalProperties: false`) — this catches typos like `enabeld` instead of `enabled` immediately, instead of the field being silently ignored.
+
+---
+
+### `exclude`
+
+The scanner already ignores a fixed, built-in list regardless of configuration - `node_modules/`, `dist/`, `build/`, `.git/`, test/spec files, `coverage/`, and a few others (see `src/core/scanner/discover.ts`). It does **not** read `.gitignore` - a project-specific generated or vendored directory that isn't on that built-in list is scanned like any other source, with nothing to tell it apart. `exclude` is a project-specific escape hatch for exactly that case: additional glob patterns, appended to (never replacing) the built-in ignore list.
+
+```json
+{
+    "exclude": ["test-projects/**"]
+}
+```
+
+**Not nested per feature.** Unlike `typescript.includeTypeOnlyImports`, which genuinely can differ between `cycles` and `regression`/`history` (a documented, deliberate choice - see below), there's no equivalent reason `exclude` would ever need to: whether a path counts as "part of this project" doesn't change depending on which command is scanning it. One list, read by `cycles`, `regression`, and `history` alike.
+
+**Semantics** (each verified directly against the scanner, not assumed):
+
+- **Relative, root-based paths.** Patterns are matched against each file's path relative to the scanned root - the same convention the built-in ignore list and `scopes[].match` already use, not absolute paths.
+- **Full glob support**, via the same `minimatch` matching `scopes[].match` uses (including the `{ nonegate: true }` safety - see [Scopes](#scopes) below for why a leading `!` is treated literally rather than as whole-pattern negation).
+  - A directory: `"test-projects/**"` excludes everything under it.
+  - One specific file: `"src/legacy/old-parser.ts"` excludes just that file.
+  - Anywhere in the tree: `"**/generated.ts"` matches a file with that name at any depth.
+- **A pattern matching nothing is a no-op** - no error, no warning, the rest of the list still applies.
+- **Multiple patterns are OR'd together** - a file excluded by any one of them is excluded.
+- **Excluded files never re-enter the graph indirectly.** Excluding a path doesn't just skip scanning *that* file for its own imports - a *different*, non-excluded file that still imports something inside the excluded path won't pull it back in as a graph node either. (Before this was handled explicitly, a stray relative import reaching into an excluded directory would silently defeat the exclude.)
+- **Not `.gitignore` support.** It doesn't read `.gitignore`, and it won't pick up new generated directories on its own - it's a manual list you maintain, same as any other config field.
+
+**This is a different mechanism from [scope `ignore`](#excluding-something-from-analysis-entirely) below.** `exclude` means the file is never scanned at all - it doesn't exist anywhere in the dependency graph, for any command. A `scopes[].ignore: true` entry (regression/history only) means the file is still scanned and still part of the graph, but findings *about* it are suppressed from reports. Use `exclude` for "this isn't my code" (vendored, generated, an external corpus); use scope `ignore` for "this is my code, but I don't want it reviewed."
 
 ---
 
@@ -194,6 +225,8 @@ Some folders aren't worth architectural review at all — generated code is the 
 
 This is different from lowering severity: an `ignore`d scope's findings never appear in any report and never influence `failOn`, as if they didn't exist. Reach for `severity` when you still want visibility but lower urgency, and `ignore` when a path genuinely shouldn't be analyzed at all.
 
+**This still scans the file** - it's part of the graph, `cycles` still detects real cycles through it, only *regression findings about it* are suppressed. If a path isn't your code at all (vendored, generated, an external corpus like `test-projects/**`), use the top-level [`exclude`](#exclude) instead, which skips scanning it entirely for every command.
+
 ---
 
 ### History Analysis
@@ -304,6 +337,8 @@ Set `includeTypeOnlyImports: true` if you'd rather treat type-level coupling the
 
 This field is nested inside each feature - `features.regression.typescript.includeTypeOnlyImports` and `features.scc.typescript.includeTypeOnlyImports` - rather than being one global switch, so `cycles` and `regression`/`history` (which share the same setting, since `history` reuses `regression`'s config) can be tuned independently. A reasonable case for different values: type-only circular references might be worth `cycles` catching as an early code-smell signal, while `regression`/`history` stay strict about only real runtime coupling. Keeping it nested under `typescript` (rather than a flat `includeTypeOnlyImports` field directly on each feature) also marks it clearly as TypeScript-specific - a future language integration (e.g. Python) simply wouldn't have this section, rather than an unexplained option that doesn't apply.
 
+This is the direct contrast with [`exclude`](#exclude) above: `includeTypeOnlyImports` is genuinely per-feature because the two commands can reasonably want different answers to "does a type-only edge count," while `exclude` is deliberately global because "is this my code" has only one answer regardless of which command is asking.
+
 ---
 
 ## Full example
@@ -311,6 +346,7 @@ This field is nested inside each feature - `features.regression.typescript.inclu
 ```json
 {
     "$schema": "https://raw.githubusercontent.com/ToivoIlmast/dep-health-analyzer/master/src/app/config/config.schema.json",
+    "exclude": ["test-projects/**"],
     "features": {
         "regression": {
             "enabled": true,
