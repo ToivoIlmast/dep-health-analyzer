@@ -37,7 +37,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <option value="dagreTB">Dagre TB</option>
                     <option value="dagreLRClean">Dagre LR (straight edges, no overlap)</option>
                     <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
-                    <option value="flowOrthogonal">Hierarchical (Orthogonal, Top to Bottom)</option>
+                    <option value="flowOrthogonal" selected>Hierarchical (Orthogonal, Top to Bottom)</option>
                     <option value="flowOrthogonalLR">Hierarchical (Orthogonal, Left to Right)</option>
                     <option value="flowVertical">Hierarchical (Orthogonal, Vertical Flow)</option>
                     <option value="breadthfirst">Breadth First</option>
@@ -50,8 +50,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             </button>
         </div>
 
-        <div id="edge-clarity-note" hidden>
-            Nodes were spread out to keep every edge a straight line clear of other modules.
+        <div id="edge-clarity-note">
+            Edges route as right-angle connectors, spread out to stay clear of other modules.
         </div>
 
         <!-- Experimental (branch: experiment/cycle-map-v2, HUD layer). A
@@ -458,7 +458,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     },
                 ],
     
-                layout: layouts.dagreLR,
+                // Experimental (branch: experiment/cycle-map-v2). The
+                // default on first load used to be dagreLR (cytoscape's
+                // constructor had never been updated as the later,
+                // purpose-built orthogonal/vertical layouts were added) -
+                // every polished screenshot of this report was only ever
+                // reachable by manually reselecting the dropdown, so a
+                // fresh open of the file looked like a regression even
+                // though nothing was actually broken. flowOrthogonal is now
+                // both the layout run here and the <option selected> in the
+                // dropdown above, so what a fresh load shows matches what
+                // the dropdown claims is active.
+                layout: layouts.flowOrthogonal,
             });
 
             // Shared with redrawMinimapStatic below, so the minimap's edge
@@ -1178,7 +1189,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // after the fact would be attached in time to catch it -
             // calling this directly, once, covers the initial-load case
             // regardless of that timing.
-            onLayoutFinished(cy, 'dagreLR');
+            onLayoutFinished(cy, 'flowOrthogonal');
 
             const layoutSelect = document.getElementById('layout-select');
             const edgeClarityNote = document.getElementById('edge-clarity-note');
