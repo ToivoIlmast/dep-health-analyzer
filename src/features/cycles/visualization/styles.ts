@@ -77,4 +77,45 @@ export const styles = `
 
         z-index: 999;
     }
+
+    #edge-clarity-note {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        max-width: 280px;
+
+        padding: 8px 12px;
+
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+
+        font-size: 12px;
+        line-height: 1.4;
+        color: #374151;
+
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+
+        z-index: 999;
+    }
+
+    #minimap-container {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+
+        padding: 4px;
+
+        z-index: 999;
+    }
+
+    #minimap-canvas {
+        display: block;
+        cursor: pointer;
+    }
 `;

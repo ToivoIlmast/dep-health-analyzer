@@ -137,7 +137,39 @@ describe('buildCytoscapeElements', () => {
         ).toBe(1);
     });
 
-    it('filters out SCCs smaller than size 3', () => {
+    it('filters out trivial size-1 "SCCs" (a node not part of any real cycle)', () => {
+        // findSCCs() (Kosaraju) returns a size-1 component for every node
+        // that isn't part of a real cycle - that's the case that must stay
+        // filtered out, not "anything smaller than 3".
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B']),
+            edges: new Map<string, Set<string>>([['A', new Set(['B'])], ['B', new Set()]]),
+        };
+
+        const sccs = [['A'], ['B']];
+
+        const metrics = new Map<string, ModuleMetrics>([
+            ['A', { ca: 0, ce: 1, instability: 1 }],
+            ['B', { ca: 1, ce: 0, instability: 0 }],
+        ]);
+
+        const result = buildCytoscapeElements({
+            graph,
+            metrics,
+            sccs,
+        });
+
+        expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(0);
+    });
+
+    it('assigns SCC classes to a real 2-node cycle - the CLI already reports this as a real cycle and the graph must show it too', () => {
+        // A direct real bug: the previous `scc.length > 2` filter treated a
+        // 2-node cycle (A <-> B, the single most common real-world circular
+        // import shape) exactly like an ordinary, non-cyclic node - no
+        // color, no `.scc` class - even though `cycles`' own "Cycles
+        // detected"/"Largest SCC" text output correctly reported it. Fixed
+        // to `> 1`, which only ever excludes the genuinely non-cyclic
+        // size-1 case above.
         const graph: DependencyGraph = {
             nodes: new Set(['A', 'B']),
             edges: new Map<string, Set<string>>([
@@ -159,7 +191,7 @@ describe('buildCytoscapeElements', () => {
             sccs,
         });
 
-        expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(0);
+        expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(2);
     });
 
     it('assigns SCC classes to cyclic nodes', () => {
@@ -249,12 +281,18 @@ describe('buildCytoscapeElements', () => {
         expect(nodeA?.data.size).toBeGreaterThan(nodeB?.data.size ?? 0);
     });
 
-    it('uses basename labels for high-degree nodes', () => {
+    it('uses basename labels for every node, not just high-degree ones', () => {
+        // A real bug: labels used to be gated behind `degree > 3`, so on a
+        // normal-sized project (where most files have low degree) most
+        // nodes rendered with no label at all - the reader couldn't tell
+        // which module/file most of the graph even was without hovering
+        // every node one at a time. Every node now gets its own short,
+        // real basename regardless of degree.
         const graph: DependencyGraph = {
-            nodes: new Set(['/src/app/service.ts', 'B', 'C', 'D', 'E']),
+            nodes: new Set(['/src/app/service.ts', '/src/app/b.ts', 'C', 'D', 'E']),
             edges: new Map<string, Set<string>>([
-                ['/src/app/service.ts', new Set(['B', 'C', 'D', 'E'])],
-                ['B', new Set()],
+                ['/src/app/service.ts', new Set(['/src/app/b.ts', 'C', 'D', 'E'])],
+                ['/src/app/b.ts', new Set()],
                 ['C', new Set()],
                 ['D', new Set()],
                 ['E', new Set()],
@@ -265,7 +303,7 @@ describe('buildCytoscapeElements', () => {
 
         const metrics = new Map<string, ModuleMetrics>([
             ['/src/app/service.ts', { ca: 0, ce: 4, instability: 1 }],
-            ['B', { ca: 1, ce: 0, instability: 0 }],
+            ['/src/app/b.ts', { ca: 1, ce: 0, instability: 0 }],
             ['C', { ca: 1, ce: 0, instability: 0 }],
             ['D', { ca: 1, ce: 0, instability: 0 }],
             ['E', { ca: 1, ce: 0, instability: 0 }],
@@ -278,9 +316,11 @@ describe('buildCytoscapeElements', () => {
         });
 
         const serviceNode = result.nodes.find((node) => node.data.id === '/src/app/service.ts');
+        const bNode = result.nodes.find((node) => node.data.id === '/src/app/b.ts');
 
-        expect(result.nodes.filter((node) => node.data.label !== '').length).toBe(1);
+        expect(result.nodes.filter((node) => node.data.label !== '').length).toBe(5);
         expect(serviceNode?.data.label).toBe('service.ts');
+        expect(bNode?.data.label).toBe('b.ts');
     });
 
     it('includes a fully isolated file (zero imports, zero importers) - not just nodes that appear in the edges map', () => {

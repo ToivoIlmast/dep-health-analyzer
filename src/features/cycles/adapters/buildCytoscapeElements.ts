@@ -23,27 +23,23 @@ export type CytoscapeEdge = {
     };
 };
 
+// A qualitative/categorical palette (ColorBrewer's "Dark2" set), not an
+// ordinal one - deliberately NOT a red-to-green ramp. `defaultColors[0]`
+// being reached first (the first SCC `findSCCs()` happens to return) must
+// not read as "the worst cycle" and a later index as "a milder one": which
+// index a given SCC gets depends only on iteration order, not on size,
+// severity, or how many real problems it represents. Distinguishing
+// multiple simultaneous cycles from each other only needs colors humans
+// can tell apart, not colors that imply a ranking between them.
 const defaultColors = [
-    '#ef4444',
-    '#f97316',
-    '#f59e0b',
-    '#eab308',
-    '#84cc16',
-    '#22c55e',
-    '#10b981',
-    '#14b8a6',
-    '#06b6d4',
-    '#0ea5e9',
-    '#3b82f6',
-    '#6366f1',
-    '#8b5cf6',
-    '#a855f7',
-    '#d946ef',
-    '#ec4899',
-    '#f43f5e',
-    '#78716c',
-    '#6b7280',
-    '#64748b',
+    '#1b9e77',
+    '#d95f02',
+    '#7570b3',
+    '#e7298a',
+    '#66a61e',
+    '#e6ab02',
+    '#a6761d',
+    '#666666',
 ];
 
 type BuildNodes = {
@@ -76,7 +72,13 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
         nodes.push({
             data: {
                 id: node,
-                label: degree > 3 ? path.basename(node) : '',
+                // Always a short, real filename - not gated behind a degree
+                // threshold. Isolated/low-degree files used to render with
+                // no label at all (confirmed on real fixtures: most nodes
+                // in a normal-sized project have degree <= 3), leaving the
+                // reader unable to tell what most of the graph even was
+                // without hovering every single node one at a time.
+                label: path.basename(node),
                 color: color,
                 size: 20 + Math.log2(degree + 1) * 18,
                 ce,
@@ -119,7 +121,16 @@ export function buildCytoscapeElements(args: BuildCytoscapeElements): {
     edges: CytoscapeEdge[];
 } {
     const { graph, metrics, sccs } = args;
-    const realSccs = sccs.filter((scc) => scc.length > 2);
+    // findSCCs() (Kosaraju) returns a trivial size-1 "component" for every
+    // node that isn't part of any real cycle - that's not a cycle and must
+    // stay filtered out. But a real, honest cycle needs only 2 nodes
+    // (A <-> B is the single most common real-world case - a direct
+    // circular import), and `> 2` here was silently treating those exactly
+    // like ordinary nodes: no color, no `.scc` class, nothing - even
+    // though the CLI's own "Cycles detected"/"Largest SCC" output correctly
+    // reported them. A 2-node SCC is still a real cycle; only a 1-node one
+    // is the non-cycle case that needs excluding.
+    const realSccs = sccs.filter((scc) => scc.length > 1);
 
     const nodes = buildNodes({
         // graph.nodes tracks every scanned file, including ones with zero
