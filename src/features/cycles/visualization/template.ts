@@ -28,38 +28,6 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     <body>
         <div id="cy"></div>
         <div id="tooltip"></div>
-        <div id="hint">
-            <strong>dep-health-analyzer</strong><br /><br />
-    
-            Hover over a module to see dependency metrics.<br />
-            Click a module <strong>to pin</strong> the tooltip.<br /><br />
-    
-            <strong>Ca</strong> — incoming dependencies<br />
-            How many modules depend on this module.<br /><br />
-    
-            <strong>Ce</strong> — outgoing dependencies<br />
-            How many modules this module depends on.<br /><br />
-    
-            <strong>Instability</strong><br />
-            0.00 = stable module<br />
-            1.00 = highly unstable module
-            <br /><br />
-
-            <strong>Module type</strong> (best-effort, from its file path)<br />
-            <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px;">
-                <div><span class="legend-swatch" style="background: #3b82f6;"></span>Entry / Root</div>
-                <div><span class="legend-swatch" style="background: #22c55e;"></span>Core module</div>
-                <div><span class="legend-swatch" style="background: #a855f7;"></span>Feature module</div>
-                <div><span class="legend-swatch" style="background: #9ca3af;"></span>Utility module</div>
-                <div><span class="legend-swatch" style="background: #f97316;"></span>Script / Tooling</div>
-            </div>
-            <br />
-
-            <label style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" id="highlight-toggle" checked />
-                Highlight connected modules
-            </label>
-        </div>
 
         <div id="toolbar">
             <label>
@@ -86,8 +54,40 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             Nodes were spread out to keep every edge a straight line clear of other modules.
         </div>
 
-        <div id="minimap-container">
-            <canvas id="minimap-canvas" width="220" height="160"></canvas>
+        <!-- Experimental (branch: experiment/cycle-map-v2, HUD layer). A
+             persistent bottom panel, not part of the graph canvas - see
+             #hud in styles.ts. Three sections: the module-type legend
+             (moved here from the old top-left floating panel, same
+             swatches/checkbox, same behavior), the currently-selected
+             module's info (new - previously only available via hover
+             tooltip, which stays as-is for quick hover peeks), and the
+             minimap (moved here from its own floating box, same canvas/
+             drawing code, just relocated and resized to fit this panel). -->
+        <div id="hud">
+            <div id="hud-legend">
+                <div class="hud-section-title" title="Best-effort, derived from each module's file path">Module type</div>
+                <div class="hud-legend-grid">
+                    <div><span class="legend-swatch" style="background: #3b82f6;"></span>Entry / Root</div>
+                    <div><span class="legend-swatch" style="background: #22c55e;"></span>Core module</div>
+                    <div><span class="legend-swatch" style="background: #a855f7;"></span>Feature module</div>
+                    <div><span class="legend-swatch" style="background: #9ca3af;"></span>Utility module</div>
+                    <div><span class="legend-swatch" style="background: #f97316;"></span>Script / Tooling</div>
+                </div>
+                <label class="hud-highlight-toggle">
+                    <input type="checkbox" id="highlight-toggle" checked />
+                    Highlight connected modules
+                </label>
+            </div>
+
+            <div id="hud-selected">
+                <div class="hud-section-title">Selected module</div>
+                <div id="hud-selected-content"><span class="hud-empty">No module selected</span></div>
+            </div>
+
+            <div id="hud-minimap">
+                <div class="hud-section-title">Minimap</div>
+                <canvas id="minimap-canvas" width="200" height="100"></canvas>
+            </div>
         </div>
 
         <script>
@@ -817,18 +817,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const FIT_TOLERANCE = 1.2;
 
             // A real bug found while testing: plain cy.fit() sizes the
-            // graph to the FULL container, including the four corners
-            // permanently covered by opaque UI panels (#hint, #toolbar,
-            // #minimap-container, #edge-clarity-note). On a small graph -
-            // exactly the case where this "fits comfortably" path runs -
-            // a node can fit entirely underneath one of those panels and
-            // become completely invisible, even though cy.extent() and the
-            // minimap both correctly show it as "in view". Measuring the
-            // panels' actual rendered rects and fitting into what's left
-            // avoids that; the four corners overlap different pairs of
-            // panels, so each side's inset is independently the max of
-            // only the panels that actually reach that side, not every
-            // panel at once.
+            // graph to the FULL container, including corners permanently
+            // covered by opaque UI panels (#toolbar, #edge-clarity-note).
+            // On a small graph - exactly the case where this "fits
+            // comfortably" path runs - a node can fit entirely underneath
+            // one of those panels and become completely invisible, even
+            // though cy.extent() and the minimap both correctly show it as
+            // "in view". Measuring the panels' actual rendered rects and
+            // fitting into what's left avoids that. #hud and #minimap-
+            // container (now inside it) no longer need to be accounted for
+            // here - #cy's own CSS height already stops short of #hud (see
+            // styles.ts), so the canvas the graph fits into never extends
+            // behind the bottom panel in the first place.
             function measureChromeInsets(container) {
                 const containerRect = container.getBoundingClientRect();
 
@@ -844,9 +844,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     return rect;
                 }
 
-                const hint = rectOf('hint');
                 const toolbar = rectOf('toolbar');
-                const minimap = rectOf('minimap-container');
                 const edgeNote = rectOf('edge-clarity-note');
 
                 let left = 0;
@@ -854,17 +852,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 let top = 0;
                 let bottom = 0;
 
-                if (hint) {
-                    left = Math.max(left, hint.right - containerRect.left);
-                    top = Math.max(top, hint.bottom - containerRect.top);
-                }
                 if (toolbar) {
                     right = Math.max(right, containerRect.right - toolbar.left);
                     top = Math.max(top, toolbar.bottom - containerRect.top);
-                }
-                if (minimap) {
-                    right = Math.max(right, containerRect.right - minimap.left);
-                    bottom = Math.max(bottom, containerRect.bottom - minimap.top);
                 }
                 if (edgeNote) {
                     left = Math.max(left, edgeNote.right - containerRect.left);
@@ -933,8 +923,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // to skip re-drawing this on every pan/zoom event) and the
             // visible canvas (redrawn on every pan/zoom, but that's just
             // one drawImage blit plus one rectangle).
-            const MINIMAP_WIDTH = 220;
-            const MINIMAP_HEIGHT = 160;
+            // 200x100 to match the <canvas width height> attributes set in
+            // the HUD markup above (must stay in sync with those - this is
+            // the coordinate space drawn into, not a CSS size).
+            const MINIMAP_WIDTH = 200;
+            const MINIMAP_HEIGHT = 100;
             const MINIMAP_PADDING = 6;
 
             const minimapCanvas = document.getElementById('minimap-canvas');
@@ -1287,11 +1280,66 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     
             function moveTooltip(event) {
                 const { pageX, pageY } = event.originalEvent;
-    
+
                 tooltip.style.left = \`\${pageX + 12}px\`;
                 tooltip.style.top = \`\${pageY + 12}px\`;
             }
-    
+
+            const hudSelectedContent = document.getElementById('hud-selected-content');
+
+            // Experimental (branch: experiment/cycle-map-v2, HUD layer).
+            // Distinct from showTooltip() above on purpose: the tooltip
+            // answers "what's under my cursor right now" (hover, or the
+            // last-clicked node while pinned) and disappears the moment you
+            // stop hovering/unpin; this answers "what did I select" and
+            // stays visible in the persistent bottom panel independent of
+            // the mouse, driven by the same tap/pin state as '.selected'.
+            // Deliberately shares only data already computed for the
+            // tooltip - no new node data, no IDE-style inspector.
+            function updateSelectedModulePanel(node) {
+                if (!hudSelectedContent) {
+                    return;
+                }
+
+                if (!node) {
+                    hudSelectedContent.innerHTML = '<span class="hud-empty">No module selected</span>';
+                    return;
+                }
+
+                const data = node.data();
+                const name = data.label || data.id;
+                const relativePath = data.dir ? data.dir + '/' + data.label : data.label;
+                const sccSize = data.sccSize || 0;
+
+                const cycleBadge = sccSize > 1
+                    ? \`<div class="hud-cycle-badge" style="background: \${escapeHtml(data.color || '#ef4444')};">Part of a \${sccSize}-module cycle</div>\`
+                    : '';
+
+                hudSelectedContent.innerHTML = \`
+                    <div class="hud-module-name">\${escapeHtml(name)}</div>
+                    <div class="hud-module-path">\${escapeHtml(relativePath)}</div>
+                    \${cycleBadge}
+                    <div class="hud-stats">
+                        <div>
+                            <div class="hud-stat-label">Ca (incoming)</div>
+                            <div class="hud-stat-value">\${data.ca}</div>
+                        </div>
+                        <div>
+                            <div class="hud-stat-label">Ce (outgoing)</div>
+                            <div class="hud-stat-value">\${data.ce}</div>
+                        </div>
+                        <div>
+                            <div class="hud-stat-label">Instability</div>
+                            <div class="hud-stat-value">\${Number(data.instability).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div class="hud-stat-label">SCC size</div>
+                            <div class="hud-stat-value">\${sccSize}</div>
+                        </div>
+                    </div>
+                \`;
+            }
+
             function clearHighlights() {
                 cy.elements().removeClass('faded');
                 cy.elements().removeClass('highlighted');
@@ -1370,15 +1418,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 showTooltip(event);
                 moveTooltip(event);
+                updateSelectedModulePanel(node);
             });
-    
+
             cy.on('tap', (event) => {
                 if (event.target === cy) {
                     pinnedNodeId = null;
-    
+
                     clearHighlights();
-    
+
                     tooltip.style.display = 'none';
+                    updateSelectedModulePanel(null);
                 }
             });
         </script>
