@@ -498,6 +498,124 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 return t0 <= t1;
             }
 
+            // Experimental (branch: experiment/cycle-map-v2, vertical
+            // hierarchy). dagre's rank assignment is fundamentally bounded
+            // by the graph's own longest dependency chain - confirmed by
+            // testing all three dagre rankers (network-simplex, tight-tree,
+            // longest-path) against dep-health-analyzer's own graph: all
+            // three produced exactly the same 11 ranks, because 11 IS this
+            // codebase's actual longest chain length, a structural fact no
+            // ranking strategy can change. With 116 real nodes and only 11
+            // ranks available, several ranks end up 15-23 nodes wide, which
+            // is what was making the plain TB orthogonal layout render as a
+            // wide, flat band (16889x2495) instead of a tall, narrow one.
+            //
+            // This doesn't touch rank ASSIGNMENT (still dagre's, so parent-
+            // below-child ordering is preserved) or the left-to-right ORDER
+            // dagre computed within each rank (its own crossing-minimizing
+            // "order" phase) - but it does replace every rank's actual X
+            // coordinates outright, packing each one tightly (wrapping into
+            // several stacked sub-rows first, if the rank's own nodes alone
+            // would still be wider than maxRankWidth) and re-centering it on
+            // one shared global X. A first version only re-packed ranks that
+            // were individually too wide and centered each on its OWN
+            // dagre-assigned midpoint - that barely changed the overall
+            // width (16889 -> 16395), because dagre spreads even a
+            // single-node rank across whatever X range keeps it visually
+            // aligned with distant, unrelated columns elsewhere in the
+            // graph; a rank being "narrow" on its own doesn't stop it from
+            // sitting at an extreme X purely to stay under some far-off
+            // descendant. Re-centering every rank - wrapped or not - on the
+            // same global X removes that inherited spread entirely, which
+            // is what actually bounds the final width. A form of "custom
+            // layout code on top of dagre", used only because dagre itself
+            // has no concept of "keep the whole graph narrow" - rank count
+            // and per-rank membership are intrinsic to the graph, but X
+            // position within/across ranks is exactly what this rewrites.
+            function wrapWideRanks(cy, options) {
+                const maxRankWidth = (options && options.maxRankWidth) || 1400;
+                const nodeGap = (options && options.nodeGap) || 100;
+                const subRowGap = (options && options.subRowGap) || 50;
+
+                const rankGroups = new Map();
+
+                cy.nodes().forEach((node) => {
+                    const key = Math.round(node.position().y);
+                    if (!rankGroups.has(key)) {
+                        rankGroups.set(key, []);
+                    }
+                    rankGroups.get(key).push(node);
+                });
+
+                const sortedRankYs = Array.from(rankGroups.keys()).sort((a, b) => a - b);
+
+                // One shared X every rank is centered on, instead of each
+                // rank's own (potentially far-flung) dagre-assigned
+                // midpoint - anchored on the topmost rank's original center
+                // so the root(s) stay roughly where they were.
+                const topRankNodes = rankGroups.get(sortedRankYs[0]);
+                const topRankXs = topRankNodes.map((node) => node.position().x);
+                const globalCenterX = (Math.min(...topRankXs) + Math.max(...topRankXs)) / 2;
+
+                let cumulativeShift = 0;
+
+                sortedRankYs.forEach((rankY) => {
+                    const nodesInRank = rankGroups.get(rankY).sort((a, b) => a.position().x - b.position().x);
+                    const rankY_shifted = rankY + cumulativeShift;
+
+                    // Pack dagre's already crossing-minimized left-to-right
+                    // order into rows no wider than maxRankWidth - never
+                    // reorders nodes, only wraps them; a rank that already
+                    // fits ends up as a single "row".
+                    const subRows = [];
+                    let currentRow = [];
+                    let currentRowWidth = 0;
+
+                    nodesInRank.forEach((node) => {
+                        const width = node.width();
+                        const gap = currentRow.length > 0 ? nodeGap : 0;
+
+                        if (currentRowWidth + gap + width > maxRankWidth && currentRow.length > 0) {
+                            subRows.push(currentRow);
+                            currentRow = [];
+                            currentRowWidth = 0;
+                        }
+
+                        currentRow.push(node);
+                        currentRowWidth += (currentRow.length > 1 ? nodeGap : 0) + width;
+                    });
+
+                    if (currentRow.length > 0) {
+                        subRows.push(currentRow);
+                    }
+
+                    let currentY = rankY_shifted;
+                    let addedHeight = 0;
+
+                    subRows.forEach((row, rowIndex) => {
+                        const rowWidth =
+                            row.reduce((sum, node) => sum + node.width(), 0) + nodeGap * (row.length - 1);
+                        let cursorX = globalCenterX - rowWidth / 2;
+                        const rowMaxHeight = Math.max(...row.map((node) => node.height()));
+
+                        row.forEach((node) => {
+                            const width = node.width();
+                            node.position({ x: cursorX + width / 2, y: currentY });
+                            cursorX += width + nodeGap;
+                        });
+
+                        if (rowIndex < subRows.length - 1) {
+                            const nextRowMaxHeight = Math.max(...subRows[rowIndex + 1].map((node) => node.height()));
+                            const step = rowMaxHeight / 2 + subRowGap + nextRowMaxHeight / 2;
+                            currentY += step;
+                            addedHeight += step;
+                        }
+                    });
+
+                    cumulativeShift += addedHeight;
+                });
+            }
+
             // Experimental (branch: experiment/cycle-map-v2): pushes any node
             // that a straight A->B edge would otherwise pass through out of
             // that edge's way, perpendicular to the edge line. Only ever
@@ -978,8 +1096,35 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 cy.edges().toggleClass('orthogonal-edge-vertical', orthogonalAxis === 'vertical');
                 cy.edges().toggleClass('orthogonal-edge-horizontal', orthogonalAxis === 'horizontal');
 
+                // Only the vertical (TB) orthogonal layout wraps wide ranks -
+                // that's the one meant to read as a tall, narrow flowchart;
+                // the LR orientation's "ranks" are already vertical columns,
+                // where a rank being visually tall is the expected, matching
+                // shape, not something to fight.
+                const isWrappedVertical = layoutName === 'flowOrthogonal';
+
+                if (isWrappedVertical) {
+                    wrapWideRanks(cy, { maxRankWidth: 1400, nodeGap: layouts.flowOrthogonal.nodeSep });
+                }
+
                 if (isCleanLayout) {
-                    resolveEdgeNodeOverlaps(cy, { orthogonalAxis });
+                    // Squeezing a rank that dagre originally spread across
+                    // the graph's full width down into a ~1400px column
+                    // means edges that used to have room to route around
+                    // unrelated nodes now cross a much more crowded space -
+                    // measured on dep-health-analyzer's own graph: 8
+                    // iterations (the default, still fine for every other
+                    // "clean" layout) left 287 node/edge overlaps, plainly
+                    // too many. More iterations measurably help (down to
+                    // ~100 by 80 iterations) but each pass also pushes
+                    // width back up, eating into the narrowing this layout
+                    // exists for - 20 is a middle point found by testing
+                    // (199 overlaps, width only back up to ~2600 from
+                    // ~2300), not a value with a closed-form justification.
+                    resolveEdgeNodeOverlaps(cy, {
+                        orthogonalAxis,
+                        maxIterations: isWrappedVertical ? 20 : undefined,
+                    });
                 }
 
                 applyInitialView(cy);
