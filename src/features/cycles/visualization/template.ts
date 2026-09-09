@@ -71,7 +71,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
                     <option value="flowOrthogonal">Hierarchical (Orthogonal, Top to Bottom)</option>
                     <option value="flowOrthogonalLR">Hierarchical (Orthogonal, Left to Right)</option>
-                    <option value="flowVertical">Hierarchical (Orthogonal, Vertical Flow)</option>
+                    <option value="flowVertical" selected>Hierarchical (Orthogonal, Vertical Flow)</option>
                     <option value="breadthfirst">Breadth First</option>
                     <option value="cose">Force Directed</option>
                 </select>
@@ -82,8 +82,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             </button>
         </div>
 
-        <div id="edge-clarity-note" hidden>
-            Nodes were spread out to keep every edge a straight line clear of other modules.
+        <div id="edge-clarity-note">
+            Edges route as right-angle connectors, spread out to stay clear of other modules.
         </div>
 
         <div id="minimap-container">
@@ -458,7 +458,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     },
                 ],
     
-                layout: layouts.dagreLR,
+                // The default on first load used to be dagreLR - every
+                // screenshot demonstrating this branch's actual intended
+                // result was only ever reachable by manually reselecting
+                // the dropdown, making a fresh open of the file look
+                // broken even though nothing was. flowVertical is now both
+                // the layout run here and the <option selected> above, so
+                // what a fresh load shows matches what the dropdown claims
+                // is active - this is the layout confirmed as the good,
+                // stable checkpoint before the bottom-HUD experiment (see
+                // the git tag on this commit).
+                layout: layouts.flowVertical,
             });
 
             // Shared with redrawMinimapStatic below, so the minimap's edge
@@ -1185,7 +1195,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // after the fact would be attached in time to catch it -
             // calling this directly, once, covers the initial-load case
             // regardless of that timing.
-            onLayoutFinished(cy, 'dagreLR');
+            onLayoutFinished(cy, 'flowVertical');
 
             const layoutSelect = document.getElementById('layout-select');
             const edgeClarityNote = document.getElementById('edge-clarity-note');
