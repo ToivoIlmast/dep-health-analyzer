@@ -498,6 +498,31 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 layout: layouts.flowVertical,
             });
 
+            // Experimental (branch: experiment/cycle-map-v2). With
+            // userZoomingEnabled: false above, cytoscape never attaches its
+            // own wheel handler at all - the raw DOM 'wheel' event on the
+            // container is otherwise completely unclaimed. A <canvas> isn't
+            // real scrollable page content, so there's no native browser
+            // scroll to fall back on for it the way there would be for an
+            // overflowing block of text; panning the graph in response to
+            // wheel is the closest equivalent to "scroll through a long
+            // page" available for a canvas this large - especially useful
+            // for a layout as tall as flowVertical's. { passive: false } is
+            // required for preventDefault() to have any effect (browsers
+            // default wheel listeners to passive for scroll-performance
+            // reasons) - there's nothing to actually scroll on this page,
+            // but calling it keeps behavior predictable rather than
+            // depending on whatever a given browser's un-prevented default
+            // wheel action happens to be.
+            cy.container().addEventListener(
+                'wheel',
+                (event) => {
+                    event.preventDefault();
+                    cy.panBy({ x: -event.deltaX, y: -event.deltaY });
+                },
+                { passive: false },
+            );
+
             // Experimental (branch: experiment/cycle-map-v2). Builds the
             // "Module area" legend from the areas actually present on
             // this graph's own nodes - never a fixed list, so a different
