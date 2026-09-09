@@ -27,34 +27,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     
     <body>
         <div id="cy"></div>
-        <div id="tooltip"></div>
         <div id="hint">
-            <!-- Experimental (branch: experiment/cycle-map-v2). Not
-                 deleted, just hidden - this explanatory block (title,
-                 hover/click instructions, Ca/Ce/Instability descriptions)
-                 is the intended content for a future bottom HUD info
-                 panel. The 'pending-hud-reuse' class (styles.ts) is a
-                 plain display:none under a name that says why, so the
-                 markup/text stays exactly as-is for whenever that HUD
-                 panel gets built, rather than being rewritten twice. -->
-            <div class="pending-hud-reuse">
-                <strong>dep-health-analyzer</strong><br /><br />
-
-                Hover over a module to see dependency metrics.<br />
-                Click a module <strong>to pin</strong> the tooltip.<br /><br />
-
-                <strong>Ca</strong> — incoming dependencies<br />
-                How many modules depend on this module.<br /><br />
-
-                <strong>Ce</strong> — outgoing dependencies<br />
-                How many modules this module depends on.<br /><br />
-
-                <strong>Instability</strong><br />
-                0.00 = stable module<br />
-                1.00 = highly unstable module
-                <br /><br />
-            </div>
-
             <strong>Module area</strong><br />
             <span style="font-size: 11px; color: #6b7280;">(from project structure)</span>
             <div id="area-legend" style="display: flex; flex-direction: column; gap: 3px; margin-top: 6px;"></div>
@@ -97,15 +70,31 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             Edges route as right-angle connectors, spread out to stay clear of other modules.
         </div>
 
-        <!-- Experimental (branch: experiment/cycle-map-v2). Layout skeleton
-             only, deliberately empty - left/center will get real content
-             (selected-module info, legend, etc.) as separate follow-up
-             steps. #minimap-container itself is only moved here via CSS/DOM
-             nesting; its canvas id and all the drawing/drag JS below are
-             untouched. -->
+        <!-- Experimental (branch: experiment/cycle-map-v2). #minimap-container
+             itself is only ever moved here via CSS/DOM nesting; its canvas
+             id and all the drawing/drag JS below are untouched. -->
         <div id="bottom-hud">
-            <div id="hud-left-placeholder"></div>
-            <div id="hud-center-placeholder"></div>
+            <div id="hud-help">
+                <strong>dep-health-analyzer</strong><br /><br />
+
+                Hover over a module to see dependency metrics.<br />
+                Click a module <strong>to pin</strong> the tooltip.<br /><br />
+
+                <strong>Ca</strong> — incoming dependencies<br />
+                How many modules depend on this module.<br /><br />
+
+                <strong>Ce</strong> — outgoing dependencies<br />
+                How many modules this module depends on.<br /><br />
+
+                <strong>Instability</strong><br />
+                0.00 = stable module<br />
+                1.00 = highly unstable module
+                <br /><br />
+            </div>
+
+            <div id="hud-selected">
+                <span id="hud-selected-body" class="hud-selected-empty">Click a module to see details.</span>
+            </div>
 
             <div id="minimap-container">
                 <canvas id="minimap-canvas" width="220" height="160"></canvas>
@@ -115,8 +104,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         <script>
             // Node labels/ids come from file paths, which could in principle
             // contain HTML if a file were named that way - escape before
-            // using innerHTML below, since the tooltip is built from a
-            // template string, not from text-only DOM APIs.
+            // using innerHTML below, since the selected-module HUD panel is
+            // built from a template string, not from text-only DOM APIs.
             function escapeHtml(value) {
                 const div = document.createElement('div');
                 div.textContent = value;
@@ -368,14 +357,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             // buildCytoscapeElements.ts (e.g.
                             // "…/ci/reporting" instead of the real, full
                             // "src/features/regression/ci/reporting"),
-                            // never data(dir) itself - the pinned tooltip
-                            // (showTooltip below) still shows the real,
-                            // full data(id), and data(dir) itself is left
-                            // completely untouched on every node, so a
-                            // future bottom-HUD panel (or anything else)
-                            // can still read the real canonical path -
-                            // only what gets drawn on the node's own
-                            // limited-width box is shortened.
+                            // never data(dir) itself - the bottom HUD's
+                            // selected-module panel (updateSelectedModulePanel
+                            // below) still shows the real, full data(id), and
+                            // data(dir) itself is left completely untouched
+                            // on every node - only what gets drawn on the
+                            // node's own limited-width box is shortened.
                             'label': function (ele) {
                                 const dir = ele.data('displayDir');
                                 return dir ? ele.data('label') + '\\n' + dir : ele.data('label');
@@ -505,11 +492,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                     // Marks the one node the user actually clicked, distinct
                     // from '.highlighted' (which is shared with every
-                    // neighbor of that node too). Without this, clicking a
-                    // node to pin its tooltip left no visual trace of WHICH
-                    // node in the highlighted neighborhood was the one
-                    // actually selected. Listed last so the border always
-                    // shows on top of '.scc' background-color changes.
+                    // neighbor of that node too). Without this, selecting a
+                    // node left no visual trace of WHICH node in the
+                    // highlighted neighborhood was the one actually
+                    // selected. Listed last so the border always shows on
+                    // top of '.scc' background-color changes.
                     {
                         selector: '.selected',
                         style: {
@@ -1411,17 +1398,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             cy.on('zoom', updateZoomLevelDisplay);
             updateZoomLevelDisplay();
 
-            const tooltip = document.getElementById(
-                    'tooltip',
-                );
-
-            if (!tooltip) {
-                throw new Error(
-                    'Tooltip element not found',
-                );
-            }
-
-            let pinnedNodeId = null;
+            let selectedNodeId = null;
 
             const highlightToggle = document.getElementById('highlight-toggle');
 
@@ -1438,43 +1415,43 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     }
                 },
             );
-    
-            function showTooltip(event) {
-                const node = event.target;
-                const data = node.data();
-    
-                const title = data.label || data.id;
-                const showFullPath = title !== data.id;
-    
-                tooltip.innerHTML = \`
-                    <strong>\${escapeHtml(title)}</strong>
 
-                    \${showFullPath
-                        ? \`<br />
-                        <span style="color:#6b7280;font-size:11px;">
-                            \${escapeHtml(data.id)}
-                        </span>\`
-                        : ''
-                    }
-                    <br /><br />
-    
-                    Ca: \${data.ca}<br />
-                    Ce: \${data.ce}<br />
-                    Instability: \${Number(data.instability).toFixed(2)}<br /><br />
-    
+            const hudSelectedBody = document.getElementById('hud-selected-body');
+
+            const HUD_SELECTED_EMPTY_TEXT = 'Click a module to see details.';
+
+            // Bottom HUD's persistent "selected module" panel (center
+            // section) - reuses the exact same node.data() fields the old
+            // floating tooltip read (label/id/ca/ce/instability/sccSize),
+            // just rendered into a fixed panel instead of following the
+            // cursor. data.id is the full canonical path (never the
+            // abbreviated on-node displayDir) - required so the HUD always
+            // shows the complete path regardless of how short the node's
+            // own label is.
+            function updateSelectedModulePanel(node) {
+                if (!hudSelectedBody) {
+                    return;
+                }
+
+                if (!node) {
+                    hudSelectedBody.className = 'hud-selected-empty';
+                    hudSelectedBody.textContent = HUD_SELECTED_EMPTY_TEXT;
+                    return;
+                }
+
+                const data = node.data();
+                const title = data.label || data.id;
+
+                hudSelectedBody.className = '';
+                hudSelectedBody.innerHTML = \`
+                    <strong>\${escapeHtml(title)}</strong><br />
+                    <span class="hud-selected-path">\${escapeHtml(data.id)}</span><br />
+                    Ca: \${data.ca} &nbsp;&nbsp; Ce: \${data.ce} &nbsp;&nbsp;
+                    Instability: \${Number(data.instability).toFixed(2)} &nbsp;&nbsp;
                     SCC size: \${data.sccSize ?? 0}
                 \`;
-    
-                tooltip.style.display = 'block';
             }
-    
-            function moveTooltip(event) {
-                const { pageX, pageY } = event.originalEvent;
-    
-                tooltip.style.left = \`\${pageX + 12}px\`;
-                tooltip.style.top = \`\${pageY + 12}px\`;
-            }
-    
+
             function clearHighlights() {
                 cy.elements().removeClass('faded');
                 cy.elements().removeClass('highlighted');
@@ -1501,42 +1478,30 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             }
     
             cy.on('mouseover', 'node', (event) => {
-                if (pinnedNodeId) {
+                if (selectedNodeId) {
                     return;
                 }
-    
+
                 const node = event.target;
-    
+
                 if (highlightEnabled) {
                     highlightNeighborhood(node);
                 }
-    
-                showTooltip(event);
             });
-    
-            cy.on('mousemove', 'node', (event) => {
-                if (pinnedNodeId) {
-                    return;
-                }
-    
-                moveTooltip(event);
-            });
-    
+
             cy.on('mouseout', 'node', () => {
-                if (pinnedNodeId) {
+                if (selectedNodeId) {
                     return;
                 }
-    
+
                 clearHighlights();
-    
-                tooltip.style.display = 'none';
             });
-    
+
             cy.on('tap', 'node', (event) => {
                 const node = event.target;
                 const data = node.data();
 
-                pinnedNodeId = data.id;
+                selectedNodeId = data.id;
 
                 // clearHighlights() also strips any previous node's
                 // '.selected' marker - always needs to run once per tap
@@ -1551,17 +1516,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 node.addClass('selected');
 
-                showTooltip(event);
-                moveTooltip(event);
+                updateSelectedModulePanel(node);
             });
-    
+
             cy.on('tap', (event) => {
                 if (event.target === cy) {
-                    pinnedNodeId = null;
-    
+                    selectedNodeId = null;
+
                     clearHighlights();
-    
-                    tooltip.style.display = 'none';
+
+                    updateSelectedModulePanel(null);
                 }
             });
         </script>
