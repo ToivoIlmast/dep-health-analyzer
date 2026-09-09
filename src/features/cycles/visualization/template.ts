@@ -62,6 +62,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 </select>
             </label>
 
+            <!-- Experimental (branch: experiment/cycle-map-v2, area filter
+                 external connections). Disabled by default - Area starts
+                 at "All", where "internal only" vs "with external
+                 connections" would show the exact same full graph either
+                 way, so this stays disabled (not just silently ignored)
+                 until a specific area is selected. See
+                 refreshAreaView() below for the full rationale. -->
+            <label>
+                Connections:
+                <select id="connection-select" disabled>
+                    <option value="internal" selected>Internal only</option>
+                    <option value="external">With external connections</option>
+                </select>
+            </label>
+
             <button id="fit-btn">
                 Fit Graph
             </button>
@@ -459,6 +474,53 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     // back-edge whose target actually sits above/left of its
                     // source still routes sensibly instead of being forced
                     // to visually go the wrong way.
+                    // Experimental (branch: experiment/cycle-map-v2, area
+                    // filter external connections). '.external-area-proxy'/
+                    // '.external-proxy-edge' mark the small, runtime-only
+                    // aggregate nodes/edges added by
+                    // addExternalConnectionProxies() below when "With
+                    // external connections" is active - one proxy node per
+                    // external area the selected area actually connects to
+                    // (not one per real external module, which is what
+                    // would risk turning a small area's view into pulling
+                    // in dozens of unrelated real nodes). Diamond shape +
+                    // dashed border/line is a deliberately neutral "this
+                    // represents something aggregated, not a real single
+                    // module" visual cue - no red/orange/warning color, no
+                    // judgment implied by a dependency simply crossing an
+                    // area boundary. Reuses the real area's own areaColor
+                    // (set as this proxy node's data(areaColor) when it's
+                    // created) so it still visually matches the legend.
+                    {
+                        selector: '.external-area-proxy',
+                        style: {
+                            'shape': 'diamond',
+                            'background-color': 'data(areaColor)',
+                            'border-width': 2,
+                            'border-style': 'dashed',
+                            'border-color': '#374151',
+                            'opacity': 0.85,
+                            'width': 'label',
+                            'height': 'label',
+                            'padding': '10px',
+                            'font-size': '10px',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                        },
+                    },
+
+                    {
+                        selector: '.external-proxy-edge',
+                        style: {
+                            'curve-style': 'straight',
+                            'line-color': '#9ca3af',
+                            'target-arrow-color': '#9ca3af',
+                            'target-arrow-shape': 'triangle',
+                            'line-style': 'dashed',
+                            'width': 1.5,
+                        },
+                    },
+
                     {
                         selector: '.orthogonal-edge-vertical',
                         style: {
@@ -567,11 +629,37 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // present the moment the area filter changes.
             let currentAreaFilter = '';
 
+            // Experimental (branch: experiment/cycle-map-v2, area filter
+            // external connections). 'internal' (default) = only edges
+            // between two nodes both inside the selected area, matching
+            // the original area-filter behavior exactly. 'external' = also
+            // shows the selected area's connections to other areas, via
+            // small per-area proxy nodes (see addExternalConnectionProxies
+            // below) rather than the real external nodes themselves. Only
+            // meaningful when an actual area is selected - see
+            // refreshAreaView() for why 'All' ignores this.
+            let currentConnectionMode = 'internal';
+
+            // A proxy node/edge is only ever present in cy while it's
+            // meant to be shown (added fresh by addExternalConnectionProxies,
+            // removed by removeExternalConnectionProxies the moment the
+            // area/connection selection changes) - so unlike real
+            // nodes/edges, its being IN cy at all already means "currently
+            // in view", with nothing further to check against
+            // currentAreaFilter.
             function isNodeInCurrentView(node) {
+                if (node.data('isExternalProxy')) {
+                    return true;
+                }
+
                 return !currentAreaFilter || node.data('area') === currentAreaFilter;
             }
 
             function isEdgeInCurrentView(edge) {
+                if (edge.data('isExternalProxy')) {
+                    return true;
+                }
+
                 return (
                     !currentAreaFilter ||
                     (edge.source().data('area') === currentAreaFilter &&
@@ -1496,34 +1584,123 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             }
 
             const areaSelect = document.getElementById('area-select');
+            const connectionSelect = document.getElementById('connection-select');
 
-            // Experimental (branch: experiment/cycle-map-v2, area filter).
-            // Presentation-level view on top of the one full graph cy
-            // already holds in full (see the '.area-hidden' style rule
-            // above) - never removes anything from cy, so the full graph
-            // (including every cross-area edge) stays intact underneath
-            // whatever is currently shown; a later experiment can read
-            // edge.source()/target().data('area') on any edge, hidden or
-            // not, to build cross-area connections without this filter
-            // needing to change at all.
+            function externalProxyNodeId(area) {
+                return 'external-area-proxy::' + area;
+            }
+
+            // Experimental (branch: experiment/cycle-map-v2, area filter
+            // external connections). One small proxy node per external
+            // area the selected area actually has real cross-area edges
+            // with - never the real external nodes themselves, so "With
+            // external connections" can't balloon a small area's view
+            // into pulling in dozens/hundreds of unrelated real nodes from
+            // elsewhere (a project with many areas and a densely
+            // interconnected one selected could otherwise show nearly the
+            // whole graph). One proxy EDGE per real crossing edge (not
+            // aggregated/counted into one line) - edges were never the
+            // part at risk of exploding (bounded by the graph's own real
+            // edge count), so this preserves the real number/direction of
+            // crossing dependencies exactly, only collapsing the NODE side
+            // of it. Direction is preserved: an edge whose source is the
+            // external node becomes proxy->internalNode; whose target is
+            // external becomes internalNode->proxy - so "this module
+            // depends on area X" and "area X depends on this module"
+            // still read differently, exactly like the real edges they
+            // stand in for.
             //
-            // v1 scope: an edge is visible only when BOTH its source and
-            // target are in the selected area (internal edges only) - an
-            // edge with exactly one endpoint in the area is left hidden
-            // for now (that's the "next experiment" this is deliberately
-            // built not to foreclose on).
-            function applyAreaFilter(area) {
-                // Updates the one source of truth FIRST - isNodeInCurrentView/
-                // isEdgeInCurrentView (and therefore visibleNodes/visibleEdges/
-                // visibleElements, used by every layout/fit/minimap function)
-                // read this immediately, with no dependency on cytoscape's
-                // own (measured to be next-animation-frame-delayed, not
-                // synchronous) 'display'/':visible' style resolution. The
-                // '.area-hidden' class below still drives the ACTUAL
-                // rendering (via the cytoscape style rule near the top of
-                // this file) - it'll catch up on the next frame, same as
-                // it always would; nothing here waits on that to happen.
-                currentAreaFilter = area || '';
+            // Pure runtime/presentation additions to the live cy instance,
+            // added here and fully removed by removeExternalConnectionProxies
+            // below on every area/connection-mode change - nothing about
+            // the underlying graph data this report was generated from
+            // (the nodes/edges passed into buildHtmlTemplate) is ever
+            // touched, read back, or duplicated into a second data model.
+            function addExternalConnectionProxies(cy, area) {
+                if (!area) {
+                    return;
+                }
+
+                const proxyAreaColors = new Map();
+                const proxyEdges = [];
+
+                cy.edges().forEach((edge) => {
+                    if (edge.data('isExternalProxy')) {
+                        return;
+                    }
+
+                    const sourceInArea = edge.source().data('area') === area;
+                    const targetInArea = edge.target().data('area') === area;
+
+                    // Only boundary-crossing edges (exactly one endpoint in
+                    // the selected area) need a proxy - both-in edges are
+                    // already shown as real edges, both-out edges are
+                    // irrelevant to this area's view either way.
+                    if (sourceInArea === targetInArea) {
+                        return;
+                    }
+
+                    const internalNode = sourceInArea ? edge.source() : edge.target();
+                    const externalNode = sourceInArea ? edge.target() : edge.source();
+                    const externalArea = externalNode.data('area');
+
+                    if (!proxyAreaColors.has(externalArea)) {
+                        proxyAreaColors.set(externalArea, externalNode.data('areaColor'));
+                    }
+
+                    const proxyId = externalProxyNodeId(externalArea);
+
+                    proxyEdges.push({
+                        group: 'edges',
+                        data: {
+                            id: 'external-proxy-edge::' + edge.id(),
+                            source: sourceInArea ? internalNode.id() : proxyId,
+                            target: sourceInArea ? proxyId : internalNode.id(),
+                            isExternalProxy: true,
+                        },
+                        classes: 'external-proxy-edge',
+                    });
+                });
+
+                // Nodes must exist before the edges referencing them are
+                // added - two separate cy.add() calls rather than relying
+                // on cytoscape resolving mixed node/edge ordering within
+                // one array.
+                cy.add(
+                    Array.from(proxyAreaColors.entries()).map(([externalArea, areaColor]) => ({
+                        group: 'nodes',
+                        data: {
+                            id: externalProxyNodeId(externalArea),
+                            label: externalArea,
+                            areaColor: areaColor,
+                            isExternalProxy: true,
+                        },
+                        classes: 'external-area-proxy',
+                    })),
+                );
+
+                cy.add(proxyEdges);
+            }
+
+            function removeExternalConnectionProxies(cy) {
+                cy.remove('.external-area-proxy, .external-proxy-edge');
+            }
+
+            // Experimental (branch: experiment/cycle-map-v2, area filter
+            // external connections). Single entry point for both the Area
+            // and Connections dropdowns - either one changing means "redo
+            // the presentation-level view from scratch": drop any existing
+            // proxies, recompute which real nodes/edges are hidden, add
+            // fresh proxies if applicable, refresh the legend highlight
+            // and the Connections control's enabled state, and clear the
+            // selection if it no longer applies. Presentation-level only,
+            // same as the original area filter - never removes anything
+            // from cy except the proxy elements it added itself, so the
+            // full graph (every real node/edge, every cross-area edge)
+            // stays completely intact underneath whatever is currently
+            // shown.
+            function refreshAreaView() {
+                removeExternalConnectionProxies(cy);
 
                 cy.batch(() => {
                     cy.nodes().forEach((node) => {
@@ -1535,13 +1712,34 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     });
                 });
 
+                if (currentAreaFilter && currentConnectionMode === 'external') {
+                    addExternalConnectionProxies(cy, currentAreaFilter);
+                }
+
                 updateLegendActiveArea(currentAreaFilter);
 
-                // A node that was selected before switching areas may no
-                // longer be visible - leaving its info in the HUD/its
-                // '.selected' border on a hidden node would misrepresent a
-                // module the user can no longer even see as if it were
-                // still part of the current view.
+                if (connectionSelect) {
+                    // Area = 'All' has no "outside" to have external
+                    // connections to - both options would show the exact
+                    // same full graph, so rather than let the control
+                    // silently do nothing, it's disabled whenever 'All' is
+                    // selected and re-enabled the moment a specific area
+                    // is chosen. currentConnectionMode itself is left
+                    // untouched (not reset to 'internal') so the user's
+                    // choice is remembered for the next specific area they
+                    // pick.
+                    connectionSelect.disabled = !currentAreaFilter;
+                }
+
+                // A node that was selected before switching areas/modes
+                // may no longer be visible (hidden by the new area filter,
+                // or a proxy node that just got removed) - leaving its
+                // info in the HUD/its '.selected' border would misrepresent
+                // a module the user can no longer even see as if it were
+                // still part of the current view. cy.getElementById on a
+                // removed proxy correctly returns an empty collection, so
+                // this same check covers both cases without needing to
+                // distinguish them.
                 if (selectedNodeId) {
                     const selectedNode = cy.getElementById(selectedNodeId);
 
@@ -1557,7 +1755,26 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 areaSelect.addEventListener(
                     'change',
                     function () {
-                        applyAreaFilter(this.value);
+                        currentAreaFilter = this.value || '';
+                        refreshAreaView();
+                        runLayoutForCurrentView(layoutSelect ? layoutSelect.value : 'flowVertical');
+                    },
+                );
+            }
+
+            if (connectionSelect) {
+                connectionSelect.addEventListener(
+                    'change',
+                    function () {
+                        // Defense in depth alongside the 'disabled' attribute
+                        // above - Area = 'All' never has a meaningful
+                        // connection mode to apply.
+                        if (!currentAreaFilter) {
+                            return;
+                        }
+
+                        currentConnectionMode = this.value;
+                        refreshAreaView();
                         runLayoutForCurrentView(layoutSelect ? layoutSelect.value : 'flowVertical');
                     },
                 );
@@ -1671,6 +1888,29 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 \`;
             }
 
+            // Experimental (branch: experiment/cycle-map-v2, area filter
+            // external connections). A proxy node isn't a real module - it
+            // has no Ca/Ce/instability/canonical path of its own, so it
+            // gets its own small, deliberately neutral panel (no
+            // "risk"/"violation" language - crossing an area boundary
+            // isn't itself a problem) instead of updateSelectedModulePanel
+            // above, which would otherwise print "Ca: undefined" etc.
+            function updateSelectedAreaProxyPanel(node) {
+                if (!hudSelectedBody) {
+                    return;
+                }
+
+                const data = node.data();
+                const connectionCount = node.connectedEdges().length;
+
+                hudSelectedBody.className = '';
+                hudSelectedBody.innerHTML = \`
+                    <strong>External area: \${escapeHtml(data.label)}</strong><br />
+                    <span class="hud-selected-path">Aggregated view of connections between the selected area and \${escapeHtml(data.label)}.</span><br />
+                    Connections shown: \${connectionCount}
+                \`;
+            }
+
             function clearHighlights() {
                 cy.elements().removeClass('faded');
                 cy.elements().removeClass('highlighted');
@@ -1735,7 +1975,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 node.addClass('selected');
 
-                updateSelectedModulePanel(node);
+                if (data.isExternalProxy) {
+                    updateSelectedAreaProxyPanel(node);
+                } else {
+                    updateSelectedModulePanel(node);
+                }
             });
 
             cy.on('tap', (event) => {
