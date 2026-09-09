@@ -97,8 +97,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             Edges route as right-angle connectors, spread out to stay clear of other modules.
         </div>
 
-        <div id="minimap-container">
-            <canvas id="minimap-canvas" width="220" height="160"></canvas>
+        <!-- Experimental (branch: experiment/cycle-map-v2). Layout skeleton
+             only, deliberately empty - left/center will get real content
+             (selected-module info, legend, etc.) as separate follow-up
+             steps. #minimap-container itself is only moved here via CSS/DOM
+             nesting; its canvas id and all the drawing/drag JS below are
+             untouched. -->
+        <div id="bottom-hud">
+            <div id="hud-left-placeholder"></div>
+            <div id="hud-center-placeholder"></div>
+
+            <div id="minimap-container">
+                <canvas id="minimap-canvas" width="220" height="160"></canvas>
+            </div>
         </div>
 
         <script>

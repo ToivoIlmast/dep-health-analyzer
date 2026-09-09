@@ -1,4 +1,14 @@
 export const styles = `
+    :root {
+        /* Experimental (branch: experiment/cycle-map-v2). Fixed, compact -
+           deliberately not a fraction of viewport height - sized to fit
+           the existing minimap (220x160 canvas + its own padding/border)
+           without touching the minimap's own dimensions. Shared by #cy's
+           height and #bottom-hud's height so the two can never drift out
+           of sync. */
+        --bottom-hud-height: 190px;
+    }
+
     body {
         margin: 0;
         padding: 0;
@@ -7,7 +17,7 @@ export const styles = `
 
     #cy {
         width: 100vw;
-        height: 100vh;
+        height: calc(100vh - var(--bottom-hud-height));
     }
 
     #toolbar {
@@ -129,7 +139,10 @@ export const styles = `
 
     #edge-clarity-note {
         position: absolute;
-        bottom: 16px;
+        /* Anchored above the fixed bottom HUD (not the raw viewport
+           bottom) so it doesn't end up floating inside/behind the HUD
+           band now that the minimap moved out of this corner. */
+        bottom: calc(var(--bottom-hud-height) + 16px);
         left: 16px;
         max-width: 280px;
 
@@ -148,10 +161,54 @@ export const styles = `
         z-index: 999;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2). Bottom HUD layout
+       skeleton - fixed to the viewport (not the graph's world coordinates),
+       so it never moves on pan/zoom/scroll and never grows page height.
+       Three sections in one row: left/center are empty placeholders for
+       now (content is a separate, later step); right is the existing
+       minimap, moved in here via layout only - its own canvas/draw/drag
+       logic (below, in the script) is completely untouched. */
+    #bottom-hud {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+
+        width: 100vw;
+        height: var(--bottom-hud-height);
+        box-sizing: border-box;
+
+        display: flex;
+        align-items: stretch;
+        gap: 12px;
+
+        padding: 10px 16px;
+
+        background: #f3f4f6;
+        border-top: 1px solid #d1d5db;
+
+        z-index: 999;
+    }
+
+    #hud-left-placeholder {
+        flex: 0 0 220px;
+
+        background: #f9fafb;
+        border: 1px dashed #d1d5db;
+        border-radius: 8px;
+    }
+
+    #hud-center-placeholder {
+        flex: 1 1 auto;
+        min-width: 0;
+
+        background: #f9fafb;
+        border: 1px dashed #d1d5db;
+        border-radius: 8px;
+    }
+
     #minimap-container {
-        position: absolute;
-        bottom: 16px;
-        right: 16px;
+        flex: 0 0 auto;
+        align-self: center;
 
         background: white;
         border: 1px solid #d1d5db;
@@ -159,8 +216,6 @@ export const styles = `
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 
         padding: 4px;
-
-        z-index: 999;
     }
 
     #minimap-canvas {
