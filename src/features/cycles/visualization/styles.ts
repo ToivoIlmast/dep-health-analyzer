@@ -44,6 +44,33 @@ export const styles = `
         padding: 6px 10px;
     }
 
+    #zoom-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    #zoom-controls button {
+        cursor: pointer;
+
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+
+        background: #f9fafb;
+
+        width: 28px;
+        height: 28px;
+        line-height: 1;
+        font-size: 16px;
+    }
+
+    #zoom-level {
+        min-width: 44px;
+        text-align: center;
+        font-size: 13px;
+        color: #374151;
+    }
+
     #tooltip {
         position: absolute;
         display: none;

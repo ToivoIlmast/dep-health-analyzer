@@ -85,6 +85,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             <button id="fit-btn">
                 Fit Graph
             </button>
+
+            <div id="zoom-controls">
+                <button id="zoom-out-btn" aria-label="Zoom out">&minus;</button>
+                <span id="zoom-level">100%</span>
+                <button id="zoom-in-btn" aria-label="Zoom in">+</button>
+            </div>
         </div>
 
         <div id="edge-clarity-note">
@@ -320,7 +326,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             const cy = cytoscape({
                 container: document.getElementById('cy'),
-    
+
+                // Experimental (branch: experiment/cycle-map-v2). Cytoscape's
+                // own built-in switch for "don't let mouse wheel/pinch
+                // gestures zoom the graph" - this only turns off the USER
+                // GESTURE path, not zooming itself: cy.zoom(...) (used by
+                // the +/-/Fit Graph controls below, and by
+                // applyInitialView/fitCyAvoidingChrome) keeps working
+                // exactly as before. Deliberately not a wheel listener with
+                // preventDefault()/manual scroll emulation - cytoscape
+                // simply never attaches its own zoom-on-wheel handler when
+                // this is false, so the wheel event is left completely
+                // alone and falls through to whatever the browser's normal
+                // (page-level) wheel behavior already is.
+                userZoomingEnabled: false,
+
                 elements: {
                     nodes: ${safeJsonForScript(nodes)},
                     edges: ${safeJsonForScript(edges)},
@@ -1290,6 +1310,46 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     },
                 );
             }
+
+            // Experimental (branch: experiment/cycle-map-v2). Explicit
+            // zoom controls, now that the mouse wheel no longer does this
+            // (userZoomingEnabled: false above) - +/- zoom around the
+            // center of whatever's currently on screen (renderedPosition
+            // in screen/container pixels, not a graph-model coordinate),
+            // so zooming doesn't yank the viewport toward some arbitrary
+            // graph-space origin. The displayed percentage is driven
+            // entirely by cy's own 'zoom' event, not by these two button
+            // handlers specifically - Fit Graph, the initial-view logic,
+            // and any future zoom-triggering code all already go through
+            // cy.zoom()/cy.fit(), which fire that event the same way.
+            const zoomLevelDisplay = document.getElementById('zoom-level');
+            const zoomInButton = document.getElementById('zoom-in-btn');
+            const zoomOutButton = document.getElementById('zoom-out-btn');
+            const ZOOM_STEP_FACTOR = 1.2;
+
+            function updateZoomLevelDisplay() {
+                if (zoomLevelDisplay) {
+                    zoomLevelDisplay.textContent = Math.round(cy.zoom() * 100) + '%';
+                }
+            }
+
+            function stepZoom(factor) {
+                const container = cy.container();
+
+                cy.zoom({
+                    level: cy.zoom() * factor,
+                    renderedPosition: {
+                        x: container.clientWidth / 2,
+                        y: container.clientHeight / 2,
+                    },
+                });
+            }
+
+            zoomInButton?.addEventListener('click', () => stepZoom(ZOOM_STEP_FACTOR));
+            zoomOutButton?.addEventListener('click', () => stepZoom(1 / ZOOM_STEP_FACTOR));
+
+            cy.on('zoom', updateZoomLevelDisplay);
+            updateZoomLevelDisplay();
 
             const tooltip = document.getElementById(
                     'tooltip',
