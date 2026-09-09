@@ -112,6 +112,15 @@ export const styles = `
         vertical-align: middle;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2, area filter). Marks
+       whichever legend row matches the currently-selected area - doesn't
+       touch the deterministic area->color system itself, just highlights
+       which of those already-real colors is active right now. */
+    #area-legend [data-area].legend-area-active {
+        font-weight: 600;
+        color: #111827;
+    }
+
     #edge-clarity-note {
         position: absolute;
         /* Anchored above the fixed bottom HUD (not the raw viewport

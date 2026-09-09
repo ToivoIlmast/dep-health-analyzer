@@ -55,6 +55,13 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 </select>
             </label>
 
+            <label>
+                Area:
+                <select id="area-select">
+                    <option value="">All</option>
+                </select>
+            </label>
+
             <button id="fit-btn">
                 Fit Graph
             </button>
@@ -420,6 +427,26 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         },
                     },
 
+                    // Experimental (branch: experiment/cycle-map-v2, area
+                    // filter). Cytoscape's own display:none - the element
+                    // stays fully present in cy's data model (nothing is
+                    // removed/destroyed), it's just not rendered. Drives the
+                    // actual on-screen hiding; the layout/fit/minimap
+                    // functions below deliberately do NOT read this back via
+                    // cytoscape's ':visible' selector (see visibleNodes()/
+                    // visibleEdges()/visibleElements() near the cy
+                    // constructor for why - that lags a frame behind this
+                    // class actually being set). This is how the area
+                    // filter is implemented: a presentation-level
+                    // toggle on top of the one full graph, not a second
+                    // "filtered graph" data structure.
+                    {
+                        selector: '.area-hidden',
+                        style: {
+                            display: 'none',
+                        },
+                    },
+
                     // Experimental (branch: experiment/cycle-map-v2). Cytoscape
                     // core's own 'taxi' curve-style - vertical/horizontal
                     // segments meeting at right angles, no third-party edge
@@ -520,6 +547,50 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 layout: layouts.flowVertical,
             });
 
+            // Experimental (branch: experiment/cycle-map-v2, area filter).
+            // '' (falsy) means "All" - no area filter applied. The single
+            // source of truth for "what is the current view", read by every
+            // layout/fit/minimap function below via visibleNodes()/
+            // visibleEdges()/visibleElements() instead of cytoscape's own
+            // cy.nodes(':visible') - deliberately NOT using cytoscape's
+            // built-in ':visible' selector for this: it's driven by the
+            // 'display' style property, which toggleClass() only marks
+            // dirty synchronously - the actual recomputation (and thus
+            // ':visible'/.visible() returning the right answer) was
+            // measured to only happen on the NEXT animation frame, not
+            // immediately after the class change. Deriving the current
+            // view straight from each element's own 'area' data instead
+            // (exactly the same test used to decide the '.area-hidden'
+            // class in applyAreaFilter below) is instantly correct with no
+            // such lag, since it never depends on cytoscape's render-timed
+            // style resolution at all - only on data that's already
+            // present the moment the area filter changes.
+            let currentAreaFilter = '';
+
+            function isNodeInCurrentView(node) {
+                return !currentAreaFilter || node.data('area') === currentAreaFilter;
+            }
+
+            function isEdgeInCurrentView(edge) {
+                return (
+                    !currentAreaFilter ||
+                    (edge.source().data('area') === currentAreaFilter &&
+                        edge.target().data('area') === currentAreaFilter)
+                );
+            }
+
+            function visibleNodes(cy) {
+                return cy.nodes().filter(isNodeInCurrentView);
+            }
+
+            function visibleEdges(cy) {
+                return cy.edges().filter(isEdgeInCurrentView);
+            }
+
+            function visibleElements(cy) {
+                return visibleNodes(cy).union(visibleEdges(cy));
+            }
+
             // Experimental (branch: experiment/cycle-map-v2). With
             // userZoomingEnabled: false above, cytoscape never attaches its
             // own wheel handler at all - the raw DOM 'wheel' event on the
@@ -555,13 +626,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // buildCytoscapeElements.ts, unaffected by layout, pan, zoom,
             // or selection, so there's nothing here that would ever need
             // to be redrawn later the way the minimap does.
-            function renderAreaLegend(cy) {
-                const legend = document.getElementById('area-legend');
-
-                if (!legend) {
-                    return;
-                }
-
+            // Shared by the legend and the area-filter dropdown below - both
+            // need the same "real areas actually present on this graph's
+            // own nodes, in a deterministic order" list, computed from the
+            // graph's own data rather than any hardcoded name set so it
+            // works the same for any analyzed project's real structure.
+            function collectAreaInfo(cy) {
                 const areaColors = new Map();
 
                 cy.nodes().forEach((node) => {
@@ -574,12 +644,28 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 const sortedAreas = Array.from(areaColors.keys()).sort((a, b) => a.localeCompare(b));
 
+                return { areaColors, sortedAreas };
+            }
+
+            function renderAreaLegend(cy) {
+                const legend = document.getElementById('area-legend');
+
+                if (!legend) {
+                    return;
+                }
+
+                const { areaColors, sortedAreas } = collectAreaInfo(cy);
+
+                // data-area (not just the visible text) so the area filter
+                // below can toggle a "this is the active area" highlight on
+                // the matching row without re-rendering the whole legend.
                 legend.innerHTML = sortedAreas
                     .map((area) => {
                         const color = areaColors.get(area);
 
                         return (
-                            '<div><span class="legend-swatch" style="background: ' +
+                            '<div data-area="' + escapeHtml(area) + '">' +
+                            '<span class="legend-swatch" style="background: ' +
                             escapeHtml(color) +
                             ';"></span>' +
                             escapeHtml(area) +
@@ -589,7 +675,42 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     .join('');
             }
 
+            function updateLegendActiveArea(area) {
+                const legend = document.getElementById('area-legend');
+
+                if (!legend) {
+                    return;
+                }
+
+                legend.querySelectorAll('[data-area]').forEach((row) => {
+                    row.classList.toggle('legend-area-active', !!area && row.dataset.area === area);
+                });
+            }
+
+            // Experimental (branch: experiment/cycle-map-v2, area filter).
+            // Same sortedAreas list as the legend, turned into <option>s -
+            // 'All' (value '') first and always present, then every real
+            // area found on the graph's own nodes, alphabetical for a
+            // deterministic order that doesn't depend on node/scan order.
+            function populateAreaSelect(cy) {
+                const select = document.getElementById('area-select');
+
+                if (!select) {
+                    return;
+                }
+
+                const { sortedAreas } = collectAreaInfo(cy);
+
+                sortedAreas.forEach((area) => {
+                    const option = document.createElement('option');
+                    option.value = area;
+                    option.textContent = area;
+                    select.appendChild(option);
+                });
+            }
+
             renderAreaLegend(cy);
+            populateAreaSelect(cy);
 
             // Shared with redrawMinimapStatic below, so the minimap's edge
             // drawing matches the same geometry collision-avoidance checks
@@ -721,7 +842,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 const rankGroups = new Map();
 
-                cy.nodes().forEach((node) => {
+                // visibleNodes(cy) (not the bare cy.nodes()) so a hidden
+                // node left over from a previous area filter doesn't get
+                // mixed into a rank group alongside currently-visible nodes
+                // at whatever stale Y position it was last laid out at.
+                visibleNodes(cy).forEach((node) => {
                     const key = Math.round(node.position().y);
                     if (!rankGroups.has(key)) {
                         rankGroups.set(key, []);
@@ -829,14 +954,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 for (let iteration = 0; iteration < maxIterations; iteration++) {
                     let movedAny = false;
 
-                    cy.edges().forEach((edge) => {
+                    // visibleEdges(cy)/visibleNodes(cy) throughout -
+                    // area-hidden edges/nodes have nothing worth pushing out
+                    // of anyone's way, and mixing their stale positions in
+                    // would only waste iterations.
+                    visibleEdges(cy).forEach((edge) => {
                         const source = edge.source();
                         const target = edge.target();
                         const p1 = source.position();
                         const p2 = target.position();
                         const segments = computeEdgePathSegments(p1, p2, orthogonalAxis);
 
-                        cy.nodes().forEach((node) => {
+                        visibleNodes(cy).forEach((node) => {
                             if (node.id() === source.id() || node.id() === target.id()) {
                                 return;
                             }
@@ -1016,10 +1145,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const availableWidth = container.clientWidth - leftInset - rightInset;
                 const availableHeight = container.clientHeight - topInset - bottomInset;
 
-                const bb = cy.elements().boundingBox();
+                // visibleElements(cy) (not cy.elements() / all) - Fit Graph
+                // (and the initial-view logic below, which also calls this)
+                // must fit whatever the area filter currently shows, not
+                // the full graph underneath it.
+                const currentView = visibleElements(cy);
+                const bb = currentView.boundingBox();
 
                 if (bb.w === 0 || bb.h === 0 || availableWidth <= 0 || availableHeight <= 0) {
-                    cy.fit(undefined, basePadding);
+                    cy.fit(currentView, basePadding);
                     return;
                 }
 
@@ -1035,7 +1169,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             }
 
             function applyInitialView(cy) {
-                const bb = cy.elements().boundingBox();
+                const currentView = visibleElements(cy);
+                const bb = currentView.boundingBox();
                 const container = cy.container();
                 const availableWidth = container.clientWidth - 80;
                 const availableHeight = container.clientHeight - 80;
@@ -1048,7 +1183,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     fitCyAvoidingChrome(cy, 80);
                 } else {
                     cy.zoom(1);
-                    cy.center();
+                    cy.center(currentView);
                 }
             }
 
@@ -1078,7 +1213,10 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             let minimapTransform = null;
 
             function computeMinimapTransform(cy) {
-                const bb = cy.elements().boundingBox();
+                // visibleElements(cy) - the minimap frames whatever the
+                // area filter currently shows, not the full graph
+                // underneath it.
+                const bb = visibleElements(cy).boundingBox();
                 const availableWidth = MINIMAP_WIDTH - MINIMAP_PADDING * 2;
                 const availableHeight = MINIMAP_HEIGHT - MINIMAP_PADDING * 2;
 
@@ -1126,7 +1264,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // shared above) so a straight-edge layout's minimap shows
                 // straight lines and an orthogonal layout's minimap shows the
                 // same right-angle connectors, just schematic at this scale.
-                cy.edges().forEach((edge) => {
+                // visibleEdges(cy) - area-hidden edges have no place on a
+                // minimap of the currently filtered view.
+                visibleEdges(cy).forEach((edge) => {
                     const p1 = edge.source().position();
                     const p2 = edge.target().position();
                     const segments = computeEdgePathSegments(p1, p2, orthogonalAxis);
@@ -1149,7 +1289,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // the real map instead of an abstract dot-graph over it.
                 const MINIMAP_NODE_SIZE = 4;
 
-                cy.nodes().forEach((node) => {
+                visibleNodes(cy).forEach((node) => {
                     const pos = node.position();
                     const point = toMinimapPoint(pos.x, pos.y, transform);
 
@@ -1320,26 +1460,105 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const layoutSelect = document.getElementById('layout-select');
             const edgeClarityNote = document.getElementById('edge-clarity-note');
 
+            // Experimental (branch: experiment/cycle-map-v2, area filter).
+            // Runs a layout on visibleElements(cy) - not cy.layout(), which
+            // would run on the WHOLE graph regardless of the area filter -
+            // so switching to e.g. 'core' actually recomputes positions for
+            // only core's own nodes/edges, not the full graph with some of
+            // it hidden afterward. Shared by the layout dropdown and the
+            // area dropdown, since either one changing means "recompute
+            // the currently-selected layout for whatever is visible now".
+            function runLayoutForCurrentView(layoutName) {
+                const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
+                const runningLayout = visibleElements(cy).layout(layouts[layoutName]);
+
+                if (edgeClarityNote) {
+                    edgeClarityNote.hidden = !isCleanLayout;
+                    edgeClarityNote.textContent = ORTHOGONAL_LAYOUT_AXES[layoutName]
+                        ? EDGE_CLARITY_MESSAGES.orthogonal
+                        : EDGE_CLARITY_MESSAGES.straight;
+                }
+
+                runningLayout.one('layoutstop', () => {
+                    onLayoutFinished(cy, layoutName);
+                });
+
+                runningLayout.run();
+            }
+
             if (layoutSelect) {
                 layoutSelect.addEventListener(
                     'change',
                     function () {
-                        const layoutName = this.value;
-                        const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
-                        const runningLayout = cy.layout(layouts[layoutName]);
+                        runLayoutForCurrentView(this.value);
+                    },
+                );
+            }
 
-                        if (edgeClarityNote) {
-                            edgeClarityNote.hidden = !isCleanLayout;
-                            edgeClarityNote.textContent = ORTHOGONAL_LAYOUT_AXES[layoutName]
-                                ? EDGE_CLARITY_MESSAGES.orthogonal
-                                : EDGE_CLARITY_MESSAGES.straight;
-                        }
+            const areaSelect = document.getElementById('area-select');
 
-                        runningLayout.one('layoutstop', () => {
-                            onLayoutFinished(cy, layoutName);
-                        });
+            // Experimental (branch: experiment/cycle-map-v2, area filter).
+            // Presentation-level view on top of the one full graph cy
+            // already holds in full (see the '.area-hidden' style rule
+            // above) - never removes anything from cy, so the full graph
+            // (including every cross-area edge) stays intact underneath
+            // whatever is currently shown; a later experiment can read
+            // edge.source()/target().data('area') on any edge, hidden or
+            // not, to build cross-area connections without this filter
+            // needing to change at all.
+            //
+            // v1 scope: an edge is visible only when BOTH its source and
+            // target are in the selected area (internal edges only) - an
+            // edge with exactly one endpoint in the area is left hidden
+            // for now (that's the "next experiment" this is deliberately
+            // built not to foreclose on).
+            function applyAreaFilter(area) {
+                // Updates the one source of truth FIRST - isNodeInCurrentView/
+                // isEdgeInCurrentView (and therefore visibleNodes/visibleEdges/
+                // visibleElements, used by every layout/fit/minimap function)
+                // read this immediately, with no dependency on cytoscape's
+                // own (measured to be next-animation-frame-delayed, not
+                // synchronous) 'display'/':visible' style resolution. The
+                // '.area-hidden' class below still drives the ACTUAL
+                // rendering (via the cytoscape style rule near the top of
+                // this file) - it'll catch up on the next frame, same as
+                // it always would; nothing here waits on that to happen.
+                currentAreaFilter = area || '';
 
-                        runningLayout.run();
+                cy.batch(() => {
+                    cy.nodes().forEach((node) => {
+                        node.toggleClass('area-hidden', !isNodeInCurrentView(node));
+                    });
+
+                    cy.edges().forEach((edge) => {
+                        edge.toggleClass('area-hidden', !isEdgeInCurrentView(edge));
+                    });
+                });
+
+                updateLegendActiveArea(currentAreaFilter);
+
+                // A node that was selected before switching areas may no
+                // longer be visible - leaving its info in the HUD/its
+                // '.selected' border on a hidden node would misrepresent a
+                // module the user can no longer even see as if it were
+                // still part of the current view.
+                if (selectedNodeId) {
+                    const selectedNode = cy.getElementById(selectedNodeId);
+
+                    if (selectedNode.empty() || selectedNode.hasClass('area-hidden')) {
+                        selectedNodeId = null;
+                        clearHighlights();
+                        updateSelectedModulePanel(null);
+                    }
+                }
+            }
+
+            if (areaSelect) {
+                areaSelect.addEventListener(
+                    'change',
+                    function () {
+                        applyAreaFilter(this.value);
+                        runLayoutForCurrentView(layoutSelect ? layoutSelect.value : 'flowVertical');
                     },
                 );
             }
