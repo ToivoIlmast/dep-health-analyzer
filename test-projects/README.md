@@ -1,6 +1,6 @@
 # External Validation Corpus
 
-This directory holds 32 small, realistic JavaScript/TypeScript fixture projects used to validate
+This directory holds 33 small, realistic JavaScript/TypeScript fixture projects used to validate
 `dep-health-analyzer` against a variety of real project shapes - frameworks, ecosystems, monorepo
 layouts, and deliberately tricky dependency-graph structures - instead of only against the
 synthetic unit-test fixtures under `src/**/__tests__`.
@@ -47,7 +47,7 @@ node scripts/gen-fullstack.mjs    # nextjs-ts, vite-react-ts, vite-vue-ts, svelt
 node scripts/gen-libraries.mjs    # typescript-library, typescript-cli
 node scripts/gen-monorepos.mjs    # monorepo-npm, monorepo-pnpm
 node scripts/gen-structural.mjs   # layered-app, feature-oriented-app, flat-app, messy-app
-node scripts/gen-stress.mjs       # cyclic-app, nightmare-app
+node scripts/gen-stress.mjs       # cyclic-app, nightmare-app, large-cycle-app
 node scripts/gen-traps.mjs        # same-directory-complex, deep-but-valid, cross-boundary-but-valid
 node scripts/gen-mts-cts.mjs      # mts-cts
 node scripts/gen-history-lab.mjs  # history-laboratory
@@ -110,8 +110,11 @@ itself for the exact list of what is and isn't asserted.
 - **Structural diversity:** layered, feature-oriented, flat, and "messy" (organically grown,
   inconsistent) layouts.
 - **Graph stress:** a fixture whose history introduces and removes several distinct cycle shapes,
-  and a larger synthetic fixture combining a ring cycle, a high-fan-in hub module, a deep chain, and
-  cross-directory fan-out.
+  a larger synthetic fixture combining a ring cycle, a high-fan-in hub module, a deep chain, and
+  cross-directory fan-out (its own big ring is deliberately broken again before HEAD, as part of its
+  own history-drift stress story - see its README), and a focused static fixture with a genuinely
+  large (7-node) SCC, a cycle member with a large number of real external dependencies, and two
+  independent cycles reachable from one shared caller.
 - **Heuristic traps:** fixtures built specifically to probe assumptions the analyzer must not make -
   that same-directory implies no cycles, that path depth implies a violation, or that reaching across
   directories implies bad design.

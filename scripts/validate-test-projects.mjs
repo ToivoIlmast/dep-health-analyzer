@@ -185,6 +185,13 @@ function dependenciesAt(dir, ref) {
     });
 }
 
+function largestSccAt(dir, ref) {
+    return checkedOutAt(dir, ref, () => {
+        const result = run(dir, ['cycles'], { allowNonZeroExit: true });
+        return extractNumber(result.output ?? result.message ?? '', 'Largest SCC');
+    });
+}
+
 // --- cycle presence/absence on representative fixtures -----------------
 
 {
@@ -202,6 +209,18 @@ function dependenciesAt(dir, ref) {
 {
     const dir = join(CORPUS_DIR, 'feature-oriented-app');
     assertEqual(cyclesAt(dir, 'HEAD'), 0, 'feature-oriented-app @ HEAD has 0 cycles (orders<->payments cycle was fixed)');
+}
+
+// --- large-cycle-app: large SCC + high-external-fanout cycle member -----
+// (added for the cycle-node-details/educational-modal work - the rest of
+// the corpus's cycle fixtures top out at a 3-node SCC and 1-2 external
+// deps per cycle member; this fixture is the one place with a genuinely
+// large SCC and a cycle member with many real external dependencies.)
+
+{
+    const dir = join(CORPUS_DIR, 'large-cycle-app');
+    assertEqual(cyclesAt(dir, 'HEAD'), 2, 'large-cycle-app @ HEAD has exactly 2 independent cycles (the 7-node ring + the 2-node pair)');
+    assertEqual(largestSccAt(dir, 'HEAD'), 7, 'large-cycle-app @ HEAD has a largest SCC of 7 modules (the ring)');
 }
 
 // --- mts-cts: the .mts/.cts discovery regression fixture ----------------

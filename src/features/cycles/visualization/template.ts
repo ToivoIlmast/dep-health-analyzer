@@ -86,6 +86,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 <span id="zoom-level">100%</span>
                 <button id="zoom-in-btn" aria-label="Zoom in">+</button>
             </div>
+
+            <!-- Experimental (branch: experiment/cycle-map-v2, cycle node
+                 details + educational modal). General reference info about
+                 dependency cycles/SCCs - always available, independent of
+                 whatever node (if any) is currently selected. Deliberately
+                 not attached to any specific node/badge - see
+                 cycle-info-modal below for why. -->
+            <button id="cycle-info-btn" type="button">
+                What are dependency cycles?
+            </button>
         </div>
 
         <div id="edge-clarity-note">
@@ -122,6 +132,78 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 <canvas id="minimap-canvas" width="220" height="160"></canvas>
             </div>
         </div>
+
+        <!-- Experimental (branch: experiment/cycle-map-v2, cycle node
+             details + educational modal). A native <dialog> - ESC-to-close
+             and a focus-trapped modal backdrop come from the platform for
+             free, no library/framework needed to keep this a standalone
+             HTML file. This is general reference material about what a
+             cycle/SCC IS, not something about any particular selected
+             node - see the per-node cycle context added to
+             updateSelectedModulePanel() below for that. Every claim here
+             follows dep-health-analyzer's own architectural-awareness (not
+             architectural-enforcement) framing: a detected cycle is an
+             observed graph fact to investigate, never a verdict. -->
+        <dialog id="cycle-info-modal">
+            <h2>Dependency cycles</h2>
+
+            <h3>What is a dependency cycle?</h3>
+            <p>
+                A dependency cycle happens when a chain of dependency
+                relationships eventually leads back to a module already
+                reached earlier in the same chain - for example:
+            </p>
+            <p class="cycle-info-example">A &rarr; B &rarr; C &rarr; A</p>
+            <p>
+                Here, A depends on B, B depends on C, and C depends back on
+                A - closing the chain into a cycle.
+            </p>
+
+            <h3>What is an SCC?</h3>
+            <p>
+                dep-health-analyzer uses Strongly Connected Components
+                (SCCs) to find cycles: an SCC is a group of modules where
+                every module can reach every other module in the group by
+                following dependency relationships. A group of 2 or more
+                modules forming one SCC is what this report highlights as a
+                detected cycle.
+            </p>
+
+            <h3>Why can cycles matter?</h3>
+            <p>A detected cycle may:</p>
+            <ul>
+                <li>make the dependency relationships between those modules harder to reason about</li>
+                <li>increase coupling between the modules involved</li>
+                <li>make it harder to isolate or reuse a single module from the group on its own</li>
+                <li>make changes touch more of the cycle than a change to a single, non-cyclic module would</li>
+            </ul>
+
+            <h3>What does dep-health-analyzer report?</h3>
+            <p>
+                dep-health-analyzer reports the dependency structures it
+                detects in the scanned graph - it does not know this
+                project's intended architecture.
+            </p>
+            <p class="cycle-info-emphasis">
+                A detected cycle is not automatically an architectural violation.
+            </p>
+            <p>
+                Some cyclic relationships are intentional. Only someone who
+                knows this project's intended architecture can decide
+                whether a specific detected cycle is one worth changing.
+            </p>
+
+            <h3>How to investigate a cycle</h3>
+            <ol>
+                <li>Select a module that is part of a detected cycle.</li>
+                <li>Inspect the other modules in its SCC.</li>
+                <li>Follow the dependency directions between them.</li>
+                <li>Understand why the relationships exist.</li>
+                <li>Decide whether the structure is appropriate for the project's intended architecture.</li>
+            </ol>
+
+            <button id="cycle-info-close-btn" type="button">Close</button>
+        </dialog>
 
         <script>
             // Node labels/ids come from file paths, which could in principle
@@ -1794,6 +1876,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 );
             }
 
+            // Experimental (branch: experiment/cycle-map-v2, educational
+            // modal). General reference info, independent of node
+            // selection - showModal()/close() are native <dialog> methods
+            // (ESC-to-close and backdrop focus-trapping come for free from
+            // the platform, no library needed to keep this a standalone
+            // HTML file).
+            const cycleInfoButton = document.getElementById('cycle-info-btn');
+            const cycleInfoModal = document.getElementById('cycle-info-modal');
+            const cycleInfoCloseButton = document.getElementById('cycle-info-close-btn');
+
+            cycleInfoButton?.addEventListener('click', () => cycleInfoModal?.showModal());
+            cycleInfoCloseButton?.addEventListener('click', () => cycleInfoModal?.close());
+
             // Experimental (branch: experiment/cycle-map-v2). Explicit
             // zoom controls, now that the mouse wheel no longer does this
             // (userZoomingEnabled: false above) - +/- zoom around the
@@ -1885,6 +1980,50 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     Ca: \${data.ca} &nbsp;&nbsp; Ce: \${data.ce} &nbsp;&nbsp;
                     Instability: \${Number(data.instability).toFixed(2)} &nbsp;&nbsp;
                     SCC size: \${data.sccSize ?? 0}
+                    \${buildCycleContextHtml(node)}
+                \`;
+            }
+
+            // Experimental (branch: experiment/cycle-map-v2, cycle node
+            // details). Only ever appended for a node that's actually part
+            // of a real (2+) detected cycle - sccSize/sccId are both unset
+            // for every other node, so this correctly adds nothing for
+            // them ("no artificial cycle details" for a non-cyclic
+            // module). Reuses data(sccId) - the real SCC index
+            // buildCytoscapeElements.ts already computes server-side - to
+            // find the OTHER real members of the same cycle, rather than
+            // re-deriving cycle membership on the client (which would be
+            // duplicating detection logic dep-health already ran once).
+            // Wording is deliberately observational ("Detected cycle"/
+            // "modules in this cycle"), never a verdict - matches the
+            // educational modal's own framing (see cycle-info-modal above):
+            // a detected cycle is a graph fact to investigate, not
+            // something this report itself judges as a problem.
+            const MAX_SCC_MEMBERS_SHOWN = 12;
+
+            function buildCycleContextHtml(node) {
+                const data = node.data();
+
+                if (!data.sccSize || data.sccSize < 2 || data.sccId === undefined) {
+                    return '';
+                }
+
+                const otherMembers = cy
+                    .nodes()
+                    .filter((candidate) => candidate.data('sccId') === data.sccId && candidate.id() !== data.id)
+                    .map((candidate) => candidate.data('label'));
+
+                const shown = otherMembers.slice(0, MAX_SCC_MEMBERS_SHOWN);
+                const remaining = otherMembers.length - shown.length;
+                const otherMembersText =
+                    shown.map(escapeHtml).join(', ') + (remaining > 0 ? \`, +\${remaining} more\` : '');
+
+                return \`
+                    <br />
+                    <span class="hud-cycle-context">
+                        Detected cycle (SCC #\${data.sccId + 1}): \${data.sccSize} modules.
+                        \${otherMembersText ? 'Other modules in this cycle: ' + otherMembersText + '.' : ''}
+                    </span>
                 \`;
             }
 

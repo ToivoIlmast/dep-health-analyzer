@@ -211,6 +211,21 @@ export const styles = `
         word-break: break-all;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2, cycle node details).
+       Only ever present for a node that's actually part of a detected
+       cycle - kept visually distinct (a top border, muted color) from the
+       always-present Ca/Ce/Instability line above it, without using any
+       warning/danger color - a detected cycle is an observation to
+       investigate, not something this report itself flags as wrong. */
+    .hud-cycle-context {
+        display: inline-block;
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px dashed #d1d5db;
+        font-size: 12px;
+        color: #6b7280;
+    }
+
     #minimap-container {
         flex: 0 0 auto;
         align-self: center;
@@ -226,5 +241,94 @@ export const styles = `
     #minimap-canvas {
         display: block;
         cursor: pointer;
+    }
+
+    /* Experimental (branch: experiment/cycle-map-v2, educational modal).
+       A native <dialog> - the browser supplies the modal semantics
+       (::backdrop, ESC-to-close, focus trapping); this only restyles it to
+       match the report's own existing visual language (white background,
+       subtle border, existing radius/shadow/typography - the same tokens
+       #hint/#edge-clarity-note already use) instead of the UA default
+       dialog chrome. */
+    #cycle-info-modal {
+        max-width: 520px;
+        width: calc(100% - 64px);
+        max-height: calc(100vh - 96px);
+        overflow-y: auto;
+        box-sizing: border-box;
+
+        padding: 20px 24px;
+
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+
+        font-size: 13px;
+        line-height: 1.6;
+        color: #374151;
+    }
+
+    #cycle-info-modal::backdrop {
+        background: rgba(17, 24, 39, 0.35);
+    }
+
+    #cycle-info-modal h2 {
+        margin: 0 0 12px;
+        font-size: 17px;
+        color: #111827;
+    }
+
+    #cycle-info-modal h3 {
+        margin: 18px 0 6px;
+        font-size: 14px;
+        color: #111827;
+    }
+
+    #cycle-info-modal p,
+    #cycle-info-modal ul,
+    #cycle-info-modal ol {
+        margin: 6px 0;
+    }
+
+    #cycle-info-modal ul,
+    #cycle-info-modal ol {
+        padding-left: 20px;
+    }
+
+    #cycle-info-modal li {
+        margin: 4px 0;
+    }
+
+    .cycle-info-example {
+        font-family: monospace;
+        font-size: 14px;
+        background: #f9fafb;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        display: inline-block;
+    }
+
+    /* Deliberately not red/orange/bold-alarm styling - this sentence is
+       the modal's single most important point, but the point itself is
+       "this is not a verdict", so the emphasis is typographic only. */
+    .cycle-info-emphasis {
+        font-weight: 600;
+        color: #111827;
+    }
+
+    #cycle-info-close-btn {
+        margin-top: 16px;
+
+        cursor: pointer;
+
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+
+        background: #f9fafb;
+
+        padding: 6px 14px;
+        font-size: 13px;
     }
 `;

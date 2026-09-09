@@ -117,6 +117,73 @@ function genNightmareApp() {
     return dir;
 }
 
+// ---------------------------------------------------------------------------
+// large-cycle-app - a focused, static (not history-walking) fixture for
+// exactly the shapes cyclic-app/nightmare-app don't leave standing at HEAD:
+// a genuinely large SCC, a cycle member with many real external
+// dependencies, and two independent cycles reachable from one shared
+// caller. nightmare-app's own big ring is deliberately broken by its
+// "partial fix" commit (see its README) - it exists to stress-test
+// regression/history's behavior AS the graph is cleaned up over time, not
+// to leave a large SCC sitting at HEAD for a static graph-visualization
+// check to find.
+// ---------------------------------------------------------------------------
+function genLargeCycleApp() {
+    const dir = freshRepo('large-cycle-app');
+    writePackageJson(dir, { name: 'large-cycle-app', version: '1.0.0', private: true, devDependencies: { typescript: '^5.6.0' } });
+    writeTsconfig(dir);
+    gitignoreNodeModules(dir);
+    writeDepHealthConfig(dir);
+
+    const LEAF_COUNT = 6;
+    for (let i = 0; i < LEAF_COUNT; i++) {
+        write(dir, `src/leaf/leaf${i}.ts`, `export function leaf${i}(): number {\n    return ${i};\n}\n`);
+    }
+    commit(dir, `baseline: ${LEAF_COUNT} independent leaf modules`);
+
+    // A 7-node ring: ring0 -> ring1 -> ... -> ring6 -> ring0 - large enough
+    // to be a meaningfully "big" SCC (the rest of the corpus tops out at 3
+    // nodes - same-directory-complex), small enough to stay a minimal,
+    // focused fixture rather than nightmare-app's much larger stress shape.
+    const RING_SIZE = 7;
+    for (let i = 0; i < RING_SIZE; i++) {
+        const next = (i + 1) % RING_SIZE;
+        write(dir, `src/ring/ring${i}.ts`, `import { fn${next} } from './ring${next}';\n\nexport function fn${i}(): number {\n    return ${i} + fn${next}();\n}\n`);
+    }
+    commit(dir, `wire up a ${RING_SIZE}-module ring cycle (ring0 -> ring1 -> ... -> ring0) - one large SCC`);
+
+    // ring0 additionally depends on all 6 leaf modules, on top of its one
+    // cycle-internal dependency (ring1) - a cycle member with a large
+    // number of real external dependencies (Ce = 7: 6 leaves + 1 cycle
+    // partner), not just the 1-2 external deps the corpus's other cycle
+    // fixtures (flat-app, messy-app) already cover.
+    const leafImports = Array.from({ length: LEAF_COUNT }, (_, i) => `import { leaf${i} } from '../leaf/leaf${i}';`).join('\n');
+    const leafCalls = Array.from({ length: LEAF_COUNT }, (_, i) => `leaf${i}()`).join(' + ');
+    write(
+        dir,
+        'src/ring/ring0.ts',
+        `${leafImports}\nimport { fn1 } from './ring1';\n\nexport function fn0(): number {\n    return fn1() + ${leafCalls};\n}\n`
+    );
+    commit(dir, 'ring0 (a member of the 7-node cycle) also depends on all 6 leaf modules - a cycle member with many real external dependencies');
+
+    // A second, small, independent 2-node cycle - structurally separate
+    // from the ring (no edge connects the two SCCs to each other), but
+    // both are reached from one shared entry.ts, so this fixture also
+    // covers two related (not just arbitrarily disconnected) cycles
+    // coexisting in the same graph.
+    write(dir, 'src/pair/left.ts', `import { right } from './right';\n\nexport function left(): string {\n    return 'left' + right();\n}\n`);
+    write(dir, 'src/pair/right.ts', `import { left } from './left';\n\nexport function right(): string {\n    return 'right';\n}\n`);
+    write(
+        dir,
+        'src/entry.ts',
+        `import { fn0 } from './ring/ring0';\nimport { left } from './pair/left';\n\nexport function run(): string {\n    return fn0() + left();\n}\n`
+    );
+    commit(dir, 'add a second, independent 2-node cycle (pair/left <-> pair/right); both cycles are reachable from one shared entry.ts');
+
+    return dir;
+}
+
 genCyclicApp();
 genNightmareApp();
-console.log('Generated: cyclic-app, nightmare-app');
+genLargeCycleApp();
+console.log('Generated: cyclic-app, nightmare-app, large-cycle-app');

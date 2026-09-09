@@ -19,6 +19,16 @@ export type CytoscapeNode = {
         // reads the shortened one.
         displayDir: string;
         color?: string;
+        // The real index into the `sccs` list findSCCs() returned for this
+        // scan - the same value already used (mod defaultColors.length) to
+        // pick `color` above, just not previously exposed. `color` alone
+        // isn't a reliable way to tell two SCCs apart once a project has
+        // more simultaneous cycles than defaultColors has entries (colors
+        // wrap around); this is the real, non-repeating identifier a
+        // frontend "which other modules share this node's cycle" lookup
+        // needs instead of re-deriving SCC membership itself. Undefined for
+        // any node that isn't part of a real (2+) cycle.
+        sccId?: number;
         area: string;
         areaColor: string;
         size?: number;
@@ -227,6 +237,7 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
                 dir: normalizedDir,
                 displayDir: computeDisplayDir(normalizedDir),
                 color: color,
+                sccId: sccIndex,
                 area,
                 areaColor: colorForArea(area),
                 size: 20 + Math.log2(degree + 1) * 18,

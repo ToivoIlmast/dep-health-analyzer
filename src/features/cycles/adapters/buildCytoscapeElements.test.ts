@@ -221,6 +221,90 @@ describe('buildCytoscapeElements', () => {
         expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(3);
     });
 
+    describe('sccId (cycle-node-details data)', () => {
+        it('gives every member of the same cycle the identical sccId', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['A', 'B', 'C']),
+                edges: new Map<string, Set<string>>([
+                    ['A', new Set(['B'])],
+                    ['B', new Set(['C'])],
+                    ['C', new Set(['A'])],
+                ]),
+            };
+
+            const sccs = [['A', 'B', 'C']];
+
+            const metrics = new Map<string, ModuleMetrics>([
+                ['A', { ca: 1, ce: 1, instability: 0.5 }],
+                ['B', { ca: 1, ce: 1, instability: 0.5 }],
+                ['C', { ca: 1, ce: 1, instability: 0.5 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs });
+
+            const ids = result.nodes.map((node) => node.data.sccId);
+
+            expect(ids[0]).toBe(0);
+            expect(new Set(ids).size).toBe(1);
+        });
+
+        it('gives two independent cycles distinct sccIds, not the same one and not derived from color', () => {
+            // color wraps around defaultColors' 8 entries, so once a
+            // project has more simultaneous cycles than that, matching "is
+            // this the same cycle" by color alone would be wrong - sccId
+            // must stay distinct regardless of how many SCCs exist.
+            const graph: DependencyGraph = {
+                nodes: new Set(['A', 'B', 'C', 'D']),
+                edges: new Map<string, Set<string>>([
+                    ['A', new Set(['B'])],
+                    ['B', new Set(['A'])],
+
+                    ['C', new Set(['D'])],
+                    ['D', new Set(['C'])],
+                ]),
+            };
+
+            const sccs = [
+                ['A', 'B'],
+                ['C', 'D'],
+            ];
+
+            const metrics = new Map<string, ModuleMetrics>([
+                ['A', { ca: 1, ce: 1, instability: 0.5 }],
+                ['B', { ca: 1, ce: 1, instability: 0.5 }],
+                ['C', { ca: 1, ce: 1, instability: 0.5 }],
+                ['D', { ca: 1, ce: 1, instability: 0.5 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs });
+
+            const sccIdOf = (id: string) => result.nodes.find((node) => node.data.id === id)?.data.sccId;
+
+            expect(sccIdOf('A')).toBe(sccIdOf('B'));
+            expect(sccIdOf('C')).toBe(sccIdOf('D'));
+            expect(sccIdOf('A')).not.toBe(sccIdOf('C'));
+        });
+
+        it('leaves sccId undefined for a node that is not part of any real cycle', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['A', 'B']),
+                edges: new Map<string, Set<string>>([
+                    ['A', new Set(['B'])],
+                    ['B', new Set()],
+                ]),
+            };
+
+            const metrics = new Map<string, ModuleMetrics>([
+                ['A', { ca: 0, ce: 1, instability: 1 }],
+                ['B', { ca: 1, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            expect(result.nodes.every((node) => node.data.sccId === undefined)).toBe(true);
+        });
+    });
+
     it('stores architecture metrics in node data', () => {
         const graph: DependencyGraph = {
             nodes: new Set(['A']),
