@@ -110,7 +110,7 @@ describe('analyzeCycles', () => {
 
     it('should generate an HTML report when mode is html and reporting is enabled', async () => {
         const elements = {
-            nodes: [{ data: { id: 'a.ts', label: 'a.ts', dir: '', typeColor: '#9ca3af' } }],
+            nodes: [{ data: { id: 'a.ts', label: 'a.ts', dir: '', area: 'src', areaColor: '#9ca3af' } }],
             edges: [],
         };
         mockedBuildCytoscapeElements.mockReturnValue(elements);

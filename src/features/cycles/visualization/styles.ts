@@ -87,6 +87,19 @@ export const styles = `
         vertical-align: middle;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2). The old hover/
+       click/Ca/Ce/Instability explanatory block is kept in the HTML
+       markup (see the '.pending-hud-reuse' wrapper in template.ts) for a
+       future bottom HUD info panel to reuse verbatim - this just hides
+       it from the current left panel. A named class rather than an
+       inline style so "why is this hidden" is discoverable by name
+       instead of looking like a stray leftover. display:none doesn't
+       remove anything from the DOM/markup - only the rendering - so
+       nothing about the reuse this is meant to enable is at risk. */
+    .pending-hud-reuse {
+        display: none;
+    }
+
     #edge-clarity-note {
         position: absolute;
         bottom: 16px;

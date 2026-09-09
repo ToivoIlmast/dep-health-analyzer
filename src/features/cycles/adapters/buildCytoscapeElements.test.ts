@@ -420,4 +420,109 @@ describe('buildCytoscapeElements', () => {
             result.nodes.filter((node) => node.data.id === 'E' && node.classes !== 'scc').length
         ).toBe(1);
     });
+
+    describe('module area (structural, derived from each node\'s own path)', () => {
+        it('reads the area as the segment after a leading "src" wrapper', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/src/core/scanner/discover.ts', '/src/features/cycles/analyze.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/src/core/scanner/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+                ['/src/features/cycles/analyze.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            const core = result.nodes.find((node) => node.data.id === '/src/core/scanner/discover.ts');
+            const features = result.nodes.find((node) => node.data.id === '/src/features/cycles/analyze.ts');
+
+            expect(core?.data.area).toBe('core');
+            expect(features?.data.area).toBe('features');
+        });
+
+        it('does not assume a "src" wrapper - a top-level folder outside src is its own area', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/scripts/build.js']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/scripts/build.js', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            expect(result.nodes[0]?.data.area).toBe('scripts');
+        });
+
+        it('falls back to a neutral area for a file with no directory at all', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['index.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['index.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            expect(result.nodes[0]?.data.area).toBe('(root)');
+        });
+
+        it('assigns the same color to the same area, deterministically', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/src/core/a.ts', '/src/core/b.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/src/core/a.ts', { ca: 0, ce: 0, instability: 0 }],
+                ['/src/core/b.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+            const colors = new Set(result.nodes.map((node) => node.data.areaColor));
+
+            expect(colors.size).toBe(1);
+        });
+
+        it('gives different areas different colors, and repeats the same result across separate calls', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/src/core/a.ts', '/src/features/b.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/src/core/a.ts', { ca: 0, ce: 0, instability: 0 }],
+                ['/src/features/b.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const first = buildCytoscapeElements({ graph, metrics, sccs: [] });
+            const second = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            const coreColorFirst = first.nodes.find((node) => node.data.area === 'core')?.data.areaColor;
+            const featuresColorFirst = first.nodes.find((node) => node.data.area === 'features')?.data.areaColor;
+            const coreColorSecond = second.nodes.find((node) => node.data.area === 'core')?.data.areaColor;
+
+            expect(coreColorFirst).not.toBe(featuresColorFirst);
+            expect(coreColorFirst).toBe(coreColorSecond);
+        });
+
+        it('resolves the area relative to an explicit projectRoot when one is given', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/repo/src/core/discover.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/repo/src/core/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({
+                graph,
+                metrics,
+                sccs: [],
+                projectRoot: '/repo',
+            });
+
+            expect(result.nodes[0]?.data.area).toBe('core');
+        });
+    });
 });

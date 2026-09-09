@@ -29,30 +29,35 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         <div id="cy"></div>
         <div id="tooltip"></div>
         <div id="hint">
-            <strong>dep-health-analyzer</strong><br /><br />
-    
-            Hover over a module to see dependency metrics.<br />
-            Click a module <strong>to pin</strong> the tooltip.<br /><br />
-    
-            <strong>Ca</strong> — incoming dependencies<br />
-            How many modules depend on this module.<br /><br />
-    
-            <strong>Ce</strong> — outgoing dependencies<br />
-            How many modules this module depends on.<br /><br />
-    
-            <strong>Instability</strong><br />
-            0.00 = stable module<br />
-            1.00 = highly unstable module
-            <br /><br />
+            <!-- Experimental (branch: experiment/cycle-map-v2). Not
+                 deleted, just hidden - this explanatory block (title,
+                 hover/click instructions, Ca/Ce/Instability descriptions)
+                 is the intended content for a future bottom HUD info
+                 panel. The 'pending-hud-reuse' class (styles.ts) is a
+                 plain display:none under a name that says why, so the
+                 markup/text stays exactly as-is for whenever that HUD
+                 panel gets built, rather than being rewritten twice. -->
+            <div class="pending-hud-reuse">
+                <strong>dep-health-analyzer</strong><br /><br />
 
-            <strong>Module type</strong> (best-effort, from its file path)<br />
-            <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px;">
-                <div><span class="legend-swatch" style="background: #3b82f6;"></span>Entry / Root</div>
-                <div><span class="legend-swatch" style="background: #22c55e;"></span>Core module</div>
-                <div><span class="legend-swatch" style="background: #a855f7;"></span>Feature module</div>
-                <div><span class="legend-swatch" style="background: #9ca3af;"></span>Utility module</div>
-                <div><span class="legend-swatch" style="background: #f97316;"></span>Script / Tooling</div>
+                Hover over a module to see dependency metrics.<br />
+                Click a module <strong>to pin</strong> the tooltip.<br /><br />
+
+                <strong>Ca</strong> — incoming dependencies<br />
+                How many modules depend on this module.<br /><br />
+
+                <strong>Ce</strong> — outgoing dependencies<br />
+                How many modules this module depends on.<br /><br />
+
+                <strong>Instability</strong><br />
+                0.00 = stable module<br />
+                1.00 = highly unstable module
+                <br /><br />
             </div>
+
+            <strong>Module area</strong><br />
+            <span style="font-size: 11px; color: #6b7280;">(from project structure)</span>
+            <div id="area-legend" style="display: flex; flex-direction: column; gap: 3px; margin-top: 6px;"></div>
             <br />
 
             <label style="display: flex; align-items: center; gap: 8px;">
@@ -344,15 +349,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             // Experimental (branch: experiment/cycle-map-v2).
                             // Rounded-rectangle "block diagram" nodes sized to
                             // fit their (now two-line) label content, colored
-                            // by a best-effort module-type classification
-                            // (see classifyModuleType() in
-                            // buildCytoscapeElements.ts) instead of a flat
-                            // gray - a plain functional/architectural role
-                            // signal, distinct from '.scc' below, which still
+                            // by module "area" - the first significant
+                            // directory segment of the node's own path (see
+                            // computeModuleArea() in buildCytoscapeElements.ts)
+                            // - instead of a flat gray. A structural grouping
+                            // signal derived from the analyzed project's own
+                            // real layout, not a guess at architectural
+                            // meaning; distinct from '.scc' below, which still
                             // overrides this for any node that's actually
                             // part of a real cycle.
                             'shape': 'round-rectangle',
-                            'background-color': 'data(typeColor)',
+                            'background-color': 'data(areaColor)',
                             'width': 'label',
                             'height': 'label',
                             'padding': '10px',
@@ -470,6 +477,52 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // the git tag on this commit).
                 layout: layouts.flowVertical,
             });
+
+            // Experimental (branch: experiment/cycle-map-v2). Builds the
+            // "Module area" legend from the areas actually present on
+            // this graph's own nodes - never a fixed list, so a different
+            // project's real top-level structure shows up automatically
+            // instead of a hardcoded core/features/utils/scripts set that
+            // only ever matched this one project. Runs once: area/
+            // areaColor are plain node data set once in
+            // buildCytoscapeElements.ts, unaffected by layout, pan, zoom,
+            // or selection, so there's nothing here that would ever need
+            // to be redrawn later the way the minimap does.
+            function renderAreaLegend(cy) {
+                const legend = document.getElementById('area-legend');
+
+                if (!legend) {
+                    return;
+                }
+
+                const areaColors = new Map();
+
+                cy.nodes().forEach((node) => {
+                    const area = node.data('area');
+
+                    if (area !== undefined && !areaColors.has(area)) {
+                        areaColors.set(area, node.data('areaColor'));
+                    }
+                });
+
+                const sortedAreas = Array.from(areaColors.keys()).sort((a, b) => a.localeCompare(b));
+
+                legend.innerHTML = sortedAreas
+                    .map((area) => {
+                        const color = areaColors.get(area);
+
+                        return (
+                            '<div><span class="legend-swatch" style="background: ' +
+                            escapeHtml(color) +
+                            ';"></span>' +
+                            escapeHtml(area) +
+                            '</div>'
+                        );
+                    })
+                    .join('');
+            }
+
+            renderAreaLegend(cy);
 
             // Shared with redrawMinimapStatic below, so the minimap's edge
             // drawing matches the same geometry collision-avoidance checks
@@ -1035,7 +1088,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                     minimapStaticCtx.fillStyle = node.hasClass('scc')
                         ? node.data('color') || '#ef4444'
-                        : node.data('typeColor') || '#9ca3af';
+                        : node.data('areaColor') || '#9ca3af';
 
                     minimapStaticCtx.fillRect(
                         point.x - MINIMAP_NODE_SIZE / 2,

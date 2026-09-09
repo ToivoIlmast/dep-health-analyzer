@@ -8,7 +8,8 @@ export type CytoscapeNode = {
         label: string;
         dir: string;
         color?: string;
-        typeColor: string;
+        area: string;
+        areaColor: string;
         size?: number;
         ce?: number;
         ca?: number;
@@ -44,52 +45,88 @@ const defaultColors = [
     '#666666',
 ];
 
-// Experimental (branch: experiment/cycle-map-v2). A presentational grouping
-// only - it classifies a node purely from data this adapter already has
-// (its file path, and the Ca/Ce metrics already computed for it), so it
-// changes nothing about how the graph, cycles, or metrics themselves are
-// analyzed. The path patterns below match this project's own conventions
-// (src/core, src/features, src/shared, scripts/) as well as the common
-// convention most Node/TS projects follow for the same folder names -
-// "correct" here means "a reasonable default that's transparent about
-// being a heuristic", not a claim of true architectural intent, which
-// only a human (or a real static-analysis feature, out of scope for this
-// experiment) could actually determine.
-const MODULE_TYPE_COLORS = {
-    entry: '#3b82f6',
-    core: '#22c55e',
-    feature: '#a855f7',
-    utility: '#9ca3af',
-    tooling: '#f97316',
-} as const;
+// Experimental (branch: experiment/cycle-map-v2). Module "areas" replace
+// the previous hardcoded core/features/utils/scripts classification - that
+// version only ever produced a sensible result for a project that happened
+// to use those exact folder names (this one). An area is derived purely
+// from a node's own path (see computeModuleArea below), so it's whatever
+// top-level structure the ANALYZED project actually has, not a guess at
+// what any particular project's folders are supposed to mean.
+//
+// A qualitative/categorical palette, deliberately separate from
+// `defaultColors` above (the SCC/cycle palette) even though both are
+// non-ordinal for the same reason - a node that's actually in a cycle
+// always shows the SCC color instead (see the '.scc' style rule in
+// template.ts, listed after the base 'node' rule so it wins), so the two
+// palettes are never visible on the same node at once, but keeping them
+// visually distinct avoids a coincidental color match reading as if it
+// meant something.
+const AREA_PALETTE = [
+    '#3b82f6',
+    '#22c55e',
+    '#a855f7',
+    '#f97316',
+    '#06b6d4',
+    '#eab308',
+    '#ec4899',
+    '#84cc16',
+    '#6366f1',
+    '#14b8a6',
+    '#f43f5e',
+    '#8b5cf6',
+    '#0ea5e9',
+    '#65a30d',
+    '#d946ef',
+    '#f59e0b',
+] as const;
 
-type ModuleType = keyof typeof MODULE_TYPE_COLORS;
+// djb2 - not for anything cryptographic, just a cheap, stable way to turn
+// an arbitrary area name into a number so the same name always lands on
+// the same palette index, on every run, without keeping any kind of
+// name -> color registry around (which would need to persist somewhere to
+// stay stable across separate CLI invocations, and would need a rule for
+// what happens when a new area shows up anyway - a hash sidesteps both).
+function hashString(value: string): number {
+    let hash = 5381;
 
-function classifyModuleType(relativePath: string, ca: number, ce: number): ModuleType {
-    const normalized = relativePath.replaceAll('\\', '/').toLowerCase();
-
-    if (/(^|\/)scripts\//.test(normalized)) {
-        return 'tooling';
-    }
-    if (/(^|\/)(utils?|helpers?|shared|lib)\//.test(normalized)) {
-        return 'utility';
-    }
-    if (/(^|\/)core\//.test(normalized)) {
-        return 'core';
-    }
-    if (/(^|\/)features?\//.test(normalized)) {
-        return 'feature';
-    }
-    // Nothing depends on it, but it depends on other things - a root of
-    // the dependency graph (or of one of its disconnected components),
-    // which is the closest thing to "entry point" derivable from data
-    // already on hand, without hardcoding a specific filename like
-    // 'cli.ts' or 'index.ts' that wouldn't generalize to other projects.
-    if (ca === 0 && ce > 0) {
-        return 'entry';
+    for (let i = 0; i < value.length; i++) {
+        hash = (hash * 33) ^ value.charCodeAt(i);
     }
 
-    return 'utility';
+    return hash >>> 0;
+}
+
+function colorForArea(area: string): string {
+    // The modulo guarantees this index is always within bounds - the
+    // non-null assertion is just satisfying noUncheckedIndexedAccess, not
+    // papering over a real possibility of AREA_PALETTE being empty (it's a
+    // fixed, non-empty literal above).
+    return AREA_PALETTE[hashString(area) % AREA_PALETTE.length]!;
+}
+
+// The "first significant directory segment relative to the project/source
+// root". Only one structural convention is hardcoded - a literal leading
+// "src" segment is treated as a source-root wrapper to look past, so
+// `src/core/scanner/discover.ts` reads as area "core", not area "src" -
+// everything else is read directly from whatever the analyzed project's
+// own top-level layout actually is (`scripts/`, `.github/`, `docs/`,
+// a monorepo's `packages/`, ...), with no assumption about what any of
+// those names are supposed to mean. A file with no directory component at
+// all (sitting directly in the project root) or directly inside `src/`
+// itself (no further subfolder) falls back to its own literal segment
+// rather than a made-up label.
+function computeModuleArea(relativePath: string): string {
+    const segments = relativePath.replaceAll('\\', '/').split('/').filter(Boolean);
+
+    if (segments.length <= 1) {
+        return '(root)';
+    }
+
+    if (segments[0] === 'src' && segments.length > 2) {
+        return segments[1]!;
+    }
+
+    return segments[0]!;
 }
 
 type BuildNodes = {
@@ -121,14 +158,14 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
         const ce = metrics.get(node)?.ce ?? 0;
         const degree = ca + ce;
         // Relative to the project root when one is available (real CLI
-        // usage always provides it) so the second label line and the type
-        // classification below read as "src/features/cycles", not some
-        // long absolute filesystem path. Falls back to the raw id's own
-        // directory otherwise - harmless for the synthetic single-letter
-        // ids used in this file's own unit tests.
+        // usage always provides it) so the second label line and the area
+        // below read as "src/features/cycles", not some long absolute
+        // filesystem path. Falls back to the raw id's own directory
+        // otherwise - harmless for the synthetic single-letter ids used in
+        // this file's own unit tests.
         const relativePath = projectRoot ? path.relative(projectRoot, node) : node;
         const dir = path.dirname(relativePath);
-        const moduleType = classifyModuleType(relativePath, ca, ce);
+        const area = computeModuleArea(relativePath);
 
         nodes.push({
             data: {
@@ -142,7 +179,8 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
                 label: path.basename(node),
                 dir: dir === '.' ? '' : dir,
                 color: color,
-                typeColor: MODULE_TYPE_COLORS[moduleType],
+                area,
+                areaColor: colorForArea(area),
                 size: 20 + Math.log2(degree + 1) * 18,
                 ce,
                 ca,
