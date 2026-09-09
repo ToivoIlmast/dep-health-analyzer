@@ -6,7 +6,18 @@ export type CytoscapeNode = {
     data: {
         id: string;
         label: string;
+        // The real, full, untruncated relative directory - always the
+        // canonical value; nothing anywhere abbreviates or overwrites this.
+        // The tooltip and the "Selected module" panel are both built from
+        // this (and `id`, which is the absolute canonical path), never
+        // from `displayDir` below.
         dir: string;
+        // A presentation-only abbreviation of `dir`, computed once by
+        // computeDisplayDir() below, for what actually gets drawn ON the
+        // node - kept as a distinct field rather than overwriting `dir`
+        // in place, so nothing that needs the real path ever accidentally
+        // reads the shortened one.
+        displayDir: string;
         color?: string;
         area: string;
         areaColor: string;
@@ -129,6 +140,41 @@ function computeModuleArea(relativePath: string): string {
     return segments[0]!;
 }
 
+// Experimental (branch: experiment/cycle-map-v2). A long directory path
+// with no spaces (the normal case - real paths are camelCase/kebab-case
+// segments joined by '/') is one unbreakable "word" as far as text
+// wrapping is concerned, so a fixed on-node text-max-width alone can't
+// keep a node's rendered width bounded - the box just grows to fit that
+// one long word regardless. This computes a presentation-only
+// abbreviation instead, kept on the node's own single display line:
+// whichever trailing path segments fit within maxLength characters,
+// prefixed with an ellipsis when anything had to be dropped. Working
+// backward from the END (not the start) keeps the segments closest to the
+// actual file - generally the most specific, most useful-to-recognize
+// part of the path - and drops the generic top-level ones first.
+const DISPLAY_DIR_MAX_LENGTH = 28;
+
+function computeDisplayDir(dir: string, maxLength: number = DISPLAY_DIR_MAX_LENGTH): string {
+    if (dir.length <= maxLength) {
+        return dir;
+    }
+
+    const segments = dir.split('/');
+    let kept = '';
+
+    for (let i = segments.length - 1; i >= 0; i--) {
+        const candidate = kept ? segments[i]! + '/' + kept : segments[i]!;
+
+        if (candidate.length > maxLength && kept !== '') {
+            break;
+        }
+
+        kept = candidate;
+    }
+
+    return kept === dir ? dir : '…/' + kept;
+}
+
 type BuildNodes = {
     allNodes: Set<string>;
     sccs: string[][];
@@ -165,6 +211,7 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
         // this file's own unit tests.
         const relativePath = projectRoot ? path.relative(projectRoot, node) : node;
         const dir = path.dirname(relativePath);
+        const normalizedDir = dir === '.' ? '' : dir;
         const area = computeModuleArea(relativePath);
 
         nodes.push({
@@ -177,7 +224,8 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
                 // reader unable to tell what most of the graph even was
                 // without hovering every single node one at a time.
                 label: path.basename(node),
-                dir: dir === '.' ? '' : dir,
+                dir: normalizedDir,
+                displayDir: computeDisplayDir(normalizedDir),
                 color: color,
                 area,
                 areaColor: colorForArea(area),

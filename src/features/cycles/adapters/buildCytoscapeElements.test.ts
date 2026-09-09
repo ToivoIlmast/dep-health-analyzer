@@ -525,4 +525,67 @@ describe('buildCytoscapeElements', () => {
             expect(result.nodes[0]?.data.area).toBe('core');
         });
     });
+
+    describe('displayDir (presentation-only abbreviation of a long path, on-node only)', () => {
+        it('leaves a short directory untouched', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/repo/src/core/discover.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/repo/src/core/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [], projectRoot: '/repo' });
+
+            expect(result.nodes[0]?.data.dir).toBe('src/core');
+            expect(result.nodes[0]?.data.displayDir).toBe('src/core');
+        });
+
+        it('abbreviates a long directory to its trailing segments with a leading ellipsis, without touching the real dir', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set([
+                    '/repo/src/features/regression/ci/reporting/defaultModeReport/types.ts',
+                ]),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                [
+                    '/repo/src/features/regression/ci/reporting/defaultModeReport/types.ts',
+                    { ca: 0, ce: 0, instability: 0 },
+                ],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [], projectRoot: '/repo' });
+            const node = result.nodes[0];
+
+            // The real, canonical dir is completely untouched - this is
+            // the value a tooltip/future HUD must keep being able to rely
+            // on regardless of how the node itself abbreviates it.
+            expect(node?.data.dir).toBe(
+                'src/features/regression/ci/reporting/defaultModeReport'
+            );
+            expect(node?.data.displayDir.startsWith('…/')).toBe(true);
+            expect(node?.data.displayDir.length).toBeLessThan(node!.data.dir.length);
+            // Trailing segments (closest to the actual file) are what's
+            // kept, not the leading ones.
+            expect(node?.data.displayDir.endsWith('defaultModeReport')).toBe(true);
+        });
+
+        it('never lets the abbreviation grow the id/dir themselves', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/repo/a/very/deeply/nested/directory/structure/file.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/repo/a/very/deeply/nested/directory/structure/file.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [], projectRoot: '/repo' });
+            const node = result.nodes[0];
+
+            expect(node?.data.id).toBe('/repo/a/very/deeply/nested/directory/structure/file.ts');
+            expect(node?.data.dir).toBe('a/very/deeply/nested/directory/structure');
+        });
+    });
 });

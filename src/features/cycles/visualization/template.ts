@@ -351,20 +351,44 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         selector: 'node',
                         style: {
                             // A second, smaller line showing the module's
-                            // directory (e.g. "src/features/cycles") under
-                            // its filename - data(label) alone (used
-                            // as-is for the tooltip title elsewhere) stays
-                            // just the filename, so this only affects what's
-                            // drawn on the node itself.
+                            // directory under its filename - reads
+                            // data(displayDir), the presentation-only
+                            // abbreviation computed in
+                            // buildCytoscapeElements.ts (e.g.
+                            // "…/ci/reporting" instead of the real, full
+                            // "src/features/regression/ci/reporting"),
+                            // never data(dir) itself - the pinned tooltip
+                            // (showTooltip below) still shows the real,
+                            // full data(id), and data(dir) itself is left
+                            // completely untouched on every node, so a
+                            // future bottom-HUD panel (or anything else)
+                            // can still read the real canonical path -
+                            // only what gets drawn on the node's own
+                            // limited-width box is shortened.
                             'label': function (ele) {
-                                const dir = ele.data('dir');
+                                const dir = ele.data('displayDir');
                                 return dir ? ele.data('label') + '\\n' + dir : ele.data('label');
                             },
                             'font-size': '10px',
                             'text-valign': 'center',
                             'text-halign': 'center',
                             'text-wrap': 'wrap',
-                            'text-max-width': '130px',
+                            // A path has no spaces, only slashes - cytoscape's
+                            // text wrapping (like standard CSS) only breaks at
+                            // whitespace, so even a *shortened* displayDir
+                            // string is still one unbreakable "word" as far as
+                            // wrapping goes, and the box grows past
+                            // text-max-width to fit it as one line regardless.
+                            // 160px is tuned to comfortably fit
+                            // DISPLAY_DIR_MAX_LENGTH's longest real output
+                            // (measured on dep-health-analyzer's own graph:
+                            // 159px for its single longest displayDir,
+                            // "…/reporting/defaultModeReport") without this
+                            // setting fighting an outcome computeDisplayDir()
+                            // already produces - it isn't the thing actually
+                            // keeping nodes bounded, just kept consistent with
+                            // what that already does.
+                            'text-max-width': '160px',
                             'line-height': 1.3,
                             // Experimental (branch: experiment/cycle-map-v2).
                             // Rounded-rectangle "block diagram" nodes sized to
