@@ -243,6 +243,23 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 return div.innerHTML;
             }
 
+            // Experimental (branch: experiment/cycle-map-v2, SCC member
+            // navigation). escapeHtml() above is only safe for TEXT
+            // content - browsers don't escape '"' when serializing
+            // textContent back to innerHTML, only '&'/'<'/'>'. A node id
+            // is a real file path (this codebase's own existing tests
+            // already craft file paths containing a closing script tag to
+            // prove XSS resistance elsewhere - deliberately not spelled
+            // out literally in this comment, since this file IS that
+            // script: writing the real characters here would prematurely
+            // close it, exactly like the vulnerability being described),
+            // so embedding a path inside a double-quoted HTML attribute
+            // (data-scc-nav-id="...") needs this extra step, or a path
+            // containing a literal '"' could break out of the attribute.
+            function escapeAttribute(value) {
+                return escapeHtml(value).replace(/"/g, '&quot;');
+            }
+
             const layouts = {
                 dagreLR: {
                     name: 'dagre',
@@ -2088,7 +2105,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             }
 
             // Experimental (branch: experiment/cycle-map-v2, cycle node
-            // details; terminology corrected under the SCC-vs-cycle fix).
+            // details; terminology corrected under the SCC-vs-cycle fix;
+            // member names made clickable under SCC member navigation).
             // Only ever appended for a node that's actually part of a real
             // (2+ member) SCC - sccSize/sccId are both unset for every
             // other node, so this correctly adds nothing for them ("no
@@ -2106,11 +2124,13 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // deliberately describes the SCC as a whole ("part of an
             // SCC of N modules", "other modules in this SCC") rather than
             // claiming the listed modules form one specific cycle -
-            // nothing here computes an actual cycle path. Wording stays
-            // observational, never a verdict - matches the educational
-            // modal's own framing (see cycle-info-modal above): a
-            // detected SCC is a graph fact to investigate, not something
-            // this report itself judges as a problem.
+            // nothing here computes an actual cycle path, and clicking a
+            // member name below navigates to THAT MODULE, not to "the
+            // cycle". Wording stays observational, never a verdict -
+            // matches the educational modal's own framing (see
+            // cycle-info-modal above): a detected SCC is a graph fact to
+            // investigate, not something this report itself judges as a
+            // problem.
             const MAX_SCC_MEMBERS_SHOWN = 12;
 
             function buildCycleContextHtml(node) {
@@ -2122,20 +2142,45 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 const otherMembers = cy
                     .nodes()
-                    .filter((candidate) => candidate.data('sccId') === data.sccId && candidate.id() !== data.id)
-                    .map((candidate) => candidate.data('label'));
+                    .filter((candidate) => candidate.data('sccId') === data.sccId && candidate.id() !== data.id);
 
                 const shown = otherMembers.slice(0, MAX_SCC_MEMBERS_SHOWN);
                 const remaining = otherMembers.length - shown.length;
-                const otherMembersText =
-                    shown.map(escapeHtml).join(', ') + (remaining > 0 ? \`, +\${remaining} more\` : '');
+
+                // Each shown member becomes a clickable name carrying the
+                // real, stable cytoscape node id (a full canonical path,
+                // never the display label) in a data attribute -
+                // navigateToSccMember() below looks the node up by that id
+                // via cy.getElementById(), never by matching label/path
+                // text. A member currently hidden by the Area/Connections
+                // filter (checked via the same '.area-hidden' class those
+                // filters already toggle - not re-deriving visibility) is
+                // deliberately left non-clickable with an explicit "(hidden
+                // by filter)" note instead: clicking it would either do
+                // nothing (confusing - looks broken) or select a node the
+                // user can't actually see on screen (worse) - this task
+                // doesn't change what the Area/Connections filters do, only
+                // how a currently-invisible member is presented here.
+                const otherMembersHtml = shown
+                    .map((candidate) => {
+                        const label = escapeHtml(candidate.data('label'));
+
+                        if (candidate.hasClass('area-hidden')) {
+                            return \`<span class="hud-scc-member hud-scc-member-hidden">\${label} (hidden by filter)</span>\`;
+                        }
+
+                        const id = escapeAttribute(candidate.id());
+
+                        return \`<span class="hud-scc-member" data-scc-nav-id="\${id}">\${label}</span>\`;
+                    })
+                    .join(', ') + (remaining > 0 ? \`, +\${remaining} more\` : '');
 
                 return \`
                     <br />
                     <span class="hud-cycle-context">
                         Part of a strongly connected component (SCC #\${data.sccId + 1}) of \${data.sccSize} modules.
                         This SCC contains one or more dependency cycles.
-                        \${otherMembersText ? 'Other modules in this SCC: ' + otherMembersText + '.' : ''}
+                        \${otherMembersHtml ? 'Other modules in this SCC: ' + otherMembersHtml + '.' : ''}
                     </span>
                 \`;
             }
@@ -2208,17 +2253,26 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 clearHighlights();
             });
 
-            cy.on('tap', 'node', (event) => {
-                const node = event.target;
+            // Experimental (branch: experiment/cycle-map-v2, SCC member
+            // navigation). The exact same selection mechanics a plain
+            // click on a graph node already ran (moved here unchanged, not
+            // reimplemented) - the one and only place selectedNodeId is
+            // ever set to a real node's id, so both a direct graph click
+            // and clicking a member name inside the HUD's own "Other
+            // modules in this SCC" list end up in identical selected
+            // state, per the existing observational (never a verdict)
+            // framing either way.
+            function selectNode(node) {
                 const data = node.data();
 
                 selectedNodeId = data.id;
 
                 // clearHighlights() also strips any previous node's
-                // '.selected' marker - always needs to run once per tap
-                // (highlightNeighborhood already does this itself when
-                // highlighting is on) so a stale border can't linger on the
-                // previously-selected node when the toggle is off.
+                // '.selected' marker - always needs to run once per
+                // selection (highlightNeighborhood already does this
+                // itself when highlighting is on) so a stale border can't
+                // linger on the previously-selected node when the toggle
+                // is off.
                 if (highlightEnabled) {
                     highlightNeighborhood(node);
                 } else {
@@ -2232,6 +2286,48 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 } else {
                     updateSelectedModulePanel(node);
                 }
+            }
+
+            // Experimental (branch: experiment/cycle-map-v2, SCC member
+            // navigation). Looks the target up by its real, stable
+            // cytoscape node id (never by label/path text) via
+            // cy.getElementById() - the same lookup mechanism
+            // buildCycleContextHtml above already uses to find SCC
+            // members, not a new id/name-matching scheme. Re-checks
+            // '.area-hidden' defensively (buildCycleContextHtml already
+            // only renders a visible member as clickable, so this should
+            // be unreachable in practice) rather than trusting the HTML
+            // that was rendered at some earlier point hasn't gone stale if
+            // a filter changed in between.
+            function navigateToSccMember(nodeId) {
+                const node = cy.getElementById(nodeId);
+
+                if (node.empty() || node.hasClass('area-hidden')) {
+                    return;
+                }
+
+                cy.center(node);
+                selectNode(node);
+            }
+
+            // Event delegation, not a listener per rendered name: the HUD
+            // panel's innerHTML (and every element inside it, including
+            // any .hud-scc-member spans) is fully replaced on every
+            // selection change, which would silently drop per-element
+            // listeners - one listener on the panel itself, attached once,
+            // keeps working across any number of re-renders.
+            hudSelectedBody?.addEventListener('click', (event) => {
+                const memberEl = event.target.closest('[data-scc-nav-id]');
+
+                if (!memberEl) {
+                    return;
+                }
+
+                navigateToSccMember(memberEl.dataset.sccNavId);
+            });
+
+            cy.on('tap', 'node', (event) => {
+                selectNode(event.target);
             });
 
             cy.on('tap', (event) => {

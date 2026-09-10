@@ -238,6 +238,32 @@ export const styles = `
         color: #6b7280;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2, SCC member
+       navigation). A dotted underline (not a solid one, not a button) -
+       reads as "clickable text" using the report's existing visual
+       language (matches the minimap viewport rectangle's blue,
+       #2563eb - already this report's one existing "interactive/
+       navigable" color) without turning the HUD into a row of buttons. */
+    .hud-scc-member {
+        cursor: pointer;
+        color: #2563eb;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        text-underline-offset: 2px;
+    }
+
+    .hud-scc-member:hover {
+        text-decoration-style: solid;
+    }
+
+    /* A member currently hidden by the Area/Connections filter - plain,
+       muted, explicitly non-interactive (no cursor/underline) rather than
+       a dead-looking link or a silently-failing click target. */
+    .hud-scc-member-hidden {
+        color: #9ca3af;
+        font-style: italic;
+    }
+
     #minimap-container {
         flex: 0 0 auto;
         align-self: center;

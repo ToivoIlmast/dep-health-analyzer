@@ -26,6 +26,34 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
         expect(html).not.toContain('</script><script>alert(1)</script>');
     });
 
+    it('the static template source itself never contains a literal closing script tag outside the real ones', () => {
+        // Found the hard way while building SCC member navigation: an
+        // explanatory //-comment inside the inline <script> block that
+        // happened to spell out the literal text "</script>" (to describe
+        // THIS EXACT vulnerability, for a crafted node id) silently
+        // truncated the whole inline script at that exact point when the
+        // browser's HTML parser tokenized it - HTML looks for that literal
+        // byte sequence to close a <script> element regardless of it being
+        // inside a JS comment/string. Everything after it in the script
+        // silently became inert markup instead of running: no exception
+        // anywhere (a syntactically valid, shorter script ran to
+        // completion), so it surfaced only as "cy" resolving to the
+        // #cy <div> itself (a plain DOM element has no .nodes()) rather
+        // than the real cytoscape instance, with zero console/page error
+        // to point at the cause. This is independent of node/edge DATA
+        // (the crafted-id test above), which safeJsonForScript already
+        // escapes - this guards the template's own STATIC source text,
+        // which nothing escapes, since it's real code, not embedded data.
+        // Exactly 4 are expected regardless of node/edge content: the 3
+        // real <script src="..."> asset tags plus the one real closing
+        // tag for the inline script itself - any more means something
+        // (almost certainly a comment) is spelling out the literal
+        // sequence again.
+        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+        expect(html.match(/<\/script>/g)).toHaveLength(4);
+    });
+
     it('still embeds the real node data, just safely encoded', () => {
         const nodes: CytoscapeNode[] = [
             {
@@ -135,5 +163,152 @@ describe('buildHtmlTemplate global SCC summary', () => {
         // claiming "entire analyzed graph" for a now-filtered number.
         expect(html).toContain('entire analyzed graph, not the current filtered view');
         expect(html).toContain('cy.nodes()');
+    });
+});
+
+describe('buildHtmlTemplate SCC member navigation', () => {
+    function sccNode(id: string, label: string, sccId: number, sccSize: number): CytoscapeNode {
+        return {
+            data: {
+                id,
+                label,
+                dir: '',
+                displayDir: '',
+                area: 'src',
+                areaColor: '#9ca3af',
+                sccId,
+                sccSize,
+            },
+        };
+    }
+
+    it('reuses the exact same selection mechanics for a plain graph click and a member-name click', () => {
+        // selectNode() must be the ONE place selectedNodeId is ever
+        // assigned - both cy.on('tap', 'node', ...) (a direct click) and
+        // navigateToSccMember() (a click on an "Other modules in this
+        // SCC" name) call it, rather than each having its own copy of the
+        // select/highlight/HUD-update sequence.
+        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+        expect(html).toContain('function selectNode(node)');
+        expect(html).toMatch(/cy\.on\('tap', 'node', \(event\) => \{\s*selectNode\(event\.target\);\s*\}\)/);
+        expect(html).toContain('selectedNodeId = data.id;');
+        // Only ONE assignment site for selectedNodeId to a real node's id -
+        // guards against a future change accidentally duplicating the
+        // selection logic instead of reusing selectNode().
+        expect(html.match(/selectedNodeId = data\.id;/g)).toHaveLength(1);
+    });
+
+    it('navigateToSccMember looks nodes up by their real, stable cytoscape id - never by label/path text', () => {
+        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+        expect(html).toContain('function navigateToSccMember(nodeId)');
+        expect(html).toContain('cy.getElementById(nodeId)');
+        expect(html).toContain('cy.center(node)');
+        expect(html).toContain('selectNode(node)');
+    });
+
+    it('delegates the click handler on the HUD panel itself, since its innerHTML is fully replaced on every selection', () => {
+        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+        expect(html).toContain("hudSelectedBody?.addEventListener('click'");
+        expect(html).toContain("event.target.closest('[data-scc-nav-id]')");
+    });
+
+    // buildCycleContextHtml() (like the rest of the per-node HUD logic) is
+    // client-side JS that only runs in the browser once a real cytoscape
+    // instance exists - buildHtmlTemplate() itself just embeds its source
+    // once, unconditionally, plus a JSON payload of the real node data.
+    // The three tests below confirm the DATA a 7-member and a 2-member SCC
+    // actually carry into that payload (id/sccId/sccSize, for both sizes,
+    // and their absence for a plain node) - the closest thing to a
+    // "does the right member link get rendered" proof Jest can make
+    // without a live DOM. The actual rendered <span data-scc-nav-id="...">
+    // markup, and a real click navigating to the right node, are verified
+    // separately via headless Chrome against the real large-cycle-app
+    // fixture (both its 7-node ring and its 2-node pair).
+
+    it('embeds full sccId/sccSize/id data for every member of a 7-node SCC', () => {
+        const ring = Array.from({ length: 7 }, (_, i) => sccNode(`/repo/src/ring/ring${i}.ts`, `ring${i}.ts`, 0, 7));
+        const html = buildHtmlTemplate({ nodes: ring, edges: [] });
+
+        for (let i = 0; i < 7; i++) {
+            expect(html).toContain(`"id":"/repo/src/ring/ring${i}.ts"`);
+        }
+        expect(html.match(/"sccId":0/g)).toHaveLength(7);
+        expect(html.match(/"sccSize":7/g)).toHaveLength(7);
+    });
+
+    it('embeds full sccId/sccSize/id data for a 2-node SCC', () => {
+        const pair = [
+            sccNode('/repo/src/pair/left.ts', 'left.ts', 1, 2),
+            sccNode('/repo/src/pair/right.ts', 'right.ts', 1, 2),
+        ];
+        const html = buildHtmlTemplate({ nodes: pair, edges: [] });
+
+        expect(html).toContain('"id":"/repo/src/pair/left.ts"');
+        expect(html).toContain('"id":"/repo/src/pair/right.ts"');
+        expect(html.match(/"sccId":1/g)).toHaveLength(2);
+        expect(html.match(/"sccSize":2/g)).toHaveLength(2);
+    });
+
+    it('a node outside any SCC carries no sccId/sccSize data for buildCycleContextHtml to act on', () => {
+        const plain: CytoscapeNode = {
+            data: {
+                id: '/repo/src/entry.ts',
+                label: 'entry.ts',
+                dir: '',
+                displayDir: '',
+                area: 'src',
+                areaColor: '#9ca3af',
+            },
+        };
+        const html = buildHtmlTemplate({ nodes: [plain], edges: [] });
+
+        // buildCycleContextHtml()'s existing, untouched guard
+        // (data.sccSize < 2 || data.sccId === undefined -> return '')
+        // relies on these keys being genuinely absent, not just falsy -
+        // confirmed here at the data layer; the guard clause itself (and
+        // that it still produces no clickable-member markup at runtime)
+        // is checked further below / via headless Chrome.
+        expect(html).not.toContain('"sccId"');
+        expect(html).not.toContain('"sccSize"');
+    });
+
+    it('buildCycleContextHtml only ever renders member-navigation markup for a real (2+) SCC', () => {
+        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+        expect(html).toContain('data.sccSize < 2 || data.sccId === undefined');
+    });
+
+    it('a member hidden by the Area/Connections filter renders as a plain, explicitly non-navigable name', () => {
+        // The actual '.area-hidden' check runs against live cytoscape
+        // state in the browser (verified separately via headless Chrome
+        // against the real large-cycle-app fixture, since Jest here only
+        // renders the static page shell, not a live cy instance) - this
+        // confirms the source contains that exact guard and wording, so a
+        // hidden member never gets a data-scc-nav-id in the first place.
+        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+        expect(html).toContain("candidate.hasClass('area-hidden')");
+        expect(html).toContain('hud-scc-member-hidden');
+        expect(html).toContain('(hidden by filter)');
+    });
+
+    it('escapes a node id safely as an HTML attribute value, not just as text', () => {
+        // escapeHtml() alone doesn't escape '"' (browsers don't escape it
+        // when serializing textContent back to innerHTML) - a crafted id
+        // containing one could otherwise break out of
+        // data-scc-nav-id="...". Reproduces this codebase's own existing
+        // "crafted file path" security-testing convention (see the
+        // </script> escaping tests above) for this new attribute
+        // specifically.
+        const malicious = sccNode('/repo/"><script>alert(1)</script>.ts', 'evil.ts', 2, 2);
+        const partner = sccNode('/repo/partner.ts', 'partner.ts', 2, 2);
+        const html = buildHtmlTemplate({ nodes: [malicious, partner], edges: [] });
+
+        expect(html).toContain('function escapeAttribute(value)');
+        expect(html).not.toContain('data-scc-nav-id="/repo/"><script>alert(1)</script>.ts"');
+        expect(html).not.toContain('<script>alert(1)</script>.ts"');
     });
 });
