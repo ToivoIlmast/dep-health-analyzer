@@ -98,6 +98,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 Fit Graph
             </button>
 
+            <!-- Experimental (branch: experiment/cycle-map-v2, SCC focus).
+                 Hidden until focusScc() below activates it - the explicit,
+                 always-in-the-same-place way back to the full graph,
+                 independent of whatever the Bottom HUD currently shows
+                 (its content fully regenerates on every selection change,
+                 so an exit control living only inside it would be an
+                 unreliable moving target). -->
+            <button id="show-full-graph-btn" hidden>
+                Show full graph
+            </button>
+
             <div id="zoom-controls">
                 <button id="zoom-out-btn" aria-label="Zoom out">&minus;</button>
                 <span id="zoom-level">100%</span>
@@ -1423,7 +1434,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 return { left, right, top, bottom };
             }
 
-            function fitCyAvoidingChrome(cy, basePadding) {
+            // targetCollection is optional - Fit Graph, the initial-view
+            // logic, and anything else that wants "whatever the
+            // Area/Connections filter currently shows" can omit it and get
+            // visibleElements(cy) as before. SCC focus below is the one
+            // caller that passes something narrower (a specific SCC's own
+            // members) - same chrome-avoiding fit math either way, just
+            // aimed at a smaller collection, not a second implementation.
+            function fitCyAvoidingChrome(cy, basePadding, targetCollection) {
                 const container = cy.container();
                 const insets = measureChromeInsets(container);
 
@@ -1435,11 +1453,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const availableWidth = container.clientWidth - leftInset - rightInset;
                 const availableHeight = container.clientHeight - topInset - bottomInset;
 
-                // visibleElements(cy) (not cy.elements() / all) - Fit Graph
-                // (and the initial-view logic below, which also calls this)
-                // must fit whatever the area filter currently shows, not
-                // the full graph underneath it.
-                const currentView = visibleElements(cy);
+                const currentView = targetCollection || visibleElements(cy);
                 const bb = currentView.boundingBox();
 
                 if (bb.w === 0 || bb.h === 0 || availableWidth <= 0 || availableHeight <= 0) {
@@ -1759,6 +1773,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // area dropdown, since either one changing means "recompute
             // the currently-selected layout for whatever is visible now".
             function runLayoutForCurrentView(layoutName) {
+                // A layout re-run (from the Layout dropdown directly, or
+                // indirectly via an Area/Connections filter change - both
+                // call this) moves nodes and/or changes which are visible,
+                // so any active SCC focus's viewport framing and its
+                // fade/highlight of "this SCC vs. everything else" would
+                // otherwise be left referring to a graph that no longer
+                // matches what's on screen - exit it rather than risk that
+                // going stale/misleading.
+                exitFocus();
+
                 const isCleanLayout = CLEAN_LAYOUTS.includes(layoutName);
                 const runningLayout = visibleElements(cy).layout(layouts[layoutName]);
 
@@ -1991,6 +2015,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 fitButton.addEventListener(
                     'click',
                     function () {
+                        // "Fit Graph" means "show me everything currently
+                        // visible" - which conflicts with an active SCC
+                        // focus's fade (only the focused SCC at full
+                        // opacity) still being applied underneath a
+                        // now-full-graph viewport. Exit first so the two
+                        // controls can't leave the report in a
+                        // half-exited, visually confusing state.
+                        exitFocus();
                         fitCyAvoidingChrome(cy, 40);
                     },
                 );
@@ -2175,12 +2207,37 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     })
                     .join(', ') + (remaining > 0 ? \`, +\${remaining} more\` : '');
 
+                // Experimental (branch: experiment/cycle-map-v2, SCC
+                // focus). visibleMemberCount counts the SELECTED node
+                // itself (always on-screen, or it couldn't have been
+                // selected) plus every OTHER member not currently
+                // '.area-hidden' - over the FULL otherMembers collection,
+                // not just the (possibly truncated to
+                // MAX_SCC_MEMBERS_SHOWN) "shown" list above, so the count
+                // stays accurate even for an SCC with more members than
+                // are individually listed. Never claims the whole SCC is
+                // being focused when part of it is filtered out - the
+                // button's own label says "of N" whenever the two differ,
+                // and the button is omitted entirely (not just disabled)
+                // once fewer than 2 members are actually visible, since
+                // there'd be nothing left to see the SCC's shape through.
+                const visibleMemberCount = 1 + otherMembers.filter((candidate) => !candidate.hasClass('area-hidden')).length;
+                const focusButtonHtml =
+                    visibleMemberCount >= 2
+                        ? \`<br /><button type="button" class="hud-focus-scc-btn" data-focus-scc-id="\${data.sccId}">\${
+                              visibleMemberCount < data.sccSize
+                                  ? \`Focus SCC (\${visibleMemberCount} of \${data.sccSize} modules visible)\`
+                                  : \`Focus SCC (\${data.sccSize} modules)\`
+                          }</button>\`
+                        : '';
+
                 return \`
                     <br />
                     <span class="hud-cycle-context">
                         Part of a strongly connected component (SCC #\${data.sccId + 1}) of \${data.sccSize} modules.
                         This SCC contains one or more dependency cycles.
                         \${otherMembersHtml ? 'Other modules in this SCC: ' + otherMembersHtml + '.' : ''}
+                        \${focusButtonHtml}
                     </span>
                 \`;
             }
@@ -2310,13 +2367,179 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 selectNode(node);
             }
 
+            // Experimental (branch: experiment/cycle-map-v2, SCC focus).
+            // '' area-hidden is never touched here (see focusScc/exitFocus
+            // below) - null means "not currently focused", matching
+            // currentAreaFilter's own '' = "All" convention elsewhere in
+            // this file: a plain absence value, not a sentinel needing its
+            // own truthiness gymnastics.
+            const showFullGraphButton = document.getElementById('show-full-graph-btn');
+            let focusedSccId = null;
+
+            // A viewport/selection-level device, not a second graph: never
+            // adds, removes, or hides a single node/edge (that stays
+            // exclusively the Area/Connections filters' job - see
+            // '.area-hidden' throughout this file, untouched here). Focus
+            // only ever does two things, both already used elsewhere in
+            // this report for the exact same purpose: (1) reuses the
+            // existing .faded/.highlighted/.highlighted-edge classes
+            // (highlightNeighborhood above already fades "everything but
+            // the relevant part" for a single node - this is the same
+            // idea, scoped to a whole SCC instead of one node's 1-hop
+            // neighborhood) and (2) reuses fitCyAvoidingChrome's own
+            // chrome-avoiding zoom/pan math (parameterized to the SCC's
+            // own member collection instead of the default
+            // visibleElements(cy)) - no new layout, no repositioning of a
+            // single node. Because nothing is hidden and visibleElements(cy)
+            // is completely unaffected, the minimap keeps scaling itself to
+            // the FULL currently-filtered graph exactly as it always did -
+            // its viewport rectangle (already redrawn on every pan/zoom via
+            // the existing 'pan zoom' listener below) is what ends up
+            // showing "here is where the focused SCC sits in the full
+            // picture", for free, with no minimap code changes at all.
+            //
+            // Deliberately excludes any member currently hidden by the
+            // Area/Connections filter from both the fit's bounding box and
+            // the highlight - fitting to (or claiming to highlight) a node
+            // that isn't actually on screen would be exactly the
+            // "misleading state" this feature needs to avoid. If fewer
+            // than 2 members are actually visible there is nothing left to
+            // see the SCC's shape through, so this is a no-op (matches
+            // buildCycleContextHtml's own decision not to render a Focus
+            // button in that case, but re-checked here independently
+            // rather than trusting the button's own visibility).
+            // A hierarchical (rank-based) layout assigns every member of a
+            // cycle to a DIFFERENT rank (dagre has no other way to draw a
+            // cycle acyclically) - measured directly on large-cycle-app's
+            // own 7-node ring: its bounding box is ~86% as TALL as the
+            // entire 16-node graph's, regardless of which of this report's
+            // layouts is active (checked all 6 - even force-directed
+            // 'cose' only gets it down to ~71%, since 7 of this fixture's
+            // 16 nodes really do belong to the one SCC). Fitting the
+            // viewport to a bounding box that's nearly as large as the
+            // whole graph, by definition, can't make anything meaningfully
+            // BIGGER - the fit math (fitCyAvoidingChrome) is correct, the
+            // geometry it's fitting to just doesn't leave much to gain.
+            //
+            // A fixed zoom-level floor isn't the right fix for this,
+            // though: node boxes are width:'label' (auto-sized to text), so
+            // the same zoom level renders very differently depending on
+            // how long a member's own label happens to be - measured
+            // directly, this fixture's own ring0.ts is only 39 model units
+            // wide (a short "src/ring0.ts"-style label), so even a
+            // generously-chosen fixed zoom still lands on a tiny absolute
+            // pixel size for THIS SPECIFIC node. What actually needs a
+            // floor is the rendered pixel size itself, not the zoom number
+            // - so this measures the SMALLEST member's own box and picks
+            // whatever zoom makes that one at least MIN_FOCUS_NODE_WIDTH
+            // px wide, which stays correct regardless of label length and
+            // is what directly answers "is this actually legible now".
+            // Trades "every member guaranteed in the initial viewport" for
+            // "actually legible", since the existing wheel-pan/
+            // minimap-drag navigation (unchanged, untouched by Focus)
+            // already makes reaching a member outside the initial frame a
+            // normal, one-scroll action, not a dead end. Only ever raises
+            // the zoom the plain fit already chose - a small,
+            // already-compact SCC (this fixture's 2-node pair reaches 51%
+            // through the fit alone, comfortably above this bar already)
+            // is never zoomed OUT by this.
+            const MIN_FOCUS_NODE_WIDTH = 80;
+
+            function focusScc(sccId) {
+                const members = cy.nodes().filter(
+                    (candidate) => candidate.data('sccId') === sccId && !candidate.hasClass('area-hidden'),
+                );
+
+                if (members.length < 2) {
+                    return;
+                }
+
+                focusedSccId = sccId;
+
+                clearHighlights();
+                cy.elements().addClass('faded');
+
+                members.removeClass('faded');
+                members.addClass('highlighted');
+
+                const internalEdges = members.edgesWith(members);
+                internalEdges.removeClass('faded');
+                internalEdges.addClass('highlighted-edge');
+
+                fitCyAvoidingChrome(cy, 60, members);
+
+                const smallestMemberWidth = members.reduce(
+                    (min, node) => Math.min(min, node.width()),
+                    Infinity,
+                );
+                const readableZoom = MIN_FOCUS_NODE_WIDTH / smallestMemberWidth;
+                if (cy.zoom() < readableZoom) {
+                    cy.zoom(readableZoom);
+                    cy.center(members);
+                }
+
+                if (showFullGraphButton) {
+                    showFullGraphButton.hidden = false;
+                }
+            }
+
+            // Restores the exact pre-focus visual state (the current
+            // selection's own normal highlight, or nothing) rather than
+            // just clearing everything - exiting focus should feel like
+            // "stop looking at the whole SCC specially", not "also forget
+            // what was selected". Deliberately does NOT touch pan/zoom on
+            // its own: callers that also want to re-fit (Fit Graph, Show
+            // full graph below) do that explicitly afterward.
+            function exitFocus() {
+                if (focusedSccId === null) {
+                    return;
+                }
+
+                focusedSccId = null;
+
+                if (showFullGraphButton) {
+                    showFullGraphButton.hidden = true;
+                }
+
+                const selectedNode = selectedNodeId ? cy.getElementById(selectedNodeId) : null;
+
+                if (selectedNode && !selectedNode.empty()) {
+                    // Mirrors selectNode()'s own highlight+'.selected'
+                    // sequence (not just the highlight half of it) - focus
+                    // only ever runs after a node is already selected, so
+                    // exiting it must restore that node's selected marker
+                    // too, not just its neighborhood fade.
+                    if (highlightEnabled) {
+                        highlightNeighborhood(selectedNode);
+                    } else {
+                        clearHighlights();
+                    }
+                    selectedNode.addClass('selected');
+                } else {
+                    clearHighlights();
+                }
+            }
+
+            showFullGraphButton?.addEventListener('click', () => {
+                exitFocus();
+                fitCyAvoidingChrome(cy, 40);
+            });
+
             // Event delegation, not a listener per rendered name: the HUD
             // panel's innerHTML (and every element inside it, including
-            // any .hud-scc-member spans) is fully replaced on every
-            // selection change, which would silently drop per-element
-            // listeners - one listener on the panel itself, attached once,
-            // keeps working across any number of re-renders.
+            // any .hud-scc-member spans and the Focus SCC button) is fully
+            // replaced on every selection change, which would silently
+            // drop per-element listeners - one listener on the panel
+            // itself, attached once, keeps working across any number of
+            // re-renders.
             hudSelectedBody?.addEventListener('click', (event) => {
+                const focusEl = event.target.closest('[data-focus-scc-id]');
+
+                if (focusEl) {
+                    focusScc(Number(focusEl.dataset.focusSccId));
+                    return;
+                }
+
                 const memberEl = event.target.closest('[data-scc-nav-id]');
 
                 if (!memberEl) {

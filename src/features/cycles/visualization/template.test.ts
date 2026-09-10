@@ -312,3 +312,157 @@ describe('buildHtmlTemplate SCC member navigation', () => {
         expect(html).not.toContain('<script>alert(1)</script>.ts"');
     });
 });
+
+describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => {
+    // Focus reuses the same sccId/sccSize/node-id data buildCycleContextHtml
+    // already reads (see the describe block above) - it never re-derives SCC
+    // membership, never changes graph data, never deletes a node. Like that
+    // block, buildCycleContextHtml/focusScc/exitFocus are client-side
+    // functions whose SOURCE is embedded once, unconditionally - Jest can't
+    // spin up a live cytoscape instance to execute them, so these assert
+    // source structure (the right guard/formula/wiring exists) rather than a
+    // rendered result for a specific fixture. The actual live behavior (a
+    // real click producing a real, larger viewport) is verified separately
+    // via headless Chrome against the real large-cycle-app fixture (both its
+    // 7-node ring and its 2-node pair).
+    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+    it('renders a Focus SCC action, gated behind the same real-SCC (2+ members) guard as member navigation', () => {
+        // focusButtonHtml is computed inside buildCycleContextHtml, after
+        // its early `data.sccSize < 2 || data.sccId === undefined -> return
+        // ''` guard - so a node outside any SCC gets '' from the whole
+        // function, Focus button included, exactly like the member list
+        // above it. Checking the guard precedes the button's own
+        // declaration in source order confirms this isn't a second,
+        // separately-gated code path.
+        expect(html).toContain('data-focus-scc-id="${data.sccId}"');
+        expect(html).toContain('class="hud-focus-scc-btn"');
+        const guardIndex = html.indexOf('data.sccSize < 2 || data.sccId === undefined');
+        const buttonIndex = html.indexOf('data-focus-scc-id="${data.sccId}"');
+        expect(guardIndex).toBeGreaterThan(-1);
+        expect(buttonIndex).toBeGreaterThan(guardIndex);
+    });
+
+    it('does not render a Focus action for a plain node outside any SCC (same early-return as the member list)', () => {
+        // buildCycleContextHtml returns '' entirely before either
+        // otherMembersHtml or focusButtonHtml is computed - a plain node
+        // (no sccId) never reaches the code that could produce a Focus
+        // button, the same guard already proven (line ~281 above) to
+        // suppress the member-navigation markup.
+        expect(html).toMatch(/if \(!data\.sccSize \|\| data\.sccSize < 2 \|\| data\.sccId === undefined\) \{\s*return '';\s*\}/);
+    });
+
+    it('targets the SELECTED node\'s own SCC - the button\'s id comes from that node\'s own data.sccId, not another member\'s', () => {
+        // buildCycleContextHtml receives the SELECTED node (the HUD is
+        // always built for whichever node is currently selected) and reads
+        // `data` from IT via `node.data()` - the button embeds `data.sccId`
+        // (the selected node's own field), never e.g. `otherMembers[0]` or
+        // a hardcoded/looked-up id. The click handler then passes that same
+        // number straight through to focusScc, with no remapping.
+        expect(html).toContain('const data = node.data();');
+        expect(html).toContain('data-focus-scc-id="${data.sccId}"');
+        expect(html).toContain('focusScc(Number(focusEl.dataset.focusSccId))');
+    });
+
+    it('accounts for every AVAILABLE (non-hidden) member when determining focus scope, for an SCC of any size', () => {
+        // visibleMemberCount = the selected node itself + every OTHER
+        // member not '.area-hidden' - computed over the FULL otherMembers
+        // collection (cy.nodes().filter(sccId match)), not the
+        // MAX_SCC_MEMBERS_SHOWN-truncated "shown" list used only for the
+        // rendered name list. This one formula is size-agnostic: it must
+        // correctly account for all 7 members of large-cycle-app's ring SCC
+        // and all 2 members of its pair SCC alike, without a
+        // size-specific branch - confirmed here by asserting it reads from
+        // `otherMembers` (the untruncated collection), not `shown`.
+        expect(html).toContain(
+            'const visibleMemberCount = 1 + otherMembers.filter((candidate) => !candidate.hasClass(\'area-hidden\')).length;',
+        );
+        expect(html).not.toContain('shown.filter((candidate) => !candidate.hasClass(\'area-hidden\'))');
+    });
+
+    it('focusScc itself independently re-derives its member set the same way (own sccId match, non-hidden only) rather than trusting the button', () => {
+        // Belt-and-suspenders, matching this file's existing convention
+        // (navigateToSccMember re-checks '.area-hidden' rather than
+        // trusting the HUD's own rendering) - focusScc must filter
+        // cy.nodes() by sccId and exclude '.area-hidden' independently,
+        // so a stale button (filters changed between render and click)
+        // can't focus on a member that isn't actually visible. This is the
+        // one formula that must work correctly whether the SCC has 2
+        // members or 7 - it isn't given a count, it derives its own set.
+        expect(html).toContain('function focusScc(sccId)');
+        expect(html).toMatch(
+            /candidate\.data\('sccId'\) === sccId && !candidate\.hasClass\('area-hidden'\)/,
+        );
+        expect(html).toContain('if (members.length < 2) {');
+    });
+
+    it('exiting focus ("Show full graph") restores the full graph - never leaves elements faded/hidden by data, only by view', () => {
+        // exitFocus() must clear focusedSccId and re-hide the exit button;
+        // it deliberately does NOT touch cy.remove()/'.area-hidden' (those
+        // belong to the Area/Connections filters, untouched by Focus) - so
+        // "the full graph" was never actually altered, only its viewport
+        // and fade/highlight classes were. Fit Graph independently also
+        // calls exitFocus() first, so the two controls can't leave a
+        // half-exited state.
+        expect(html).toContain('function exitFocus()');
+        expect(html).toContain('focusedSccId = null;');
+        expect(html).toContain("showFullGraphButton.hidden = true;");
+        expect(html).toContain("showFullGraphButton?.addEventListener('click', () => {\n                exitFocus();");
+        const fitBtnStart = html.indexOf("fitButton.addEventListener(");
+        const fitBtnEnd = html.indexOf("fitCyAvoidingChrome(cy, 40);", fitBtnStart);
+        expect(fitBtnStart).toBeGreaterThan(-1);
+        expect(html.slice(fitBtnStart, fitBtnEnd)).toContain('exitFocus();');
+        expect(html).toContain('exitFocus();\n\n                const isCleanLayout');
+    });
+
+    it('never touches Area/Connections filter state - no new class, no visibility change, no new filter option', () => {
+        // Focus's own fade/highlight is scoped to the pre-existing
+        // '.faded'/'.highlighted'/'.highlighted-edge' classes already used
+        // by highlightNeighborhood (same visual language, no new CSS
+        // concept). It reads '.area-hidden' (to exclude currently-hidden
+        // members from its own member set - see the two tests above) but
+        // must never WRITE it - never add/remove that exact class, nor
+        // call cy.add()/cy.remove() itself, either of which would change
+        // what the Area/Connections filters themselves consider visible.
+        const focusFnStart = html.indexOf('function focusScc(sccId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusFnSource = html.slice(focusFnStart, focusFnEnd);
+
+        expect(focusFnSource).not.toContain("addClass('area-hidden')");
+        expect(focusFnSource).not.toContain("removeClass('area-hidden')");
+        expect(focusFnSource).not.toContain('cy.add(');
+        expect(focusFnSource).not.toContain('cy.remove(');
+        expect(focusFnSource).toContain("cy.elements().addClass('faded');");
+        expect(focusFnSource).toContain("members.addClass('highlighted');");
+    });
+
+    it('a member hidden by the current filter can never make Focus claim the whole SCC is shown', () => {
+        // focusScc's own member query excludes '.area-hidden' candidates
+        // (same assertion as the independent-re-derivation test above,
+        // re-stated against the specific "false full-SCC claim" risk) - and
+        // the button's own label already says "N of M modules visible"
+        // whenever a filter has hidden part of the SCC (visibleMemberCount
+        // < data.sccSize), rather than presenting a plain "(M modules)"
+        // count that would read as "the whole thing is on screen".
+        expect(html).toContain('visibleMemberCount < data.sccSize');
+        expect(html).toContain('Focus SCC (${visibleMemberCount} of ${data.sccSize} modules visible)');
+        expect(html).toContain('Focus SCC (${data.sccSize} modules)');
+    });
+
+    it('the global SCC summary stays a whole-graph count, unaffected by Focus - never becomes a focused-subset summary', () => {
+        // computeSccSummary(cy) (see the "global SCC summary" describe
+        // block above) reads cy.nodes() - the WHOLE graph's data - and is
+        // computed once, independent of any focusedSccId state. Focus adds
+        // no code path that re-runs or narrows it: this re-confirms (in
+        // this new describe block, since it's the exact property Focus
+        // must not break) that computeSccSummary's own source has no
+        // reference to focusedSccId/focusScc.
+        const summaryFnStart = html.indexOf('function computeSccSummary(cy)');
+        const summaryFnEnd = html.indexOf('function ', summaryFnStart + 1);
+        const summaryFnSource = html.slice(summaryFnStart, summaryFnEnd);
+
+        expect(summaryFnSource).not.toContain('focusedSccId');
+        expect(summaryFnSource).not.toContain('focusScc');
+        expect(html).toContain('entire analyzed graph, not the current filtered view');
+    });
+});

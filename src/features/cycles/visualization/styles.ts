@@ -264,6 +264,31 @@ export const styles = `
         font-style: italic;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2, SCC focus). Matches
+       #toolbar button's own look (same border/radius/background) so it
+       reads as "a real action", not just more link-like text next to the
+       member names above it - but smaller, since it lives inline inside a
+       compact HUD panel rather than the toolbar itself. */
+    .hud-focus-scc-btn {
+        display: inline-block;
+        margin-top: 4px;
+
+        cursor: pointer;
+
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+
+        background: #f9fafb;
+        color: #374151;
+
+        padding: 3px 8px;
+        font-size: 11px;
+    }
+
+    .hud-focus-scc-btn:hover {
+        background: #f3f4f6;
+    }
+
     #minimap-container {
         flex: 0 0 auto;
         align-self: center;
