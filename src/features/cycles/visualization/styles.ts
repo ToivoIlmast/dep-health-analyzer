@@ -103,6 +103,16 @@ export const styles = `
         z-index: 999;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2, SCC summary). Same
+       "quiet secondary block" treatment as .hud-cycle-context - a dashed
+       top-adjacent border, not a loud panel of its own, since a detected
+       SCC is an observation to investigate, not a warning. */
+    #scc-summary {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px dashed #d1d5db;
+    }
+
     #hint .legend-swatch {
         display: inline-block;
         width: 10px;

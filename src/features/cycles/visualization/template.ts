@@ -28,6 +28,23 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     <body>
         <div id="cy"></div>
         <div id="hint">
+            <!-- Experimental (branch: experiment/cycle-map-v2, SCC
+                 summary). Global entry point into cycle investigation -
+                 answers "are there any SCCs, how many, how big" before
+                 the user has to find and click one themselves. Filled in
+                 once by renderSccSummary(cy) below, from the same real
+                 sccId/sccSize node data every other SCC-aware piece of
+                 this report already reads - not a second SCC detection.
+                 The caption is deliberate, not decorative: this count
+                 always describes the full analyzed graph, never just
+                 whatever the Area/Connections filters currently show -
+                 see renderSccSummary() for why. -->
+            <div id="scc-summary">
+                <strong>Detected SCCs</strong><br />
+                <span style="font-size: 11px; color: #6b7280;">(entire analyzed graph, not the current filtered view)</span><br />
+                <span id="scc-summary-text">&nbsp;</span>
+            </div>
+
             <strong>Module area</strong><br />
             <span style="font-size: 11px; color: #6b7280;">(from project structure)</span>
             <div id="area-legend" style="display: flex; flex-direction: column; gap: 3px; margin-top: 6px;"></div>
@@ -889,8 +906,84 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 });
             }
 
+            // Experimental (branch: experiment/cycle-map-v2, SCC summary).
+            // Global entry point into cycle investigation: "are there any
+            // SCCs here, how many, how big is the largest" - answered once,
+            // up front, instead of requiring the user to find and click a
+            // cyclic-looking node themselves first. Purely an aggregation
+            // over data.sccId/data.sccSize, the exact same fields
+            // buildCycleContextHtml already reads for the per-node HUD
+            // block - this NEVER re-runs SCC/cycle detection, it just
+            // counts distinct SCC ids already computed server-side in
+            // buildCytoscapeElements.ts.
+            //
+            // Deliberately reads cy.nodes() (every real node cy ever
+            // holds) rather than visibleNodes(cy) - this summary describes
+            // the ENTIRE analyzed graph, not whatever subset the
+            // Area/Connections filters currently show, and says so in its
+            // own on-screen caption (see the #scc-summary markup above) so
+            // that fact is visible, not just documented in a comment. This
+            // is also why it's computed and rendered exactly ONCE, right
+            // here at load - unlike the area legend/minimap/etc., nothing
+            // about applyAreaFilter()/refreshAreaView() below should ever
+            // need to recompute it: node-level sccId/sccSize never change
+            // after load, and external-area proxy nodes never have sccId
+            // set (confirmed in addExternalConnectionProxies below), so
+            // they can never accidentally get counted here either.
+            //
+            // WARNING FOR FUTURE CHANGES: if a later task ever makes this
+            // summary filter-aware (e.g. "SCCs in the current view"), that
+            // MUST come with a matching change to the caption text above -
+            // never let the number and its stated scope silently drift
+            // apart.
+            function computeSccSummary(cy) {
+                const sccSizeById = new Map();
+
+                cy.nodes().forEach((node) => {
+                    const sccId = node.data('sccId');
+                    const sccSize = node.data('sccSize');
+
+                    // buildCytoscapeElements.ts's realSccs filter
+                    // (scc.length > 1) already guarantees sccId is never
+                    // set at all for a trivial 1-module component - this
+                    // sccSize >= 2 check is defense in depth against that
+                    // invariant ever drifting, not a workaround for
+                    // something the current data can actually produce.
+                    if (sccId !== undefined && sccSize >= 2) {
+                        sccSizeById.set(sccId, sccSize);
+                    }
+                });
+
+                return {
+                    count: sccSizeById.size,
+                    largestSize: sccSizeById.size > 0 ? Math.max(...sccSizeById.values()) : 0,
+                };
+            }
+
+            function renderSccSummary(cy) {
+                const summaryText = document.getElementById('scc-summary-text');
+
+                if (!summaryText) {
+                    return;
+                }
+
+                const { count, largestSize } = computeSccSummary(cy);
+
+                // "No dependency SCCs detected" rather than "0 cycles" -
+                // this line is about SCCs, and SCC count is not cycle
+                // count (a single SCC can contain more than one cycle) -
+                // saying "cycles" here, in either direction, would be
+                // exactly the terminology mistake fixed elsewhere in this
+                // report.
+                summaryText.textContent =
+                    count === 0
+                        ? 'No dependency SCCs detected.'
+                        : \`Detected SCCs: \${count} · Largest SCC: \${largestSize} modules.\`;
+            }
+
             renderAreaLegend(cy);
             populateAreaSelect(cy);
+            renderSccSummary(cy);
 
             // Shared with redrawMinimapStatic below, so the minimap's edge
             // drawing matches the same geometry collision-avoidance checks

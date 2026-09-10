@@ -89,3 +89,51 @@ describe('buildHtmlTemplate SCC-vs-cycle terminology', () => {
         expect(html).toContain('A detected cycle or SCC is not automatically an architectural violation.');
     });
 });
+
+describe('buildHtmlTemplate global SCC summary', () => {
+    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+    it('computes the summary from cy\'s own existing node data, not a second SCC detection', () => {
+        // No new analysis: this must read the exact same per-node fields
+        // (data(sccId)/data(sccSize)) buildCycleContextHtml already reads,
+        // via cy.nodes() - never re-deriving membership from edges/graph
+        // structure on the client.
+        expect(html).toContain('function computeSccSummary(cy)');
+        expect(html).toContain("node.data('sccId')");
+        expect(html).toContain("node.data('sccSize')");
+    });
+
+    it('shows a neutral empty state instead of a fabricated "0 cycles"', () => {
+        expect(html).toContain('No dependency SCCs detected.');
+    });
+
+    it('never phrases the SCC summary as a cycle count', () => {
+        // The whole point of the earlier terminology fix: SCC count is not
+        // cycle count (one SCC can contain more than one cycle). Neither
+        // wording direction ("N cycles detected" / "N SCCs" mislabeled as
+        // cycles) should ever appear for this summary.
+        expect(html.toLowerCase()).not.toContain('cycles detected');
+        expect(html).toContain('Detected SCCs:');
+    });
+
+    it('excludes a trivial 1-module component from the count, defense in depth', () => {
+        // buildCytoscapeElements.ts's realSccs filter (scc.length > 1)
+        // already guarantees sccId is never set for a 1-module component,
+        // but computeSccSummary must not blindly trust that forever - this
+        // asserts the client-side guard exists independently.
+        expect(html).toContain('sccSize >= 2');
+    });
+
+    it('states on-screen that the count covers the whole analyzed graph, not the current filter', () => {
+        // Area/Connections filters never remove real nodes from cy (only
+        // toggle a display:none class) and never touch sccId/sccSize, so
+        // computeSccSummary(cy) - reading cy.nodes(), not visibleNodes(cy)
+        // - already describes the full graph by construction. This
+        // assertion is the guard against that silently becoming untrue:
+        // if a future change ever makes the summary filter-aware, this
+        // exact caption must be updated in the same change, not left
+        // claiming "entire analyzed graph" for a now-filtered number.
+        expect(html).toContain('entire analyzed graph, not the current filtered view');
+        expect(html).toContain('cy.nodes()');
+    });
+});
