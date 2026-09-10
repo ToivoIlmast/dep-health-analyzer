@@ -212,11 +212,13 @@ export const styles = `
     }
 
     /* Experimental (branch: experiment/cycle-map-v2, cycle node details).
-       Only ever present for a node that's actually part of a detected
-       cycle - kept visually distinct (a top border, muted color) from the
-       always-present Ca/Ce/Instability line above it, without using any
-       warning/danger color - a detected cycle is an observation to
-       investigate, not something this report itself flags as wrong. */
+       Only ever present for a node that's actually part of a detected SCC
+       (a group of mutually reachable modules, guaranteed to contain at
+       least one cycle) - kept visually distinct (a top border, muted
+       color) from the always-present Ca/Ce/Instability line above it,
+       without using any warning/danger color - a detected SCC/cycle is an
+       observation to investigate, not something this report itself flags
+       as wrong. */
     .hud-cycle-context {
         display: inline-block;
         margin-top: 6px;

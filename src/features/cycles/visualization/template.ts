@@ -134,16 +134,20 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         </div>
 
         <!-- Experimental (branch: experiment/cycle-map-v2, cycle node
-             details + educational modal). A native <dialog> - ESC-to-close
-             and a focus-trapped modal backdrop come from the platform for
-             free, no library/framework needed to keep this a standalone
-             HTML file. This is general reference material about what a
-             cycle/SCC IS, not something about any particular selected
-             node - see the per-node cycle context added to
-             updateSelectedModulePanel() below for that. Every claim here
-             follows dep-health-analyzer's own architectural-awareness (not
-             architectural-enforcement) framing: a detected cycle is an
-             observed graph fact to investigate, never a verdict. -->
+             details + educational modal; terminology corrected under the
+             SCC-vs-cycle fix - an SCC is a group of mutually reachable
+             modules, guaranteed to contain at least one cycle but not
+             itself a single cycle). A native <dialog> - ESC-to-close and a
+             focus-trapped modal backdrop come from the platform for free,
+             no library/framework needed to keep this a standalone HTML
+             file. This is general reference material about what a
+             cycle/SCC IS and how they relate, not something about any
+             particular selected node - see the per-node SCC context added
+             to updateSelectedModulePanel() below for that. Every claim
+             here follows dep-health-analyzer's own architectural-awareness
+             (not architectural-enforcement) framing: a detected cycle or
+             SCC is an observed graph fact to investigate, never a
+             verdict. -->
         <dialog id="cycle-info-modal">
             <h2>Dependency cycles</h2>
 
@@ -161,21 +165,27 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             <h3>What is an SCC?</h3>
             <p>
-                dep-health-analyzer uses Strongly Connected Components
-                (SCCs) to find cycles: an SCC is a group of modules where
-                every module can reach every other module in the group by
-                following dependency relationships. A group of 2 or more
-                modules forming one SCC is what this report highlights as a
-                detected cycle.
+                dep-health-analyzer detects cycles by finding Strongly
+                Connected Components (SCCs): an SCC is a group of modules
+                where every module can reach every other module in the
+                group by following dependency relationships.
+            </p>
+            <p>
+                A non-trivial SCC (2 or more modules) always contains at
+                least one dependency cycle - but an SCC is not itself a
+                single cycle. It can contain several distinct cycles that
+                share some of the same modules. This report highlights
+                each detected SCC as a whole, not one specific cycle path
+                within it.
             </p>
 
             <h3>Why can cycles matter?</h3>
-            <p>A detected cycle may:</p>
+            <p>A dependency cycle may:</p>
             <ul>
                 <li>make the dependency relationships between those modules harder to reason about</li>
                 <li>increase coupling between the modules involved</li>
                 <li>make it harder to isolate or reuse a single module from the group on its own</li>
-                <li>make changes touch more of the cycle than a change to a single, non-cyclic module would</li>
+                <li>make changes touch more of the SCC than a change to a single, non-cyclic module would</li>
             </ul>
 
             <h3>What does dep-health-analyzer report?</h3>
@@ -185,7 +195,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 project's intended architecture.
             </p>
             <p class="cycle-info-emphasis">
-                A detected cycle is not automatically an architectural violation.
+                A detected cycle or SCC is not automatically an architectural violation.
             </p>
             <p>
                 Some cyclic relationships are intentional. Only someone who
@@ -193,10 +203,10 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 whether a specific detected cycle is one worth changing.
             </p>
 
-            <h3>How to investigate a cycle</h3>
+            <h3>How to investigate a detected SCC</h3>
             <ol>
-                <li>Select a module that is part of a detected cycle.</li>
-                <li>Inspect the other modules in its SCC.</li>
+                <li>Select a module that is part of a detected SCC.</li>
+                <li>Inspect the other modules in that SCC.</li>
                 <li>Follow the dependency directions between them.</li>
                 <li>Understand why the relationships exist.</li>
                 <li>Decide whether the structure is appropriate for the project's intended architecture.</li>
@@ -1985,20 +1995,29 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             }
 
             // Experimental (branch: experiment/cycle-map-v2, cycle node
-            // details). Only ever appended for a node that's actually part
-            // of a real (2+) detected cycle - sccSize/sccId are both unset
-            // for every other node, so this correctly adds nothing for
-            // them ("no artificial cycle details" for a non-cyclic
-            // module). Reuses data(sccId) - the real SCC index
+            // details; terminology corrected under the SCC-vs-cycle fix).
+            // Only ever appended for a node that's actually part of a real
+            // (2+ member) SCC - sccSize/sccId are both unset for every
+            // other node, so this correctly adds nothing for them ("no
+            // artificial SCC details" for a module outside any SCC).
+            // Reuses data(sccId) - the real SCC index
             // buildCytoscapeElements.ts already computes server-side - to
-            // find the OTHER real members of the same cycle, rather than
-            // re-deriving cycle membership on the client (which would be
+            // find the OTHER real members of the same SCC, rather than
+            // re-deriving membership on the client (which would be
             // duplicating detection logic dep-health already ran once).
-            // Wording is deliberately observational ("Detected cycle"/
-            // "modules in this cycle"), never a verdict - matches the
-            // educational modal's own framing (see cycle-info-modal above):
-            // a detected cycle is a graph fact to investigate, not
-            // something this report itself judges as a problem.
+            //
+            // IMPORTANT: an SCC is a group of mutually reachable modules,
+            // not one single cycle - a non-trivial SCC is GUARANTEED to
+            // contain at least one dependency cycle, but may contain
+            // several distinct (possibly overlapping) cycles. This block
+            // deliberately describes the SCC as a whole ("part of an
+            // SCC of N modules", "other modules in this SCC") rather than
+            // claiming the listed modules form one specific cycle -
+            // nothing here computes an actual cycle path. Wording stays
+            // observational, never a verdict - matches the educational
+            // modal's own framing (see cycle-info-modal above): a
+            // detected SCC is a graph fact to investigate, not something
+            // this report itself judges as a problem.
             const MAX_SCC_MEMBERS_SHOWN = 12;
 
             function buildCycleContextHtml(node) {
@@ -2021,8 +2040,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 return \`
                     <br />
                     <span class="hud-cycle-context">
-                        Detected cycle (SCC #\${data.sccId + 1}): \${data.sccSize} modules.
-                        \${otherMembersText ? 'Other modules in this cycle: ' + otherMembersText + '.' : ''}
+                        Part of a strongly connected component (SCC #\${data.sccId + 1}) of \${data.sccSize} modules.
+                        This SCC contains one or more dependency cycles.
+                        \${otherMembersText ? 'Other modules in this SCC: ' + otherMembersText + '.' : ''}
                     </span>
                 \`;
             }
