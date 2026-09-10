@@ -243,6 +243,24 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             <button id="cycle-info-close-btn" type="button">Close</button>
         </dialog>
 
+        <!-- Experimental (branch: experiment/cycle-map-v2, concrete
+             dependency cycle). Distinct from cycle-info-modal above (general
+             reference material) and from the per-node SCC context in the
+             Bottom HUD (which describes an SCC's whole membership) - this
+             shows ONE concrete, ordered directed cycle through a specific
+             selected module. An SCC is a group of mutually reachable
+             modules that can contain several distinct cycles; this modal
+             is deliberately never "the cycle for this SCC", only "a cycle
+             through the module you picked" - see openCycleDetailModal()
+             below for how it's found and why the wording stays plural/
+             non-exhaustive. Reuses the same native <dialog> pattern as
+             cycle-info-modal (no new modal infrastructure). -->
+        <dialog id="cycle-detail-modal">
+            <h2>Dependency cycle</h2>
+            <div id="cycle-detail-body"></div>
+            <button id="cycle-detail-close-btn" type="button">Close</button>
+        </dialog>
+
         <script>
             // Node labels/ids come from file paths, which could in principle
             // contain HTML if a file were named that way - escape before
@@ -2224,12 +2242,27 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const visibleMemberCount = 1 + otherMembers.filter((candidate) => !candidate.hasClass('area-hidden')).length;
                 const focusButtonHtml =
                     visibleMemberCount >= 2
-                        ? \`<br /><button type="button" class="hud-focus-scc-btn" data-focus-scc-id="\${data.sccId}">\${
+                        ? \`<button type="button" class="hud-focus-scc-btn" data-focus-scc-id="\${data.sccId}">\${
                               visibleMemberCount < data.sccSize
                                   ? \`Focus SCC (\${visibleMemberCount} of \${data.sccSize} modules visible)\`
                                   : \`Focus SCC (\${data.sccSize} modules)\`
                           }</button>\`
                         : '';
+
+                // Experimental (branch: experiment/cycle-map-v2, concrete
+                // dependency cycle). Unlike Focus above, this is NOT gated
+                // on visibleMemberCount - a concrete cycle is a fact about
+                // the whole analyzed graph (openCycleDetailModal/
+                // findCycleThroughNode below deliberately search over ALL
+                // of this SCC's members, never just the ones the current
+                // Area/Connections filter happens to show), so it stays
+                // available even if every other member is currently
+                // hidden; the modal itself is what honestly reports how
+                // much of the found cycle is actually on screen right now.
+                // Carries the SELECTED node's own id (not the SCC's id) -
+                // the whole point is "a cycle through THIS module", not
+                // just any cycle inside its SCC.
+                const cycleButtonHtml = \`<button type="button" class="hud-cycle-detail-btn" data-show-cycle-node-id="\${escapeAttribute(data.id)}">Show a dependency cycle</button>\`;
 
                 return \`
                     <br />
@@ -2237,7 +2270,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         Part of a strongly connected component (SCC #\${data.sccId + 1}) of \${data.sccSize} modules.
                         This SCC contains one or more dependency cycles.
                         \${otherMembersHtml ? 'Other modules in this SCC: ' + otherMembersHtml + '.' : ''}
+                        <br />
                         \${focusButtonHtml}
+                        \${cycleButtonHtml}
                     </span>
                 \`;
             }
@@ -2547,6 +2582,246 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
 
                 navigateToSccMember(memberEl.dataset.sccNavId);
+            });
+
+            // Experimental (branch: experiment/cycle-map-v2, concrete
+            // dependency cycle). An SCC only says WHICH modules are
+            // mutually reachable - not HOW the dependencies actually loop
+            // back. This finds ONE concrete, ordered directed cycle
+            // through a specific member, using only data already embedded
+            // in this report (cy.nodes()/cy.edges() over the WHOLE
+            // analyzed graph - never visibleElements(cy) - a cycle is a
+            // fact about the whole dependency graph, not about whatever
+            // the current Area/Connections filter happens to be showing
+            // right now).
+            //
+            // Deliberately NOT the analyzer core's own detectCycles(): that
+            // function enumerates cycles opportunistically with a single
+            // visited set shared across every DFS seed, so a node already
+            // consumed by an earlier, unrelated cycle can silently never
+            // come back as the start of its OWN cycle - the exact opposite
+            // of "a cycle through THIS module" (see
+            // src/features/cycles/analyzeCycles.ts's own comment on this
+            // exact undercount). This is a fresh, small, per-click search
+            // instead, scoped to just the selected node's own SCC members
+            // (via the already-known sccId - never re-running SCC
+            // detection itself), so its cost is bounded by that SCC's own
+            // size, not the whole graph, and is never a combinatorial
+            // enumeration of every possible cycle: from the selected node,
+            // step to its first neighbor (in a fixed, sorted order - the
+            // one and only deterministic choice made here), then run a
+            // plain breadth-first search back to the start. BFS visits
+            // each node at most once, so this is a strict O(members +
+            // internal edges) - no exponential blowup even on a large,
+            // densely-interconnected SCC (unlike a naive DFS that only
+            // prunes already-on-the-current-path nodes, which can
+            // re-explore the same alternate routes many times over before
+            // finding the one that closes the loop). Not recursive, either
+            // - the codebase's existing recursive cycle DFS
+            // (detectCycles.ts/metrics/dfs.ts, both untouched by this
+            // feature) has a known stack-overflow risk on pathologically
+            // deep chains (see docs/BACKLOG.md); this avoids inheriting
+            // that same class of risk in new code. Deterministic end to
+            // end: fixed sorted adjacency plus a fixed BFS visiting order
+            // means the exact same graph always produces the exact same
+            // cycle.
+            function findCycleThroughNode(sccId, startId) {
+                const members = cy.nodes().filter((candidate) => candidate.data('sccId') === sccId);
+                const memberIds = new Set(members.map((node) => node.id()));
+
+                const adjacency = new Map();
+                members.forEach((node) => adjacency.set(node.id(), []));
+                cy.edges().forEach((edge) => {
+                    const sourceId = edge.data('source');
+                    const targetId = edge.data('target');
+                    if (memberIds.has(sourceId) && memberIds.has(targetId)) {
+                        adjacency.get(sourceId).push(targetId);
+                    }
+                });
+                adjacency.forEach((targets) => targets.sort());
+
+                const startTargets = adjacency.get(startId) || [];
+                if (startTargets.length === 0) {
+                    // Shouldn't happen for a real (sccSize >= 2) member -
+                    // every member of a non-trivial SCC has at least one
+                    // outgoing edge to another member, by definition of
+                    // strong connectivity. Defensive only.
+                    return null;
+                }
+                const firstStep = startTargets[0];
+
+                const cameFrom = new Map([[firstStep, null]]);
+                const queue = [firstStep];
+                let head = 0;
+                while (head < queue.length) {
+                    const current = queue[head];
+                    head += 1;
+                    if (current === startId) {
+                        break;
+                    }
+                    (adjacency.get(current) || []).forEach((next) => {
+                        if (!cameFrom.has(next)) {
+                            cameFrom.set(next, current);
+                            queue.push(next);
+                        }
+                    });
+                }
+
+                if (!cameFrom.has(startId)) {
+                    return null;
+                }
+
+                const backToFirstStep = [];
+                for (let node = startId; node !== null; node = cameFrom.get(node)) {
+                    backToFirstStep.push(node);
+                }
+                backToFirstStep.reverse();
+
+                return [startId].concat(backToFirstStep);
+            }
+
+            // A chip-per-module row reads fine even wrapped across a few
+            // lines for a small/medium cycle, but a 100+ member cycle
+            // rendered as one row of boxes (wrapped or not) stops being a
+            // "sequence you can read" and becomes a wall of boxes - past
+            // this many modules, the visual collapses to first/last chips
+            // plus an explicit "N more" gap, while the ordered list below
+            // (never truncated, only scrollable) stays the actual source
+            // of truth for every member.
+            const MAX_CYCLE_CHIPS_SHOWN = 20;
+
+            function renderCycleChip(node) {
+                const cls = node.hasClass('area-hidden') ? 'cycle-chip cycle-chip-hidden' : 'cycle-chip';
+                return \`<span class="\${cls}">\${escapeHtml(node.data('label'))}</span>\`;
+            }
+
+            const CYCLE_ARROW_HTML = '<span class="cycle-arrow">&rarr;</span>';
+
+            function buildCycleVisualHtml(memberNodes) {
+                const chips = memberNodes.map(renderCycleChip);
+                const closingArrow = '<span class="cycle-arrow cycle-arrow-close">&rarr;</span>';
+
+                if (memberNodes.length <= MAX_CYCLE_CHIPS_SHOWN) {
+                    return chips.join(CYCLE_ARROW_HTML) + closingArrow + chips[0];
+                }
+
+                const headChips = chips.slice(0, 3);
+                const tailChips = chips.slice(-2);
+                const middleCount = memberNodes.length - headChips.length - tailChips.length;
+                const ellipsisHtml = \`<span class="cycle-ellipsis">&hellip; \${middleCount} more &hellip;</span>\`;
+
+                return (
+                    headChips.join(CYCLE_ARROW_HTML)
+                    + CYCLE_ARROW_HTML + ellipsisHtml + CYCLE_ARROW_HTML
+                    + tailChips.join(CYCLE_ARROW_HTML)
+                    + closingArrow
+                    + chips[0]
+                );
+            }
+
+            // Every member is listed, in cycle order, regardless of size -
+            // the visual above may collapse a huge cycle to first/last
+            // chips, but this list is the "not just a picture" fallback
+            // that must stay complete (CSS makes it scrollable instead of
+            // ever truncating it). A hidden-by-filter member (same
+            // '.area-hidden' check used throughout this file) is rendered
+            // plain and non-navigable, exactly like the SCC member list
+            // above, and never gets a data-cycle-nav-id.
+            function buildCycleListHtml(memberNodes) {
+                return memberNodes
+                    .map((node, index) => {
+                        const label = escapeHtml(node.data('label'));
+                        const filePath = escapeHtml(node.id());
+                        const position = \`<span class="cycle-detail-index">\${index + 1}</span>\`;
+
+                        if (node.hasClass('area-hidden')) {
+                            return \`<li class="cycle-detail-item cycle-detail-item-hidden">\${position}<strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span><span class="hud-scc-member-hidden">(hidden by filter)</span></li>\`;
+                        }
+
+                        const navId = escapeAttribute(node.id());
+                        return \`<li class="cycle-detail-item" data-cycle-nav-id="\${navId}">\${position}<strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span></li>\`;
+                    })
+                    .join('');
+            }
+
+            const cycleDetailModal = document.getElementById('cycle-detail-modal');
+            const cycleDetailBody = document.getElementById('cycle-detail-body');
+            const cycleDetailCloseButton = document.getElementById('cycle-detail-close-btn');
+
+            cycleDetailCloseButton?.addEventListener('click', () => cycleDetailModal?.close());
+
+            // Opening/closing this modal never touches Focus, selection,
+            // or the Area/Connections filters on its own - it's a
+            // read-only overlay over data that already exists. The one
+            // exception is clicking a module inside its own list (wired
+            // below), which deliberately reuses navigateToSccMember() -
+            // the exact same select+center mechanism as the SCC member
+            // list - rather than a second selection system.
+            function openCycleDetailModal(nodeId) {
+                const node = cy.getElementById(nodeId);
+                if (node.empty()) {
+                    return;
+                }
+
+                const sccId = node.data('sccId');
+                if (sccId === undefined) {
+                    return;
+                }
+
+                const path = findCycleThroughNode(sccId, nodeId);
+                if (!path) {
+                    return;
+                }
+
+                // path is [startId, ..., startId] (closed loop, startId
+                // repeated at both ends) - memberNodes drops that repeat,
+                // one entry per distinct module, in cycle order.
+                const memberNodes = path.slice(0, -1).map((id) => cy.getElementById(id));
+                const hiddenCount = memberNodes.filter((member) => member.hasClass('area-hidden')).length;
+                const startLabel = escapeHtml(memberNodes[0].data('label'));
+
+                const hiddenNoteHtml =
+                    hiddenCount > 0
+                        ? \`<p class="cycle-detail-hidden-note">This cycle contains \${memberNodes.length} modules; \${hiddenCount} \${hiddenCount === 1 ? 'is' : 'are'} hidden by the current filter.</p>\`
+                        : '';
+
+                if (cycleDetailBody) {
+                    cycleDetailBody.innerHTML = \`
+                        <p class="cycle-detail-context">
+                            One dependency cycle through <strong>\${startLabel}</strong>, within SCC #\${sccId + 1}.
+                            This is one dependency cycle within the selected SCC - it may contain others.
+                        </p>
+                        <div class="cycle-detail-visual">\${buildCycleVisualHtml(memberNodes)}</div>
+                        \${hiddenNoteHtml}
+                        <h3>Cycle modules (\${memberNodes.length})</h3>
+                        <ol class="cycle-detail-list">\${buildCycleListHtml(memberNodes)}</ol>
+                    \`;
+                }
+
+                cycleDetailModal?.showModal();
+            }
+
+            hudSelectedBody?.addEventListener('click', (event) => {
+                const cycleButtonEl = event.target.closest('[data-show-cycle-node-id]');
+
+                if (cycleButtonEl) {
+                    openCycleDetailModal(cycleButtonEl.dataset.showCycleNodeId);
+                }
+            });
+
+            // Clicking a module in the cycle's own ordered list closes the
+            // modal before navigating - the main graph pan/select this
+            // triggers would otherwise happen invisibly behind the native
+            // <dialog> backdrop.
+            cycleDetailBody?.addEventListener('click', (event) => {
+                const itemEl = event.target.closest('[data-cycle-nav-id]');
+
+                if (!itemEl) {
+                    return;
+                }
+
+                cycleDetailModal?.close();
+                navigateToSccMember(itemEl.dataset.cycleNavId);
             });
 
             cy.on('tap', 'node', (event) => {

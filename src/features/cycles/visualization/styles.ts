@@ -289,6 +289,191 @@ export const styles = `
         background: #f3f4f6;
     }
 
+    /* Experimental (branch: experiment/cycle-map-v2, concrete dependency
+       cycle). Same size/shape as .hud-focus-scc-btn (still "a real
+       action" living in the same compact HUD row), but outlined in this
+       report's one existing "interactive/navigable" blue (matches
+       .hud-scc-member's link color and the minimap viewport rectangle) -
+       a light visual cue that the two buttons open different kinds of
+       views (a viewport move vs. a modal), without introducing a new,
+       heavier "primary button" look nothing else in this report uses. */
+    .hud-cycle-detail-btn {
+        display: inline-block;
+        margin-top: 4px;
+
+        cursor: pointer;
+
+        border: 1px solid #2563eb;
+        border-radius: 6px;
+
+        background: white;
+        color: #2563eb;
+
+        padding: 3px 8px;
+        font-size: 11px;
+    }
+
+    .hud-cycle-detail-btn:hover {
+        background: #eff6ff;
+    }
+
+    /* Same dialog chrome as #cycle-info-modal above, restated for this
+       second dialog rather than sharing a selector with it - each dialog
+       id needs its own <dialog> element/backdrop pairing regardless, and
+       keeping the two independent avoids specificity fights between this
+       modal's own component classes (.cycle-detail-list,
+       .cycle-detail-hidden-note, ...) and any generic p/ol/li rule that
+       sharing #cycle-info-modal's selectors would otherwise also apply
+       here. */
+    #cycle-detail-modal {
+        max-width: 560px;
+        width: calc(100% - 64px);
+        max-height: calc(100vh - 96px);
+        overflow-y: auto;
+        box-sizing: border-box;
+
+        padding: 20px 24px;
+
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+
+        font-size: 13px;
+        line-height: 1.6;
+        color: #374151;
+    }
+
+    #cycle-detail-modal::backdrop {
+        background: rgba(17, 24, 39, 0.35);
+    }
+
+    #cycle-detail-modal h2 {
+        margin: 0 0 12px;
+        font-size: 17px;
+        color: #111827;
+    }
+
+    #cycle-detail-body h3 {
+        margin: 16px 0 6px;
+        font-size: 14px;
+        color: #111827;
+    }
+
+    .cycle-detail-context {
+        margin: 6px 0;
+    }
+
+    /* Experimental (branch: experiment/cycle-map-v2, concrete dependency
+       cycle). A plain flex row that wraps - reads as one sequence for a
+       small/medium cycle, and stays legible (rather than a single
+       unreadably long line) once it wraps for a larger one. */
+    .cycle-detail-visual {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+
+        margin: 10px 0;
+    }
+
+    .cycle-chip {
+        display: inline-block;
+
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+
+        background: #f9fafb;
+        color: #111827;
+
+        padding: 4px 8px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    /* Same muted treatment as .hud-scc-member-hidden, applied to a chip
+       instead of inline text. */
+    .cycle-chip-hidden {
+        border-style: dashed;
+        color: #9ca3af;
+        font-style: italic;
+    }
+
+    .cycle-arrow {
+        color: #9ca3af;
+        font-size: 14px;
+    }
+
+    /* The one arrow that closes the loop back to the first chip - kept
+       visually distinct (the report's existing interactive blue) so it
+       reads as "this is where it wraps back around", not just another
+       step in the sequence. */
+    .cycle-arrow-close {
+        color: #2563eb;
+        font-weight: 600;
+    }
+
+    .cycle-ellipsis {
+        color: #6b7280;
+        font-size: 12px;
+        font-style: italic;
+        padding: 0 4px;
+    }
+
+    .cycle-detail-hidden-note {
+        margin: 10px 0;
+        padding: 8px 10px;
+
+        background: #f9fafb;
+        border: 1px dashed #d1d5db;
+        border-radius: 6px;
+
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    /* Scrollable, never truncated (see buildCycleListHtml) - a 150-module
+       cycle must stay fully listed, just not all visible at once without
+       scrolling. */
+    .cycle-detail-list {
+        max-height: 220px;
+        overflow-y: auto;
+
+        margin: 6px 0 0;
+        padding-left: 0;
+
+        list-style: none;
+    }
+
+    .cycle-detail-item {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+
+        padding: 4px 2px;
+        border-bottom: 1px solid #f3f4f6;
+
+        font-size: 13px;
+    }
+
+    .cycle-detail-item:not(.cycle-detail-item-hidden) {
+        cursor: pointer;
+    }
+
+    .cycle-detail-item:not(.cycle-detail-item-hidden):hover {
+        background: #f9fafb;
+    }
+
+    .cycle-detail-index {
+        flex: 0 0 auto;
+
+        min-width: 18px;
+
+        color: #9ca3af;
+        font-size: 12px;
+        text-align: right;
+    }
+
     #minimap-container {
         flex: 0 0 auto;
         align-self: center;
@@ -381,7 +566,8 @@ export const styles = `
         color: #111827;
     }
 
-    #cycle-info-close-btn {
+    #cycle-info-close-btn,
+    #cycle-detail-close-btn {
         margin-top: 16px;
 
         cursor: pointer;

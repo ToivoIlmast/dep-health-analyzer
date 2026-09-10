@@ -466,3 +466,172 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
         expect(html).toContain('entire analyzed graph, not the current filtered view');
     });
 });
+
+describe('buildHtmlTemplate concrete dependency cycle', () => {
+    // An SCC only says WHICH modules are mutually reachable - not HOW the
+    // dependencies actually loop back, and it can contain more than one
+    // distinct cycle. findCycleThroughNode/openCycleDetailModal are
+    // client-side functions whose SOURCE is embedded once, unconditionally
+    // (like every other function in this file) - Jest can't execute them
+    // against a live cytoscape instance, so most of what follows asserts
+    // source structure (the right guard/algorithm/wiring exists) rather
+    // than a computed result for a specific fixture. The actual algorithm
+    // output - a real 2-node cycle (left.ts -> right.ts -> left.ts), a
+    // real 7-node cycle matching large-cycle-app's own ring in the exact
+    // order ring2 -> ring3 -> ring4 -> ring5 -> ring6 -> ring0 -> ring1 ->
+    // ring2, the selected node starting and closing the returned path,
+    // every edge in it being a real graph edge, and the same input always
+    // producing the same output (called twice) - is verified separately
+    // via headless Chrome against the real large-cycle-app fixture.
+    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+
+    it('finds one 2-node cycle (A -> B -> A) via a bounded BFS back to the start, not full enumeration', () => {
+        // The algorithm: step to the selected node's own first (sorted,
+        // so deterministic) outgoing neighbor within its SCC, then run a
+        // plain BFS - visiting each member at most once - back to the
+        // start. This is what a 2-node SCC's own cycle (left.ts <->
+        // right.ts) reduces to: one step out, one BFS step back. Real
+        // output confirmed via headless Chrome.
+        expect(html).toContain('function findCycleThroughNode(sccId, startId)');
+        expect(html).toContain("candidate.data('sccId') === sccId");
+        expect(html).toContain('const firstStep = startTargets[0];');
+        expect(html).toContain('const cameFrom = new Map([[firstStep, null]]);');
+    });
+
+    it('finds a 7-node cycle scoped to just that SCC\'s own members, never the whole graph', () => {
+        // memberIds/adjacency are built only from nodes whose sccId
+        // matches the one being asked about - large-cycle-app's real
+        // 7-node ring (verified via headless Chrome to come back in
+        // exactly ring2 -> ring3 -> ring4 -> ring5 -> ring6 -> ring0 ->
+        // ring1 -> ring2 order when starting from ring2.ts) never touches
+        // the other, unrelated 2-node SCC or any plain non-SCC node - the
+        // adjacency map is built strictly from members of the ONE scc id
+        // passed in.
+        expect(html).toContain("const members = cy.nodes().filter((candidate) => candidate.data('sccId') === sccId);");
+        expect(html).toContain('const memberIds = new Set(members.map((node) => node.id()));');
+    });
+
+    it('the returned path starts and ends at the selected node - the cycle is guaranteed to close', () => {
+        // The BFS searches FOR startId (`if (current === startId) { break; }`)
+        // and the final return value explicitly prepends startId to the
+        // reconstructed chain (`[startId].concat(backToFirstStep)`), whose
+        // own last element is guaranteed to be startId itself (that's the
+        // BFS target) - so path[0] === path[path.length - 1] === the
+        // selected node by construction, not by chance. Confirmed live via
+        // headless Chrome (path[0]/path.at(-1) both equal the clicked
+        // module's id for both the 7-node and 2-node fixtures).
+        expect(html).toContain('if (current === startId) {');
+        expect(html).toContain('return [startId].concat(backToFirstStep);');
+    });
+
+    it('operates on real, directed graph edges only - never a synthesized or reversed edge', () => {
+        // Adjacency comes directly from cy.edges()'s own source/target
+        // data fields (the exact same fields buildCytoscapeElements.ts
+        // embeds for every real dependency edge) - no edge is invented,
+        // reversed, or deduplicated away from its real direction.
+        expect(html).toContain("const sourceId = edge.data('source');");
+        expect(html).toContain("const targetId = edge.data('target');");
+        expect(html).toContain('adjacency.get(sourceId).push(targetId);');
+    });
+
+    it('is deterministic - fixed sorted adjacency and a fixed starting neighbor, not a random/unordered choice', () => {
+        expect(html).toContain('adjacency.forEach((targets) => targets.sort());');
+        expect(html).toContain('const firstStep = startTargets[0];');
+    });
+
+    it('reads the WHOLE analyzed graph, not the currently filtered view - a cycle is a fact independent of Area/Connections', () => {
+        // Unlike focusScc (which deliberately excludes '.area-hidden'
+        // candidates because it's a viewport action bound to what's
+        // currently on screen), findCycleThroughNode's own member/edge
+        // scan has no '.area-hidden' filter at all - matching the task's
+        // explicit requirement that cycle detection is a fact about the
+        // whole analyzed graph, never about the current filter. Honesty
+        // about what's actually visible is handled separately, downstream,
+        // by openCycleDetailModal's own hidden-member accounting (see the
+        // "hidden members" test below) - not by silently dropping hidden
+        // members from the search itself, which could otherwise report a
+        // shorter, wrong cycle just because part of it is filtered out.
+        const fnStart = html.indexOf('function findCycleThroughNode(sccId, startId)');
+        const fnEnd = html.indexOf('function ', fnStart + 1);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnSource).not.toContain('area-hidden');
+    });
+
+    it('never claims the shown cycle is the only one within the SCC', () => {
+        expect(html).toContain('This is one dependency cycle within the selected SCC - it may contain others.');
+        expect(html).not.toContain('the only dependency cycle');
+        expect(html).not.toContain('This SCC is the cycle');
+        expect(html).not.toContain('This is the cycle');
+    });
+
+    it('"Show a dependency cycle" is gated behind the same real-SCC guard as Focus, and never appears for a plain node', () => {
+        // cycleButtonHtml is computed inside buildCycleContextHtml, after
+        // its early `data.sccSize < 2 || data.sccId === undefined ->
+        // return ''` guard - a plain node outside any SCC gets '' from the
+        // whole function before either button is ever built. Carries the
+        // SELECTED node's own id (not just its sccId) - "a cycle through
+        // THIS module", not an arbitrary cycle anywhere in its SCC.
+        const guardIndex = html.indexOf('data.sccSize < 2 || data.sccId === undefined');
+        const buttonIndex = html.indexOf('data-show-cycle-node-id="${escapeAttribute(data.id)}"');
+
+        expect(guardIndex).toBeGreaterThan(-1);
+        expect(buttonIndex).toBeGreaterThan(guardIndex);
+        expect(html).toContain('class="hud-cycle-detail-btn"');
+    });
+
+    it('a large cycle never gets enumerated - the visual collapses to a fixed head/tail, but the ordered list always keeps every member', () => {
+        // buildCycleVisualHtml only ever slices its OWN local `chips`
+        // array (head/tail, for display) once past MAX_CYCLE_CHIPS_SHOWN -
+        // it never slices or drops from `memberNodes` itself.
+        // buildCycleListHtml maps over the full, unsliced `memberNodes`
+        // array with no length cap and no truncation - a 150-module cycle
+        // stays fully listed (CSS makes it scrollable, see styles.ts,
+        // rather than the report ever hiding a member from the list). The
+        // whole search algorithm (see the tests above) is already a
+        // bounded single BFS, never an enumeration of multiple candidate
+        // cycles - there's exactly one path-finding pass per click,
+        // independent of the SCC's size.
+        expect(html).toContain('const MAX_CYCLE_CHIPS_SHOWN = 20;');
+        expect(html).toMatch(/function buildCycleListHtml\(memberNodes\) \{\s*return memberNodes\s*\.map/);
+        expect(html).not.toMatch(/function buildCycleListHtml[\s\S]{0,400}\.slice\(/);
+    });
+
+    it('a member hidden by the current filter is marked, never silently claimed visible', () => {
+        // Same '.area-hidden' convention as the SCC member list and Focus
+        // above - a hidden member renders as plain, non-navigable text
+        // (no data-cycle-nav-id), and whenever at least one member is
+        // hidden, an explicit note states exactly how many of the cycle's
+        // modules are affected, rather than presenting the ordered list as
+        // if the whole cycle were on screen.
+        expect(html).toContain("node.hasClass('area-hidden')");
+        expect(html).toContain('cycle-detail-item-hidden');
+        expect(html).toContain('hidden by the current filter');
+        expect(html).toContain('hiddenCount > 0');
+    });
+
+    it('opening/closing the modal never touches selection or Focus state on its own', () => {
+        // The close button's own handler is a bare `.close()` call - no
+        // exitFocus(), no selectedNodeId mutation. The one deliberate
+        // exception (clicking a module INSIDE the list) explicitly reuses
+        // navigateToSccMember() - the exact same select+center mechanism
+        // as the SCC member list, not a second selection system - and is
+        // wired on a separate listener, not the close button's.
+        expect(html).toContain("cycleDetailCloseButton?.addEventListener('click', () => cycleDetailModal?.close());");
+
+        const bodyListenerStart = html.indexOf("cycleDetailBody?.addEventListener('click'");
+        const bodyListenerSource = html.slice(bodyListenerStart, bodyListenerStart + 400);
+        expect(bodyListenerSource).toContain('cycleDetailModal?.close();');
+        expect(bodyListenerSource).toContain('navigateToSccMember(itemEl.dataset.cycleNavId);');
+    });
+
+    it('coexists with the existing educational modal - separate dialog id, both wired independently', () => {
+        // Regression guard: adding this second dialog must not repurpose
+        // or rename cycle-info-modal's own elements/ids.
+        expect(html).toContain("document.getElementById('cycle-info-modal')");
+        expect(html).toContain("document.getElementById('cycle-info-btn')");
+        expect(html).toContain("document.getElementById('cycle-detail-modal')");
+        expect(html.match(/id="cycle-info-modal"/g)).toHaveLength(1);
+        expect(html.match(/id="cycle-detail-modal"/g)).toHaveLength(1);
+    });
+});
