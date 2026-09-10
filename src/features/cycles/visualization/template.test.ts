@@ -559,7 +559,13 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
     });
 
     it('never claims the shown cycle is the only one within the SCC', () => {
-        expect(html).toContain('This is one dependency cycle within the selected SCC - it may contain others.');
+        // UI polish split the old single long sentence into a short,
+        // concrete subtitle ("what this modal is for") plus its own quiet
+        // caveat line ("This SCC may contain other dependency cycles.") -
+        // the caveat is what this test actually guards; the wording
+        // changed, the guarantee it encodes (never implying uniqueness)
+        // did not.
+        expect(html).toContain('This SCC may contain other dependency cycles.');
         expect(html).not.toContain('the only dependency cycle');
         expect(html).not.toContain('This SCC is the cycle');
         expect(html).not.toContain('This is the cycle');
@@ -581,7 +587,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
     });
 
     it('a large cycle never gets enumerated - the visual collapses to a fixed head/tail, but the ordered list always keeps every member', () => {
-        // buildCycleVisualHtml only ever slices its OWN local `chips`
+        // buildCycleFlowCells only ever slices its OWN local `chips`
         // array (head/tail, for display) once past MAX_CYCLE_CHIPS_SHOWN -
         // it never slices or drops from `memberNodes` itself.
         // buildCycleListHtml maps over the full, unsliced `memberNodes`
@@ -633,5 +639,53 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         expect(html).toContain("document.getElementById('cycle-detail-modal')");
         expect(html.match(/id="cycle-info-modal"/g)).toHaveLength(1);
         expect(html.match(/id="cycle-detail-modal"/g)).toHaveLength(1);
+    });
+
+    // UI polish (2026): the flat "text -> chips -> dense list" modal was
+    // reworked into header badge + short subtitle + a small boustrophedon
+    // flow diagram + a visually separated module list - no change to
+    // findCycleThroughNode/detection semantics above. These tests guard
+    // the new structure the same way the rest of this describe block
+    // guards the algorithm: by asserting source shape, since Jest can't
+    // execute this against a live cytoscape instance. The actual rendered
+    // result (badge text, chip layout, hover affordances) is verified via
+    // headless Chrome against the real large-cycle-app fixture.
+    it('the header badge shows the module count without duplicating the SCC size or the old long sentence', () => {
+        expect(html).toContain('id="cycle-detail-count-badge"');
+        expect(html).toContain('cycleDetailCountBadge.textContent = `${memberNodes.length} module${memberNodes.length === 1 ? \'\' : \'s\'}`;');
+    });
+
+    it('the start/selected node gets the same accent class everywhere it appears - the flow diagram, the closing line, and the list', () => {
+        // One class, reused three times, rather than three different ways
+        // of saying "this is the module you selected" - renderCycleChip's
+        // own isStart parameter is only ever true for index 0 (the real
+        // selected node, never a member.hasClass('area-hidden') check or
+        // anything else), and buildCycleListHtml applies the equivalent
+        // list-row class under the same index === 0 condition.
+        expect(html).toContain('renderCycleChip(node, index === 0)');
+        expect(html).toContain("classes.push('cycle-node-start');");
+        expect(html).toContain("<span class=\"cycle-arrow\">&#8618;</span> back to <span class=\"cycle-chip cycle-node-start\">");
+        expect(html).toContain("const startCls = index === 0 ? ' cycle-detail-item-start' : '';");
+    });
+
+    it('the flow diagram lays cells into fixed-size rows and alternates reading direction row to row (a snake/boustrophedon layout)', () => {
+        expect(html).toContain('const CYCLE_FLOW_ROW_SIZE = 4;');
+        expect(html).toContain('const isReverse = rowIndex % 2 === 1;');
+        expect(html).toMatch(/isReverse\s*\?\s*\[\.\.\.rowCells\]\.reverse\(\)\s*:\s*rowCells/);
+    });
+
+    it('the closing indicator is a distinct, explicit line - not one more chip silently appended to the last row', () => {
+        expect(html).toContain('function buildCycleFlowHtml(memberNodes, startLabel)');
+        expect(html).toContain('class="cycle-flow-closing"');
+    });
+
+    it('the hidden-filter note uses a calm, non-alarming info style, matching the same blue used for the start/count accents', () => {
+        // Wording changed (the old note re-stated the full "This cycle
+        // contains N modules" total, now already shown by the header
+        // badge/metadata chips) but the guarantee - a filtered-out member
+        // is disclosed, never silently dropped from the count - did not.
+        expect(html).toContain('hidden by the current filter');
+        expect(html).toContain('hiddenCount > 0');
+        expect(html).not.toContain('This cycle contains ${memberNodes.length} modules;');
     });
 });

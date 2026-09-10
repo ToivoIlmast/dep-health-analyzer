@@ -324,9 +324,10 @@ export const styles = `
        modal's own component classes (.cycle-detail-list,
        .cycle-detail-hidden-note, ...) and any generic p/ol/li rule that
        sharing #cycle-info-modal's selectors would otherwise also apply
-       here. */
+       here. Slightly wider than #cycle-info-modal - the flow diagram
+       below reads better with a bit more room before its rows wrap. */
     #cycle-detail-modal {
-        max-width: 560px;
+        max-width: 640px;
         width: calc(100% - 64px);
         max-height: calc(100vh - 96px);
         overflow-y: auto;
@@ -348,46 +349,153 @@ export const styles = `
         background: rgba(17, 24, 39, 0.35);
     }
 
+    /* UI polish (branch: experiment/cycle-map-v2, no behavior change): the
+       title now shares a row with a small module-count badge, so the
+       header itself communicates "this is about a 7-module cycle" before
+       reading a single word of body text. */
+    .cycle-detail-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+
+        margin: 0 0 10px;
+    }
+
     #cycle-detail-modal h2 {
-        margin: 0 0 12px;
+        margin: 0;
         font-size: 17px;
         color: #111827;
     }
 
+    .cycle-count-badge {
+        flex: 0 0 auto;
+
+        border: 1px solid #bfdbfe;
+        border-radius: 999px;
+
+        background: #eff6ff;
+        color: #1d4ed8;
+
+        padding: 3px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
     #cycle-detail-body h3 {
-        margin: 16px 0 6px;
+        margin: 18px 0 6px;
         font-size: 14px;
         color: #111827;
     }
 
-    .cycle-detail-context {
-        margin: 6px 0;
+    /* One short, concrete sentence (never the long "this SCC contains
+       cycles..." paragraph the HUD's own SCC context already carries) -
+       the "may contain others" caveat that keeps this from ever reading
+       as "the cycle" moves to its own quiet .cycle-detail-note line
+       instead of being folded into the same sentence. */
+    .cycle-detail-subtitle {
+        margin: 0 0 2px;
+        font-size: 13.5px;
+        color: #1f2937;
     }
 
-    /* Experimental (branch: experiment/cycle-map-v2, concrete dependency
-       cycle). A plain flex row that wraps - reads as one sequence for a
-       small/medium cycle, and stays legible (rather than a single
-       unreadably long line) once it wraps for a larger one. */
-    .cycle-detail-visual {
+    .cycle-detail-note {
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: #9ca3af;
+    }
+
+    .cycle-detail-metadata {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px;
+        gap: 6px;
 
-        margin: 10px 0;
+        margin: 0 0 14px;
     }
 
-    .cycle-chip {
-        display: inline-block;
-
-        border: 1px solid #d1d5db;
+    .cycle-meta-chip {
+        border: 1px solid #e5e7eb;
         border-radius: 6px;
 
         background: #f9fafb;
-        color: #111827;
+        color: #6b7280;
 
-        padding: 4px 8px;
+        padding: 3px 9px;
+        font-size: 11.5px;
+    }
+
+    /* Experimental (branch: experiment/cycle-map-v2, concrete dependency
+       cycle). Rows of up to CYCLE_FLOW_ROW_SIZE chips, stacked - the
+       boustrophedon ("snake") arrangement built in buildCycleFlowHtml
+       above (row 0 left-to-right, row 1 right-to-left, ...) is what turns
+       this from "one long wrapped line of tags" into something that reads
+       like a small flow diagram, closer to the main graph's own visual
+       language than a tag list is. */
+    .cycle-flow {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+
+        margin: 4px 0 10px;
+        padding: 14px;
+
+        background: #fafafa;
+        border: 1px solid #eef0f2;
+        border-radius: 10px;
+    }
+
+    .cycle-flow-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* A short vertical connector between two rows, aligned under
+       whichever edge the row above actually finished reading from -
+       .cycle-flow-connector-right sits at that row's right end (it read
+       left-to-right), .cycle-flow-connector-left at its left end (it read
+       right-to-left) - so the connector visually continues the same
+       reading path rather than floating in an arbitrary spot. */
+    .cycle-flow-connector {
+        display: flex;
+        padding: 0 14px;
+    }
+
+    .cycle-flow-connector-right {
+        justify-content: flex-end;
+    }
+
+    .cycle-flow-connector-left {
+        justify-content: flex-start;
+    }
+
+    /* The line that calls out the loop-closing edge explicitly, rather
+       than one more chip awkwardly appended in whatever direction the
+       last row happens to be reading - simpler to get right for any
+       cycle length, and reuses .cycle-node-start's own accent color so it
+       visually ties back to the highlighted chip at the top of the flow. */
+    .cycle-flow-closing {
+        margin: 2px 0 10px;
+
         font-size: 12px;
+        color: #6b7280;
+    }
+
+    .cycle-chip {
+        display: inline-flex;
+        align-items: center;
+
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+
+        background: white;
+        color: #111827;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+        padding: 6px 11px;
+        font-size: 12.5px;
+        font-weight: 500;
         white-space: nowrap;
     }
 
@@ -395,22 +503,28 @@ export const styles = `
        instead of inline text. */
     .cycle-chip-hidden {
         border-style: dashed;
+        background: #fafafa;
         color: #9ca3af;
         font-style: italic;
+        box-shadow: none;
+    }
+
+    /* The selected/start module - the one thing the whole modal is
+       "through" - gets the report's one existing interactive blue rather
+       than extra text explaining which chip it is. Reused verbatim (same
+       class) on the closing line's repeated chip and on the matching
+       first row of the list below, so all three read as the same module. */
+    .cycle-node-start {
+        border-color: #93c5fd;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-weight: 600;
     }
 
     .cycle-arrow {
         color: #9ca3af;
-        font-size: 14px;
-    }
-
-    /* The one arrow that closes the loop back to the first chip - kept
-       visually distinct (the report's existing interactive blue) so it
-       reads as "this is where it wraps back around", not just another
-       step in the sequence. */
-    .cycle-arrow-close {
-        color: #2563eb;
-        font-weight: 600;
+        font-size: 15px;
+        line-height: 1;
     }
 
     .cycle-ellipsis {
@@ -420,23 +534,28 @@ export const styles = `
         padding: 0 4px;
     }
 
+    /* Restyled as a calm info strip, not a warning - a hidden cycle
+       member is an artifact of the current Area/Connections filter, never
+       something wrong with the graph itself, so this deliberately reuses
+       the same blue as .cycle-count-badge/.cycle-node-start rather than
+       any red/amber "alert" color. */
     .cycle-detail-hidden-note {
-        margin: 10px 0;
+        margin: 0 0 10px;
         padding: 8px 10px;
 
-        background: #f9fafb;
-        border: 1px dashed #d1d5db;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
         border-radius: 6px;
 
         font-size: 12px;
-        color: #6b7280;
+        color: #1e40af;
     }
 
     /* Scrollable, never truncated (see buildCycleListHtml) - a 150-module
        cycle must stay fully listed, just not all visible at once without
        scrolling. */
     .cycle-detail-list {
-        max-height: 220px;
+        max-height: 240px;
         overflow-y: auto;
 
         margin: 6px 0 0;
@@ -447,10 +566,10 @@ export const styles = `
 
     .cycle-detail-item {
         display: flex;
-        align-items: baseline;
-        gap: 8px;
+        align-items: center;
+        gap: 10px;
 
-        padding: 4px 2px;
+        padding: 8px 4px;
         border-bottom: 1px solid #f3f4f6;
 
         font-size: 13px;
@@ -464,14 +583,62 @@ export const styles = `
         background: #f9fafb;
     }
 
+    /* The selected/start item - same accent family as .cycle-node-start,
+       just toned down for a list row (a left accent bar instead of a full
+       chip fill, so it doesn't compete with the flow diagram above for
+       attention). */
+    .cycle-detail-item-start {
+        background: #f8fafc;
+        border-left: 3px solid #93c5fd;
+        padding-left: 7px;
+        border-radius: 4px;
+    }
+
     .cycle-detail-index {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         flex: 0 0 auto;
 
-        min-width: 18px;
+        width: 20px;
+        height: 20px;
 
-        color: #9ca3af;
-        font-size: 12px;
-        text-align: right;
+        border-radius: 50%;
+        background: #f3f4f6;
+
+        color: #6b7280;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .cycle-detail-item-main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .cycle-detail-item-main strong {
+        font-size: 13.5px;
+        color: #111827;
+    }
+
+    /* A trailing chevron affordance for a clickable item - hidden until
+       hover, rather than a permanent icon competing with the module name
+       on every row, matching this report's existing restrained style
+       (e.g. .hud-scc-member's underline only strengthens on hover too). */
+    .cycle-detail-item-arrow {
+        flex: 0 0 auto;
+        margin-left: auto;
+
+        color: #2563eb;
+        font-size: 16px;
+
+        opacity: 0;
+        transition: opacity 0.1s ease-in-out;
+    }
+
+    .cycle-detail-item:hover .cycle-detail-item-arrow {
+        opacity: 1;
     }
 
     #minimap-container {

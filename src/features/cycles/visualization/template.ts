@@ -256,7 +256,10 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
              non-exhaustive. Reuses the same native <dialog> pattern as
              cycle-info-modal (no new modal infrastructure). -->
         <dialog id="cycle-detail-modal">
-            <h2>Dependency cycle</h2>
+            <div class="cycle-detail-header">
+                <h2>Dependency cycle</h2>
+                <span id="cycle-detail-count-badge" class="cycle-count-badge"></span>
+            </div>
             <div id="cycle-detail-body"></div>
             <button id="cycle-detail-close-btn" type="button">Close</button>
         </dialog>
@@ -2690,19 +2693,42 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // of truth for every member.
             const MAX_CYCLE_CHIPS_SHOWN = 20;
 
-            function renderCycleChip(node) {
-                const cls = node.hasClass('area-hidden') ? 'cycle-chip cycle-chip-hidden' : 'cycle-chip';
-                return \`<span class="\${cls}">\${escapeHtml(node.data('label'))}</span>\`;
+            // UI polish only (branch: experiment/cycle-map-v2, no change to
+            // findCycleThroughNode/detection semantics below this point) -
+            // a fixed row width turns the flat chip-and-arrow row into a
+            // small boustrophedon ("snake") flow diagram: row 0 reads
+            // left-to-right, row 1 right-to-left, and so on, with a small
+            // vertical connector between them - the same reading pattern
+            // as the task's own example. Fixed (not measured from the
+            // rendered DOM) so it's deterministic and needs no layout
+            // pass/resize handling; 4 keeps a 7-member cycle (this
+            // codebase's own large-cycle-app fixture) at exactly two rows,
+            // matching that example directly.
+            const CYCLE_FLOW_ROW_SIZE = 4;
+
+            function renderCycleChip(node, isStart) {
+                const classes = ['cycle-chip'];
+                if (node.hasClass('area-hidden')) {
+                    classes.push('cycle-chip-hidden');
+                }
+                if (isStart) {
+                    classes.push('cycle-node-start');
+                }
+                return \`<span class="\${classes.join(' ')}">\${escapeHtml(node.data('label'))}</span>\`;
             }
 
-            const CYCLE_ARROW_HTML = '<span class="cycle-arrow">&rarr;</span>';
-
-            function buildCycleVisualHtml(memberNodes) {
-                const chips = memberNodes.map(renderCycleChip);
-                const closingArrow = '<span class="cycle-arrow cycle-arrow-close">&rarr;</span>';
+            // Builds the ordered list of "cells" the flow diagram lays out
+            // into rows - each cell is either a real module chip or (once
+            // a cycle exceeds MAX_CYCLE_CHIPS_SHOWN) the one "N more"
+            // ellipsis placeholder. Cell 0 is always the real selected/
+            // start node - the head slice below always includes real
+            // index 0 even once collapsed, so the start accent never gets
+            // silently dropped for a large cycle.
+            function buildCycleFlowCells(memberNodes) {
+                const chips = memberNodes.map((node, index) => renderCycleChip(node, index === 0));
 
                 if (memberNodes.length <= MAX_CYCLE_CHIPS_SHOWN) {
-                    return chips.join(CYCLE_ARROW_HTML) + closingArrow + chips[0];
+                    return chips;
                 }
 
                 const headChips = chips.slice(0, 3);
@@ -2710,36 +2736,76 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const middleCount = memberNodes.length - headChips.length - tailChips.length;
                 const ellipsisHtml = \`<span class="cycle-ellipsis">&hellip; \${middleCount} more &hellip;</span>\`;
 
-                return (
-                    headChips.join(CYCLE_ARROW_HTML)
-                    + CYCLE_ARROW_HTML + ellipsisHtml + CYCLE_ARROW_HTML
-                    + tailChips.join(CYCLE_ARROW_HTML)
-                    + closingArrow
-                    + chips[0]
-                );
+                return [...headChips, ellipsisHtml, ...tailChips];
+            }
+
+            function buildCycleFlowHtml(memberNodes, startLabel) {
+                const cells = buildCycleFlowCells(memberNodes);
+                const rows = [];
+                for (let i = 0; i < cells.length; i += CYCLE_FLOW_ROW_SIZE) {
+                    rows.push(cells.slice(i, i + CYCLE_FLOW_ROW_SIZE));
+                }
+
+                const rowsHtml = rows
+                    .map((rowCells, rowIndex) => {
+                        const isReverse = rowIndex % 2 === 1;
+                        const arrow = isReverse
+                            ? '<span class="cycle-arrow">&larr;</span>'
+                            : '<span class="cycle-arrow">&rarr;</span>';
+                        const orderedCells = isReverse ? [...rowCells].reverse() : rowCells;
+                        const rowHtml = \`<div class="cycle-flow-row">\${orderedCells.join(arrow)}</div>\`;
+
+                        if (rowIndex === rows.length - 1) {
+                            return rowHtml;
+                        }
+
+                        // The connector sits under whichever end the row
+                        // above actually exits from - the right edge after
+                        // a left-to-right row, the left edge after a
+                        // right-to-left one - so it visually continues
+                        // from the last chip that was just read, not from
+                        // wherever it happens to land in the DOM.
+                        const connectorSide = isReverse ? 'cycle-flow-connector-left' : 'cycle-flow-connector-right';
+                        return \`\${rowHtml}<div class="cycle-flow-connector \${connectorSide}"><span class="cycle-arrow">&darr;</span></div>\`;
+                    })
+                    .join('');
+
+                // The loop-closing edge is called out as its own short
+                // line rather than as one more chip awkwardly appended in
+                // whichever direction the last row happens to be reading -
+                // simpler to get right for any cycle length/row count, and
+                // ties back to the same accent color as the highlighted
+                // start chip above so the two read as "the same module".
+                return \`
+                    <div class="cycle-flow">\${rowsHtml}</div>
+                    <div class="cycle-flow-closing">
+                        <span class="cycle-arrow">&#8618;</span> back to <span class="cycle-chip cycle-node-start">\${startLabel}</span>
+                    </div>
+                \`;
             }
 
             // Every member is listed, in cycle order, regardless of size -
-            // the visual above may collapse a huge cycle to first/last
-            // chips, but this list is the "not just a picture" fallback
-            // that must stay complete (CSS makes it scrollable instead of
-            // ever truncating it). A hidden-by-filter member (same
-            // '.area-hidden' check used throughout this file) is rendered
-            // plain and non-navigable, exactly like the SCC member list
-            // above, and never gets a data-cycle-nav-id.
+            // the flow diagram above may collapse a huge cycle to
+            // first/last chips, but this list is the "not just a picture"
+            // fallback that must stay complete (CSS makes it scrollable
+            // instead of ever truncating it). A hidden-by-filter member
+            // (same '.area-hidden' check used throughout this file) is
+            // rendered plain and non-navigable, exactly like the SCC
+            // member list above, and never gets a data-cycle-nav-id.
             function buildCycleListHtml(memberNodes) {
                 return memberNodes
                     .map((node, index) => {
                         const label = escapeHtml(node.data('label'));
                         const filePath = escapeHtml(node.id());
                         const position = \`<span class="cycle-detail-index">\${index + 1}</span>\`;
+                        const startCls = index === 0 ? ' cycle-detail-item-start' : '';
 
                         if (node.hasClass('area-hidden')) {
-                            return \`<li class="cycle-detail-item cycle-detail-item-hidden">\${position}<strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span><span class="hud-scc-member-hidden">(hidden by filter)</span></li>\`;
+                            return \`<li class="cycle-detail-item cycle-detail-item-hidden\${startCls}">\${position}<span class="cycle-detail-item-main"><strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span></span><span class="hud-scc-member-hidden">(hidden by filter)</span></li>\`;
                         }
 
                         const navId = escapeAttribute(node.id());
-                        return \`<li class="cycle-detail-item" data-cycle-nav-id="\${navId}">\${position}<strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span></li>\`;
+                        return \`<li class="cycle-detail-item\${startCls}" data-cycle-nav-id="\${navId}">\${position}<span class="cycle-detail-item-main"><strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span></span><span class="cycle-detail-item-arrow">&rsaquo;</span></li>\`;
                     })
                     .join('');
             }
@@ -2747,6 +2813,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const cycleDetailModal = document.getElementById('cycle-detail-modal');
             const cycleDetailBody = document.getElementById('cycle-detail-body');
             const cycleDetailCloseButton = document.getElementById('cycle-detail-close-btn');
+            const cycleDetailCountBadge = document.getElementById('cycle-detail-count-badge');
 
             cycleDetailCloseButton?.addEventListener('click', () => cycleDetailModal?.close());
 
@@ -2780,20 +2847,36 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const hiddenCount = memberNodes.filter((member) => member.hasClass('area-hidden')).length;
                 const startLabel = escapeHtml(memberNodes[0].data('label'));
 
+                // Wording kept exactly as short as the task asked for: the
+                // subtitle states the one fact this modal is FOR (a
+                // concrete cycle through the selected module), and the
+                // "may contain others" caveat - the whole reason this is
+                // never phrased as "the cycle" - moves to its own quiet
+                // line rather than staying folded into one long sentence.
+                if (cycleDetailCountBadge) {
+                    cycleDetailCountBadge.textContent = \`\${memberNodes.length} module\${memberNodes.length === 1 ? '' : 's'}\`;
+                }
+
                 const hiddenNoteHtml =
                     hiddenCount > 0
-                        ? \`<p class="cycle-detail-hidden-note">This cycle contains \${memberNodes.length} modules; \${hiddenCount} \${hiddenCount === 1 ? 'is' : 'are'} hidden by the current filter.</p>\`
+                        ? \`<p class="cycle-detail-hidden-note">&#8505; \${hiddenCount} module\${hiddenCount === 1 ? '' : 's'} hidden by the current filter.</p>\`
                         : '';
 
                 if (cycleDetailBody) {
                     cycleDetailBody.innerHTML = \`
-                        <p class="cycle-detail-context">
-                            One dependency cycle through <strong>\${startLabel}</strong>, within SCC #\${sccId + 1}.
-                            This is one dependency cycle within the selected SCC - it may contain others.
-                        </p>
-                        <div class="cycle-detail-visual">\${buildCycleVisualHtml(memberNodes)}</div>
+                        <p class="cycle-detail-subtitle">One concrete cycle through <strong>\${startLabel}</strong> within SCC #\${sccId + 1}.</p>
+                        <p class="cycle-detail-note">This SCC may contain other dependency cycles.</p>
+
+                        <div class="cycle-detail-metadata">
+                            <span class="cycle-meta-chip">\${memberNodes.length} modules</span>
+                            <span class="cycle-meta-chip">\${memberNodes.length} dependencies</span>
+                        </div>
+
+                        \${buildCycleFlowHtml(memberNodes, startLabel)}
+
                         \${hiddenNoteHtml}
-                        <h3>Cycle modules (\${memberNodes.length})</h3>
+
+                        <h3>Cycle modules</h3>
                         <ol class="cycle-detail-list">\${buildCycleListHtml(memberNodes)}</ol>
                     \`;
                 }
