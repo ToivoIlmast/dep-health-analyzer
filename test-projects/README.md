@@ -76,6 +76,17 @@ Most fixtures need no `npm install` (they only reference `typescript`/framework 
 are the intended way to exercise the analyzer's bare-specifier alias resolution (see "Known
 limitations" below for exactly what that does and doesn't cover).
 
+**Manually checking the cycles/SCC HTML report:** `npm run dev:cycle-map` (developer-only convenience
+script, not a product feature) builds the CLI and runs `cycles --mode html` against
+[`large-cycle-app`](large-cycle-app) specifically, printing a clickable path to the generated
+report. dep-health-analyzer's own production dependency graph isn't guaranteed to contain any
+cycles at a given time, which makes it a poor fixture for eyeballing cycle/SCC visualization
+changes - `large-cycle-app` exists precisely so there's always a stable, realistic graph on hand
+with a large (7-module) SCC, an independent 2-module SCC, and a cycle member with several real
+external dependencies (see its own README for the exact shape). The report is written to
+`large-cycle-app/reports/` - already covered by this directory's blanket `.gitignore` rule, so
+nothing from this script can end up committed.
+
 ## Machine-verifiable validation
 
 `npm run test-projects:validate` (`scripts/validate-test-projects.mjs`) does two things:

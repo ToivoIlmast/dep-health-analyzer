@@ -28,7 +28,8 @@
         "generate:config-types": "json2ts -i src/app/config/config.schema.json -o src/app/config/config.types.ts",
         "generate:config-validator": "node scripts/generateConfigValidator.js",
         "test-projects:generate": "node scripts/gen-basic.mjs && node scripts/gen-frontend.mjs && node scripts/gen-backend.mjs && node scripts/gen-fullstack.mjs && node scripts/gen-libraries.mjs && node scripts/gen-monorepos.mjs && node scripts/gen-structural.mjs && node scripts/gen-stress.mjs && node scripts/gen-traps.mjs && node scripts/gen-mts-cts.mjs && node scripts/gen-history-lab.mjs && node scripts/gen-readmes.mjs",
-        "test-projects:validate": "node scripts/validate-test-projects.mjs"
+        "test-projects:validate": "node scripts/validate-test-projects.mjs",
+        "dev:cycle-map": "npm run build && cd test-projects/large-cycle-app && node ../../dist/app/cli.js cycles --mode html"
     },
     "bin": {
         "dep-health-analyzer": "dist/app/cli.js"
