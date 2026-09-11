@@ -10,15 +10,50 @@ export const styles = `
         --bottom-hud-height: 178px;
     }
 
+    /* Findings-first overview (Phase 1). padding-bottom reserves exactly
+       #bottom-hud's own height as extra, otherwise-empty scrollable room
+       at the very end of the document - without it, the document is only
+       exactly as tall as #findings-overview + #graph-explorer, so the
+       browser physically cannot scroll #graph-explorer's top all the way
+       to the viewport's top (it runs out of document to scroll through
+       #bottom-hud's own height too soon, since #bottom-hud is
+       position: fixed and contributes zero scrollable height itself) -
+       "Explore full graph" would land #graph-explorer exactly
+       #bottom-hud's height short of flush, leaving that same strip of the
+       fixed bottom HUD overlapping the graph's own bottom edge instead of
+       sitting cleanly below it. This trades that permanent overlap for a
+       harmless one: scrolling deliberately past the graph now reveals
+       blank padding (with the HUD still docked over it), rather than the
+       HUD ever covering real graph content. */
     body {
         margin: 0;
-        padding: 0;
+        padding: 0 0 var(--bottom-hud-height);
         font-family: sans-serif;
     }
 
-    #cy {
+    /* Findings-first overview (Phase 1). #cy/#hint/#toolbar/
+       #edge-clarity-note (all position: absolute with no positioned
+       ancestor of their own, see below) used to rely on <body> itself
+       being their positioning context, which only worked because they
+       were <body>'s very first children - now that #findings-overview
+       sits above them in normal flow, this wrapper becomes their
+       positioning context instead, so "top: 16px"/etc. keep meaning
+       "16px from the graph's own top edge," not "16px from the top of
+       the whole scrollable document." Sized exactly like #cy used to be
+       (100vw / a full viewport minus the bottom HUD) - #cy itself now
+       just fills this wrapper (see its own rule below), so cytoscape's
+       own container.clientWidth/clientHeight - and therefore every
+       fit/zoom/minimap calculation - measures the exact same pixel
+       dimensions as before this wrapper existed. */
+    #graph-explorer {
+        position: relative;
         width: 100vw;
         height: calc(100vh - var(--bottom-hud-height));
+    }
+
+    #cy {
+        width: 100%;
+        height: 100%;
     }
 
     #toolbar {
@@ -746,5 +781,128 @@ export const styles = `
 
         padding: 6px 14px;
         font-size: 13px;
+    }
+
+    /* Findings-first overview (Phase 1). The report's actual first screen -
+       "what is this, how big is the project, is anything here worth
+       attention" - ahead of the graph, which stays exactly as capable as
+       before, just no longer the first thing rendered. Plain document
+       flow, not another absolutely-positioned floating panel like #hint/
+       #toolbar - this is content to read top-to-bottom once, not a
+       persistent overlay to glance at while exploring the graph. Reuses
+       this report's own existing typography/color vocabulary (the same
+       grays as #hint's own captions, the same interactive blue
+       .cycle-node-start/.cycle-count-badge already use elsewhere) rather
+       than introducing a second visual language. */
+    #findings-overview {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 32px 32px;
+
+        font-family: sans-serif;
+        color: #374151;
+    }
+
+    #findings-overview h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        color: #111827;
+    }
+
+    #findings-overview h2 {
+        margin: 28px 0 4px;
+        font-size: 16px;
+        color: #111827;
+    }
+
+    .findings-scale {
+        margin: 0;
+        font-size: 14px;
+        color: #6b7280;
+    }
+
+    .findings-caveat {
+        margin: 0 0 14px;
+        font-size: 12.5px;
+        color: #6b7280;
+    }
+
+    .findings-zero-state {
+        margin: 18px 0 20px;
+        padding: 14px 16px;
+
+        background: #f9fafb;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+
+        font-size: 14px;
+        color: #374151;
+    }
+
+    .findings-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        margin: 0 0 20px;
+        padding: 0;
+
+        list-style: none;
+    }
+
+    /* A "clickable-looking" row with no click handler wired up yet - see
+       renderSccFindingRow()'s own comment in template.ts. cursor: pointer
+       plus the same hover treatment this report's other clickable rows
+       already use (.cycle-detail-item) signals "this will do something,"
+       matching the task's explicit scope split without implying behavior
+       that isn't there yet. */
+    .finding-row {
+        cursor: pointer;
+
+        padding: 12px 14px;
+
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+    }
+
+    .finding-row:hover {
+        background: #f9fafb;
+        border-color: #93c5fd;
+    }
+
+    .finding-row-header {
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .finding-cycle-preview {
+        margin-top: 4px;
+
+        font-family: monospace;
+        font-size: 12.5px;
+        color: #1d4ed8;
+    }
+
+    .findings-explore-link {
+        display: inline-block;
+
+        cursor: pointer;
+        text-decoration: none;
+
+        border: 1px solid #2563eb;
+        border-radius: 6px;
+
+        background: white;
+        color: #2563eb;
+
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .findings-explore-link:hover {
+        background: #eff6ff;
     }
 `;

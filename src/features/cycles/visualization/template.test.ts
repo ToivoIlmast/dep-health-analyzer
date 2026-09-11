@@ -749,3 +749,263 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         expect(html).not.toContain('This cycle contains ${memberNodes.length} modules;');
     });
 });
+
+describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
+    // The overview is entirely server-rendered from the same CycleFindings
+    // payload Phase 0 introduced (see buildCycleFindings.ts) - unlike most
+    // of this file, these assertions check REAL rendered HTML for REAL
+    // findings shapes, not client-side source structure, since
+    // renderFindingsOverview() runs in Node at generation time (there's no
+    // "runs only in a live browser" excuse here the way there is for
+    // cytoscape-dependent client code elsewhere in this file).
+
+    it('renders a clear zero state - not just an empty list - when there are no cycles', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: { moduleCount: 8, dependencyCount: 6, sccs: [] },
+        });
+
+        expect(html).toContain('No dependency cycles detected.');
+        expect(html).toContain('8 modules · 6 dependencies');
+        expect(html).toContain('Explore dependency graph');
+        // The zero-state reads as a deliberate, understood state ("nothing
+        // found"), not an empty findings-list with no explanation - no
+        // <ol class="findings-list"> should render at all when there's
+        // nothing to put in it.
+        expect(html).not.toContain('class="findings-list"');
+    });
+
+    it('renders one finding for one SCC, with its size and a representative-cycle preview', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 5,
+                dependencyCount: 6,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 3,
+                        memberIds: ['/repo/src/a.ts', '/repo/src/b.ts', '/repo/src/c.ts'],
+                        exampleCycle: ['/repo/src/a.ts', '/repo/src/b.ts', '/repo/src/c.ts', '/repo/src/a.ts'],
+                    },
+                ],
+            },
+        });
+
+        expect(html).toContain('1 SCC containing cycles');
+        expect(html).toContain('SCC #1');
+        expect(html).toContain('3 modules');
+        expect(html).toContain('a.ts &rarr; b.ts &rarr; c.ts &rarr; a.ts');
+        expect(html).toContain('5 modules · 6 dependencies');
+    });
+
+    it('renders one row per independent SCC for multiple SCCs, each with its own correct size', () => {
+        // large-cycle-app's own real shape: a 7-module ring plus an
+        // independent 2-module pair - must never collapse into one row or
+        // mix up which size belongs to which.
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 16,
+                dependencyCount: 17,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 2,
+                        memberIds: ['/repo/src/pair/left.ts', '/repo/src/pair/right.ts'],
+                        exampleCycle: ['/repo/src/pair/left.ts', '/repo/src/pair/right.ts', '/repo/src/pair/left.ts'],
+                    },
+                    {
+                        id: 1,
+                        size: 7,
+                        memberIds: Array.from({ length: 7 }, (_, i) => `/repo/src/ring/ring${i}.ts`),
+                        exampleCycle: [
+                            ...Array.from({ length: 7 }, (_, i) => `/repo/src/ring/ring${i}.ts`),
+                            '/repo/src/ring/ring0.ts',
+                        ],
+                    },
+                ],
+            },
+        });
+
+        expect(html).toContain('2 SCCs containing cycles');
+        expect(html).toContain('SCC #1');
+        expect(html).toContain('SCC #2');
+        expect(html.match(/finding-row-header">SCC #1 &middot; 2 modules/)).toBeTruthy();
+        expect(html.match(/finding-row-header">SCC #2 &middot; 7 modules/)).toBeTruthy();
+        // Both rows must be present as distinct list items, not merged.
+        expect(html.match(/class="finding-row"/g)).toHaveLength(2);
+    });
+
+    it('abbreviates a large representative cycle to start, one hop, and the closing return - never the full chain', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 7,
+                dependencyCount: 7,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 7,
+                        memberIds: Array.from({ length: 7 }, (_, i) => `/repo/src/ring/ring${i}.ts`),
+                        exampleCycle: [
+                            ...Array.from({ length: 7 }, (_, i) => `/repo/src/ring/ring${i}.ts`),
+                            '/repo/src/ring/ring0.ts',
+                        ],
+                    },
+                ],
+            },
+        });
+
+        expect(html).toContain('ring0.ts &rarr; ring1.ts &rarr; &hellip; &rarr; ring0.ts');
+        // The middle members are deliberately never spelled out here (the
+        // full sequence is the concrete-cycle modal's job, unchanged) -
+        // this list's own row must not itself contain every member label.
+        expect(html).not.toContain('ring3.ts &rarr;');
+        expect(html).not.toContain('ring6.ts &rarr;');
+    });
+
+    it('never presents a shown SCC as itself "a cycle" - SCC identity and size, not cycle language, label each finding', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 3,
+                dependencyCount: 3,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 3,
+                        memberIds: ['/repo/a.ts', '/repo/b.ts', '/repo/c.ts'],
+                        exampleCycle: ['/repo/a.ts', '/repo/b.ts', '/repo/c.ts', '/repo/a.ts'],
+                    },
+                ],
+            },
+        });
+
+        // The finding is labeled by SCC identity/size ("SCC #1 · 3
+        // modules"), never "Cycle #1" or "3-module cycle" - matching the
+        // same distinction already established for the concrete-cycle
+        // modal and the per-node HUD block.
+        expect(html).toContain('SCC #1 &middot; 3 modules');
+        expect(html).not.toContain('Cycle #1');
+        expect(html).not.toContain('cycle #1');
+    });
+
+    it('never implies a shown representative cycle is the only cycle in its SCC', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 3,
+                dependencyCount: 3,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 3,
+                        memberIds: ['/repo/a.ts', '/repo/b.ts', '/repo/c.ts'],
+                        exampleCycle: ['/repo/a.ts', '/repo/b.ts', '/repo/c.ts', '/repo/a.ts'],
+                    },
+                ],
+            },
+        });
+
+        expect(html).toContain('one representative cycle');
+        expect(html).toContain('an SCC may contain others');
+        expect(html).not.toContain('the only cycle');
+        expect(html).not.toContain('This is the cycle');
+    });
+
+    it('shows the module and dependency counts, independent of how many (or few) SCCs exist', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 116,
+                dependencyCount: 215,
+                sccs: [
+                    { id: 0, size: 2, memberIds: ['/repo/a.ts', '/repo/b.ts'], exampleCycle: ['/repo/a.ts', '/repo/b.ts', '/repo/a.ts'] },
+                ],
+            },
+        });
+
+        expect(html).toContain('116 modules · 215 dependencies');
+    });
+
+    it('renders correct singular wording for exactly 1 module/1 dependency/1 SCC, not "1 modules"', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 1,
+                dependencyCount: 1,
+                sccs: [
+                    { id: 0, size: 2, memberIds: ['/repo/a.ts', '/repo/b.ts'], exampleCycle: ['/repo/a.ts', '/repo/b.ts', '/repo/a.ts'] },
+                ],
+            },
+        });
+
+        expect(html).toContain('1 module · 1 dependency');
+        expect(html).toContain('1 SCC containing cycles');
+    });
+
+    it('escapes a crafted file path in a member label - the overview runs at report-generation time, nothing downstream re-sanitizes it', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 2,
+                dependencyCount: 2,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 2,
+                        memberIds: ['/repo/"><script>alert(1)</script>.ts', '/repo/partner.ts'],
+                        exampleCycle: [
+                            '/repo/"><script>alert(1)</script>.ts',
+                            '/repo/partner.ts',
+                            '/repo/"><script>alert(1)</script>.ts',
+                        ],
+                    },
+                ],
+            },
+        });
+
+        expect(html).not.toContain('<script>alert(1)</script>');
+    });
+
+    it('renders the overview section ahead of the graph in document order - findings-first, not graph-first', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: { moduleCount: 1, dependencyCount: 0, sccs: [] },
+        });
+
+        const overviewIndex = html.indexOf('id="findings-overview"');
+        const graphIndex = html.indexOf('id="graph-explorer"');
+
+        expect(overviewIndex).toBeGreaterThan(-1);
+        expect(graphIndex).toBeGreaterThan(-1);
+        expect(overviewIndex).toBeLessThan(graphIndex);
+    });
+
+    it('the "explore" link targets the graph section by id - a plain anchor, no client JS required for it to work', () => {
+        const zero = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+        expect(zero).toContain('href="#graph-explorer"');
+
+        const withFindings = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 2,
+                dependencyCount: 2,
+                sccs: [{ id: 0, size: 2, memberIds: ['/repo/a.ts', '/repo/b.ts'], exampleCycle: ['/repo/a.ts', '/repo/b.ts', '/repo/a.ts'] }],
+            },
+        });
+        expect(withFindings).toContain('href="#graph-explorer"');
+    });
+});

@@ -1,5 +1,7 @@
+import path from 'node:path';
 import { CytoscapeEdge, CytoscapeNode } from '../adapters';
-import { CycleFindings } from '../findings/buildCycleFindings';
+import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
+import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
 import { styles } from './styles';
 
@@ -26,10 +28,96 @@ function renderSccSummaryText(findings: CycleFindings): string {
     return `Detected SCCs: ${findings.sccs.length} · Largest SCC: ${largestSize} modules.`;
 }
 
+// Findings-first overview (Phase 1). A one-line, presentation-only preview
+// of a finding's exampleCycle - never the full thing (that's what the
+// concrete-cycle modal, unchanged, is for). Past MAX_INLINE_CYCLE_MEMBERS
+// this deliberately collapses to just the start, its first hop, and the
+// closing return - not a proportional "first N / last N" abbreviation like
+// the modal's own buildCycleFlowCells() - since this list's whole point is
+// staying scannable at a glance for potentially several findings at once,
+// not being a second place to read a cycle in full. escapeHtml() is
+// required here, unlike the modal's client-side escapeHtml(): this runs in
+// Node at report-generation time, so nothing sanitizes these values later -
+// a crafted file/directory name is exactly as real an XSS vector here as
+// anywhere else user-controlled text reaches this report.
+const MAX_INLINE_CYCLE_MEMBERS = 4;
+
+function summarizeExampleCycle(exampleCycle: string[]): string {
+    const labels = exampleCycle.map((id) => escapeHtml(path.basename(id)));
+    const memberCount = labels.length - 1; // exampleCycle repeats the start at both ends
+
+    if (memberCount <= MAX_INLINE_CYCLE_MEMBERS) {
+        return labels.join(' &rarr; ');
+    }
+
+    return `${labels[0]} &rarr; ${labels[1]} &rarr; &hellip; &rarr; ${labels[0]}`;
+}
+
+// One finding = one non-trivial SCC, never "a cycle" - matches the same
+// distinction the concrete-cycle modal already draws (SCC #N, size, vs.
+// "one concrete cycle through X"). data-finding-scc-id is inert markup in
+// this phase - Phase 2's job is wiring an actual click behavior to it
+// (e.g. jumping into the graph focused on this SCC, mirroring focusScc());
+// this phase only needs the row to visually read as clickable and carry
+// the id a later phase can hook into, per the task's explicit scope split.
+function renderSccFindingRow(finding: SccFinding): string {
+    return `
+                    <li class="finding-row" data-finding-scc-id="${finding.id}">
+                        <div class="finding-row-header">SCC #${finding.id + 1} &middot; ${finding.size} modules</div>
+                        <div class="finding-cycle-preview">${summarizeExampleCycle(finding.exampleCycle)}</div>
+                    </li>`;
+}
+
+// The very first thing a reader sees - "what is this report, how big is
+// the project, is there anything here worth looking at" - before the graph
+// itself, which stays exactly as capable as before, just no longer the
+// mandatory first screen. Entirely server-rendered from the same
+// CycleFindings payload #scc-summary already uses (see
+// renderSccSummaryText above) - this section needs nothing from the client
+// script or the graph libraries to render correctly, including in a copy
+// of this report missing its assets/ directory.
+//
+// Deliberately never claims a shown exampleCycle is the only cycle in its
+// SCC - the caveat line above the list states this once, for the whole
+// list, rather than repeating a caveat on every row (this list's own goal
+// is staying scannable, not re-explaining SCC-vs-cycle semantics per
+// finding - that explanation already lives in the concrete-cycle modal and
+// the "What are dependency cycles?" educational modal, both unchanged).
+function renderFindingsOverview(findings: CycleFindings, graphScaleText: string): string {
+    if (findings.sccs.length === 0) {
+        return `
+        <section id="findings-overview">
+            <h1>Dependency health</h1>
+            <p class="findings-scale">${graphScaleText}</p>
+            <p class="findings-zero-state">No dependency cycles detected.</p>
+            <a class="findings-explore-link" href="#graph-explorer">Explore dependency graph</a>
+        </section>`;
+    }
+
+    const rowsHtml = findings.sccs.map(renderSccFindingRow).join('');
+
+    return `
+        <section id="findings-overview">
+            <h1>Dependency health</h1>
+            <p class="findings-scale">${graphScaleText}</p>
+
+            <h2>Dependency cycles</h2>
+            <p class="findings-caveat">
+                ${findings.sccs.length} SCC${findings.sccs.length === 1 ? '' : 's'} containing cycles - each row shows one representative cycle; an SCC may contain others.
+            </p>
+
+            <ol class="findings-list">${rowsHtml}
+            </ol>
+
+            <a class="findings-explore-link" href="#graph-explorer">Explore full graph</a>
+        </section>`;
+}
+
 export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     const { nodes, edges, findings } = args;
     const sccSummaryText = renderSccSummaryText(findings);
     const graphScaleText = `${findings.moduleCount} module${findings.moduleCount === 1 ? '' : 's'} · ${findings.dependencyCount} dependenc${findings.dependencyCount === 1 ? 'y' : 'ies'}`;
+    const findingsOverviewHtml = renderFindingsOverview(findings, graphScaleText);
 
     return `
     <!DOCTYPE html>
@@ -48,6 +136,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     </head>
     
     <body>
+        ${findingsOverviewHtml}
+
+        <!-- Findings-first overview (Phase 1). Everything from here down
+             to the matching closing </div> below is exactly what used to
+             be #cy/#hint/#toolbar/#edge-clarity-note as direct children of
+             <body> - unchanged among themselves, just wrapped in one
+             container so their own "position: absolute, no positioned
+             ancestor" rules (see styles.ts) resolve relative to THIS
+             wrapper's own top-left corner instead of the whole document's,
+             now that #findings-overview above pushes them down the page.
+             #bottom-hud stays outside this wrapper deliberately - it's
+             position: fixed, which is relative to the viewport regardless
+             of any ancestor, so wrapping it here would change nothing
+             except the diff. -->
+        <div id="graph-explorer">
         <div id="cy"></div>
         <div id="hint">
             <!-- Findings data foundation (Phase 0). Global entry point
@@ -159,6 +262,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
         <div id="edge-clarity-note">
             Edges route as right-angle connectors, spread out to stay clear of other modules.
+        </div>
         </div>
 
         <!-- Experimental (branch: experiment/cycle-map-v2). #minimap-container
