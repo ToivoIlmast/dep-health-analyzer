@@ -686,7 +686,8 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         expect(html).toContain("cycleDetailCloseButton?.addEventListener('click', () => cycleDetailModal?.close());");
 
         const bodyListenerStart = html.indexOf("cycleDetailBody?.addEventListener('click'");
-        const bodyListenerSource = html.slice(bodyListenerStart, bodyListenerStart + 400);
+        const bodyListenerEnd = html.indexOf("document.getElementById('findings-overview')", bodyListenerStart);
+        const bodyListenerSource = html.slice(bodyListenerStart, bodyListenerEnd);
         expect(bodyListenerSource).toContain('cycleDetailModal?.close();');
         expect(bodyListenerSource).toContain('navigateToSccMember(itemEl.dataset.cycleNavId);');
     });
@@ -1007,5 +1008,99 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
             },
         });
         expect(withFindings).toContain('href="#graph-explorer"');
+    });
+});
+
+describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
+    // Closes the loop: Findings -> concrete cycle modal -> Focus SCC ->
+    // full graph -> (existing, unchanged) graph -> concrete cycle modal.
+    // No new graph architecture, no new cycle-detection, no duplicated
+    // focusScc/findCycleThroughNode implementation - these tests assert
+    // that the new wiring calls the EXISTING functions rather than
+    // reimplementing anything, since Jest can't execute this against a
+    // live cytoscape instance (see this file's established convention).
+    // Real end-to-end behavior (does clicking a finding actually open the
+    // right SCC's cycle, does Show in graph actually focus it, do filters
+    // stay honest) is verified separately via headless Chrome against the
+    // real large-cycle-app fixture.
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('a finding row click is wired to openCycleDetailModalForScc via its own data-finding-scc-id, not a new listener per row', () => {
+        expect(html).toContain("document.getElementById('findings-overview')?.addEventListener('click'");
+        expect(html).toContain("event.target.closest('[data-finding-scc-id]')");
+        expect(html).toContain('openCycleDetailModalForScc(Number(row.dataset.findingSccId));');
+    });
+
+    it('openCycleDetailModalForScc looks members up by sccId only - never by module name/label - and never recomputes a cycle itself', () => {
+        const fnStart = html.indexOf('function openCycleDetailModalForScc(sccId)');
+        const fnEnd = html.indexOf('hudSelectedBody?.addEventListener', fnStart);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnStart).toBeGreaterThan(-1);
+        expect(fnSource).toContain("candidate.data('sccId') === sccId");
+        expect(fnSource).not.toContain('label');
+        // The only new logic is picking WHICH member to hand to the
+        // existing openCycleDetailModal(nodeId) - a plain sort, not a
+        // cycle-finding algorithm (no BFS/queue/adjacency of its own).
+        expect(fnSource).not.toContain('cameFrom');
+        expect(fnSource).not.toContain('adjacency');
+        expect(fnSource).toContain('.sort();');
+        expect(fnSource).toContain('openCycleDetailModal(memberIds[0]);');
+    });
+
+    it('openCycleDetailModalForScc picks the same deterministic start buildCycleFindings.ts already used server-side - the alphabetically smallest member', () => {
+        // Guarantees the modal opened from a finding shows the exact same
+        // cycle already previewed in the findings list, not a different
+        // arbitrary one - both this client-side pick and the server's own
+        // exampleCycle start use the identical rule (sort ascending, take
+        // the first).
+        const fnStart = html.indexOf('function openCycleDetailModalForScc(sccId)');
+        const fnEnd = html.indexOf('hudSelectedBody?.addEventListener', fnStart);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnSource).toMatch(/\.map\(\(candidate\) => candidate\.id\(\)\)\s*\.sort\(\);/);
+    });
+
+    it('"Show in graph" inside the concrete-cycle modal reuses focusScc(sccId) unchanged - not a second focus implementation', () => {
+        expect(html).toContain('class="cycle-detail-focus-btn"');
+        expect(html).toContain('data-focus-scc-id="${sccId}"');
+        expect(html).toContain('focusScc(Number(focusEl.dataset.focusSccId));');
+
+        // The button calling it lives inside openCycleDetailModal's own
+        // template literal, not a competing/duplicate focus function.
+        const focusSccOccurrences = html.match(/function focusScc\(sccId\)/g);
+        expect(focusSccOccurrences).toHaveLength(1);
+    });
+
+    it('"Show in graph" is honest about partial visibility - gated on the WHOLE SCC\'s visible member count, matching the HUD\'s own Focus SCC rule', () => {
+        expect(html).toContain('const visibleSccMemberCount = cy');
+        expect(html).toContain("candidate.data('sccId') === sccId && !candidate.hasClass('area-hidden')");
+        expect(html).toContain('visibleSccMemberCount >= 2');
+        expect(html).toContain('Show in graph (${visibleSccMemberCount} of ${sccSize} modules visible)');
+    });
+
+    it('"Show in graph" closes the modal and scrolls to #graph-explorer, since the user may be looking at #findings-overview when they click it', () => {
+        const focusElBlockStart = html.indexOf('const focusEl = event.target.closest');
+        const focusElBlockEnd = html.indexOf('const itemEl = event.target.closest', focusElBlockStart);
+        const focusElBlock = html.slice(focusElBlockStart, focusElBlockEnd);
+
+        expect(focusElBlockStart).toBeGreaterThan(-1);
+        expect(focusElBlock).toContain('cycleDetailModal?.close();');
+        expect(focusElBlock).toContain('focusScc(Number(focusEl.dataset.focusSccId));');
+        expect(focusElBlock).toContain("document.getElementById('graph-explorer')?.scrollIntoView();");
+    });
+
+    it('the existing direct-node-click -> HUD -> concrete-cycle-modal workflow is untouched', () => {
+        // Regression guard for the already-existing flow this task must
+        // not break: clicking "Show a dependency cycle" in the per-node
+        // HUD block still calls openCycleDetailModal directly with the
+        // clicked node's own id - unchanged from before this task.
+        expect(html).toContain("const cycleButtonEl = event.target.closest('[data-show-cycle-node-id]');");
+        expect(html).toContain('openCycleDetailModal(cycleButtonEl.dataset.showCycleNodeId);');
+    });
+
+    it('findCycleThroughNode itself is untouched by this task - still the one, unduplicated cycle-finding implementation', () => {
+        const occurrences = html.match(/function findCycleThroughNode\(sccId, startId\)/g);
+        expect(occurrences).toHaveLength(1);
     });
 });

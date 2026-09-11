@@ -2932,10 +2932,41 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         ? \`<p class="cycle-detail-hidden-note">&#8505; \${hiddenCount} module\${hiddenCount === 1 ? '' : 's'} hidden by the current filter.</p>\`
                         : '';
 
+                // Findings-first navigation (connecting the overview to
+                // the existing graph workflow). "Show in graph" reuses
+                // focusScc(sccId) completely unchanged (see the click
+                // wiring below) - never a second implementation of
+                // "focus this SCC." Gated on the WHOLE SCC's own
+                // membership (data.sccSize / a fresh cy.nodes() scan),
+                // not just this one representative cycle's own node set
+                // - a cycle can visit fewer members than the full SCC in
+                // principle, but Focus always operates on the whole SCC
+                // regardless of which cycle brought the user here.
+                // Omitted entirely (not just disabled) whenever fewer
+                // than 2 members are currently visible, matching the
+                // exact same rule the HUD's own Focus SCC button already
+                // uses - focusScc() would otherwise be a silent no-op.
+                const sccSize = node.data('sccSize');
+                const visibleSccMemberCount = cy
+                    .nodes()
+                    .filter(
+                        (candidate) => candidate.data('sccId') === sccId && !candidate.hasClass('area-hidden')
+                    ).length;
+                const showInGraphHtml =
+                    visibleSccMemberCount >= 2
+                        ? \`<button type="button" class="cycle-detail-focus-btn" data-focus-scc-id="\${sccId}">\${
+                              visibleSccMemberCount < sccSize
+                                  ? \`Show in graph (\${visibleSccMemberCount} of \${sccSize} modules visible)\`
+                                  : \`Show in graph\`
+                          }</button>\`
+                        : '';
+
                 if (cycleDetailBody) {
                     cycleDetailBody.innerHTML = \`
                         <p class="cycle-detail-subtitle">One concrete cycle through <strong>\${startLabel}</strong> within SCC #\${sccId + 1}.</p>
                         <p class="cycle-detail-note">This SCC may contain other dependency cycles.</p>
+
+                        \${showInGraphHtml}
 
                         <div class="cycle-detail-metadata">
                             <span class="cycle-meta-chip">\${memberNodes.length} modules</span>
@@ -2954,6 +2985,39 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 cycleDetailModal?.showModal();
             }
 
+            // Findings-first navigation. Deliberately does NOT recompute a
+            // cycle from scratch, and does NOT search for the SCC by
+            // module name - the finding row's own data-finding-scc-id
+            // (server-provided, see buildCycleFindings.ts/
+            // renderSccFindingRow in the Node-side template code) is the
+            // only input. The one new piece of logic is picking WHICH
+            // member to hand to the existing openCycleDetailModal(nodeId)
+            // - the alphabetically smallest member id, the exact same
+            // deterministic rule buildCycleFindings.ts already used
+            // server-side to pick exampleCycle's own start - so the cycle
+            // this opens is provably the same one already previewed in
+            // the findings list, not a different arbitrary one. Reuses
+            // openCycleDetailModal (and, inside it, findCycleThroughNode)
+            // completely unchanged - not a second modal-building
+            // implementation. Never filters by '.area-hidden' when
+            // picking the start - a concrete cycle is a fact about the
+            // whole analyzed graph, matching findCycleThroughNode's own
+            // established semantics, not about whatever the current
+            // Area/Connections filter happens to be showing.
+            function openCycleDetailModalForScc(sccId) {
+                const memberIds = cy
+                    .nodes()
+                    .filter((candidate) => candidate.data('sccId') === sccId)
+                    .map((candidate) => candidate.id())
+                    .sort();
+
+                if (memberIds.length === 0) {
+                    return;
+                }
+
+                openCycleDetailModal(memberIds[0]);
+            }
+
             hudSelectedBody?.addEventListener('click', (event) => {
                 const cycleButtonEl = event.target.closest('[data-show-cycle-node-id]');
 
@@ -2962,11 +3026,28 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
             });
 
-            // Clicking a module in the cycle's own ordered list closes the
-            // modal before navigating - the main graph pan/select this
-            // triggers would otherwise happen invisibly behind the native
-            // <dialog> backdrop.
+            // Clicking a module in the cycle's own ordered list, or the
+            // "Show in graph" button above it, both close the modal before
+            // acting - the main graph pan/select/focus either triggers
+            // would otherwise happen invisibly behind the native <dialog>
+            // backdrop. "Show in graph" additionally scrolls the page to
+            // #graph-explorer - the user may currently be looking at
+            // #findings-overview at the top of the page (that's how they
+            // could have opened this modal in the first place, via a
+            // finding row), and focusScc() itself only ever touches
+            // viewport/zoom on the existing graph instance, never page
+            // scroll - without this, "Show in graph" would silently
+            // succeed off-screen.
             cycleDetailBody?.addEventListener('click', (event) => {
+                const focusEl = event.target.closest('[data-focus-scc-id]');
+
+                if (focusEl) {
+                    cycleDetailModal?.close();
+                    focusScc(Number(focusEl.dataset.focusSccId));
+                    document.getElementById('graph-explorer')?.scrollIntoView();
+                    return;
+                }
+
                 const itemEl = event.target.closest('[data-cycle-nav-id]');
 
                 if (!itemEl) {
@@ -2975,6 +3056,25 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 cycleDetailModal?.close();
                 navigateToSccMember(itemEl.dataset.cycleNavId);
+            });
+
+            // Findings-first navigation: a finding row (server-rendered in
+            // #findings-overview, see renderSccFindingRow in the Node-side
+            // template code) carries its own sccId as inert markup
+            // (data-finding-scc-id) until now - this is the one listener
+            // that makes it interactive. Delegated on the section itself
+            // (not per-row) purely for consistency with how every other
+            // list in this report is wired, even though - unlike
+            // hudSelectedBody/cycleDetailBody - #findings-overview's
+            // content is static from page load and never regenerated.
+            document.getElementById('findings-overview')?.addEventListener('click', (event) => {
+                const row = event.target.closest('[data-finding-scc-id]');
+
+                if (!row) {
+                    return;
+                }
+
+                openCycleDetailModalForScc(Number(row.dataset.findingSccId));
             });
 
             cy.on('tap', 'node', (event) => {

@@ -441,6 +441,31 @@ export const styles = `
         color: #9ca3af;
     }
 
+    /* Findings-first navigation. The same conceptual action as the HUD's
+       own .hud-focus-scc-btn (both call the unchanged focusScc()), styled
+       to match it - a plain bordered "real action" button, not a heavier
+       primary-CTA look - just sized for this modal's own 13px type scale
+       rather than the compact HUD row's 11px. */
+    .cycle-detail-focus-btn {
+        display: inline-block;
+        margin: 2px 0 14px;
+
+        cursor: pointer;
+
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+
+        background: #f9fafb;
+        color: #374151;
+
+        padding: 5px 10px;
+        font-size: 12.5px;
+    }
+
+    .cycle-detail-focus-btn:hover {
+        background: #f3f4f6;
+    }
+
     .cycle-detail-metadata {
         display: flex;
         gap: 6px;
