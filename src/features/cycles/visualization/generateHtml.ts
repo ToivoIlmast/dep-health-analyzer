@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters/buildCytoscapeElements';
+import type { CycleFindings } from '../findings/buildCycleFindings';
 import { buildHtmlTemplate } from './template';
 import { copyAssets } from './copyAssets';
 
@@ -9,15 +10,17 @@ type GenerateHtmlArgs = {
         nodes: CytoscapeNode[];
         edges: CytoscapeEdge[];
     };
+    findings: CycleFindings;
     outputPath: string;
 };
 export function generateHtml(args: GenerateHtmlArgs): void {
     const {
         graph: { nodes, edges },
+        findings,
         outputPath,
     } = args;
 
-    const html = buildHtmlTemplate({ nodes, edges });
+    const html = buildHtmlTemplate({ nodes, edges, findings });
 
     const resolvedPath = path.resolve(outputPath);
     const directory = path.dirname(resolvedPath);

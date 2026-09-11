@@ -128,8 +128,15 @@ describe('analyzeCycles', () => {
 
         await analyzeCycles({ ...baseArgs, mode: MODES.HTML, enableHtmlReport: true });
 
+        // buildCycleFindings() is real (not mocked) - it's a small, pure
+        // computation over the scanned graph, deliberately exercised for
+        // real here rather than mocked, so this test also catches
+        // findings/analyzeCycles drifting apart. Derived from
+        // makeScanResult()'s own graph (2 nodes, 1 edge) with findSCCs
+        // mocked to return no SCCs.
         expect(mockedGenerateHtml).toHaveBeenCalledWith({
             graph: elements,
+            findings: { moduleCount: 2, dependencyCount: 1, sccs: [] },
             outputPath: './out.html',
         });
     });

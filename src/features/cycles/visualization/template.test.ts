@@ -1,5 +1,14 @@
 import { buildHtmlTemplate } from './template';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters';
+import type { CycleFindings } from '../findings/buildCycleFindings';
+
+// Most tests in this file exercise something other than the findings
+// summary itself (escaping, SCC navigation, Focus, the cycle modal) and
+// don't care about its specific numbers - this is the shared "nothing to
+// report" payload for those, matching what a real 0-cycle project would
+// produce. Tests that DO care about the summary's own rendering build
+// their own CycleFindings value instead of using this.
+const EMPTY_FINDINGS: CycleFindings = { moduleCount: 0, dependencyCount: 0, sccs: [] };
 
 describe('buildHtmlTemplate HTML/script escaping', () => {
     it('does not embed a raw </script> sequence when a node id contains one', () => {
@@ -21,7 +30,7 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
         ];
         const edges: CytoscapeEdge[] = [];
 
-        const html = buildHtmlTemplate({ nodes, edges });
+        const html = buildHtmlTemplate({ nodes, edges, findings: EMPTY_FINDINGS });
 
         expect(html).not.toContain('</script><script>alert(1)</script>');
     });
@@ -49,7 +58,7 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
         // tag for the inline script itself - any more means something
         // (almost certainly a comment) is spelling out the literal
         // sequence again.
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html.match(/<\/script>/g)).toHaveLength(4);
     });
@@ -69,14 +78,14 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
         ];
         const edges: CytoscapeEdge[] = [];
 
-        const html = buildHtmlTemplate({ nodes, edges });
+        const html = buildHtmlTemplate({ nodes, edges, findings: EMPTY_FINDINGS });
 
         expect(html).toContain('src/a.ts');
         expect(html).toContain('"label":"a.ts"');
     });
 
     it('defines a client-side escapeHtml helper used before setting tooltip innerHTML', () => {
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain('function escapeHtml(value)');
         expect(html).toContain('escapeHtml(title)');
@@ -92,7 +101,7 @@ describe('buildHtmlTemplate SCC-vs-cycle terminology', () => {
     // describe the SCC as a whole rather than asserting the group forms
     // one specific cycle, since nothing in this codebase computes an
     // actual cycle path.
-    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
     it('the per-node SCC context block describes an SCC, not "a cycle"', () => {
         expect(html).toContain('strongly connected component (SCC #');
@@ -118,21 +127,62 @@ describe('buildHtmlTemplate SCC-vs-cycle terminology', () => {
     });
 });
 
-describe('buildHtmlTemplate global SCC summary', () => {
-    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+describe('buildHtmlTemplate global SCC summary (findings data foundation)', () => {
+    // Findings data foundation (Phase 0): this summary used to be computed
+    // client-side, aggregating over cy.nodes()'s sccId/sccSize attributes
+    // after the graph library loaded (computeSccSummary(cy)/
+    // renderSccSummary(cy), both removed). It's now server-rendered
+    // directly from the real CycleFindings payload (buildCycleFindings.ts,
+    // Kosaraju/findSCCs-derived) - these tests assert the RENDERED HTML
+    // text for real findings shapes, not client-side source structure,
+    // since there's no client-side computation left to inspect.
 
-    it('computes the summary from cy\'s own existing node data, not a second SCC detection', () => {
-        // No new analysis: this must read the exact same per-node fields
-        // (data(sccId)/data(sccSize)) buildCycleContextHtml already reads,
-        // via cy.nodes() - never re-deriving membership from edges/graph
-        // structure on the client.
-        expect(html).toContain('function computeSccSummary(cy)');
-        expect(html).toContain("node.data('sccId')");
-        expect(html).toContain("node.data('sccSize')");
+    it('renders a neutral empty state instead of a fabricated "0 cycles" when there are no SCCs', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: { moduleCount: 3, dependencyCount: 2, sccs: [] },
+        });
+
+        expect(html).toContain('No dependency SCCs detected.');
+        expect(html).toContain('3 modules · 2 dependencies');
     });
 
-    it('shows a neutral empty state instead of a fabricated "0 cycles"', () => {
-        expect(html).toContain('No dependency SCCs detected.');
+    it('renders the count and largest size for a single SCC', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 5,
+                dependencyCount: 6,
+                sccs: [{ id: 0, size: 3, memberIds: ['a.ts', 'b.ts', 'c.ts'], exampleCycle: ['a.ts', 'b.ts', 'c.ts', 'a.ts'] }],
+            },
+        });
+
+        expect(html).toContain('Detected SCCs: 1 · Largest SCC: 3 modules.');
+        expect(html).toContain('5 modules · 6 dependencies');
+    });
+
+    it('renders the largest size among multiple SCCs of different sizes, not the first or last', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 16,
+                dependencyCount: 17,
+                sccs: [
+                    { id: 0, size: 2, memberIds: ['left.ts', 'right.ts'], exampleCycle: ['left.ts', 'right.ts', 'left.ts'] },
+                    {
+                        id: 1,
+                        size: 7,
+                        memberIds: ['ring0.ts', 'ring1.ts', 'ring2.ts', 'ring3.ts', 'ring4.ts', 'ring5.ts', 'ring6.ts'],
+                        exampleCycle: ['ring0.ts', 'ring1.ts', 'ring2.ts', 'ring3.ts', 'ring4.ts', 'ring5.ts', 'ring6.ts', 'ring0.ts'],
+                    },
+                ],
+            },
+        });
+
+        expect(html).toContain('Detected SCCs: 2 · Largest SCC: 7 modules.');
     });
 
     it('never phrases the SCC summary as a cycle count', () => {
@@ -140,29 +190,37 @@ describe('buildHtmlTemplate global SCC summary', () => {
         // cycle count (one SCC can contain more than one cycle). Neither
         // wording direction ("N cycles detected" / "N SCCs" mislabeled as
         // cycles) should ever appear for this summary.
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 2,
+                dependencyCount: 2,
+                sccs: [{ id: 0, size: 2, memberIds: ['a.ts', 'b.ts'], exampleCycle: ['a.ts', 'b.ts', 'a.ts'] }],
+            },
+        });
+
         expect(html.toLowerCase()).not.toContain('cycles detected');
         expect(html).toContain('Detected SCCs:');
     });
 
-    it('excludes a trivial 1-module component from the count, defense in depth', () => {
-        // buildCytoscapeElements.ts's realSccs filter (scc.length > 1)
-        // already guarantees sccId is never set for a 1-module component,
-        // but computeSccSummary must not blindly trust that forever - this
-        // asserts the client-side guard exists independently.
-        expect(html).toContain('sccSize >= 2');
+    it('states on-screen that the count covers the whole analyzed graph, not the current filter', () => {
+        // This caption predates being backed by real data and must keep
+        // being true now that it is: moduleCount/dependencyCount/sccs all
+        // come from analyzeCycles.ts scanning the WHOLE project, never
+        // from whatever the Area/Connections filters currently show -
+        // there is no client-side recomputation left that could silently
+        // make this caption inaccurate.
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+        expect(html).toContain('entire analyzed graph, not the current filtered view');
     });
 
-    it('states on-screen that the count covers the whole analyzed graph, not the current filter', () => {
-        // Area/Connections filters never remove real nodes from cy (only
-        // toggle a display:none class) and never touch sccId/sccSize, so
-        // computeSccSummary(cy) - reading cy.nodes(), not visibleNodes(cy)
-        // - already describes the full graph by construction. This
-        // assertion is the guard against that silently becoming untrue:
-        // if a future change ever makes the summary filter-aware, this
-        // exact caption must be updated in the same change, not left
-        // claiming "entire analyzed graph" for a now-filtered number.
-        expect(html).toContain('entire analyzed graph, not the current filtered view');
-        expect(html).toContain('cy.nodes()');
+    it('no longer computes the summary client-side - the old cy.nodes()-based aggregation is gone', () => {
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+        expect(html).not.toContain('function computeSccSummary');
+        expect(html).not.toContain('function renderSccSummary');
     });
 });
 
@@ -188,7 +246,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
         // navigateToSccMember() (a click on an "Other modules in this
         // SCC" name) call it, rather than each having its own copy of the
         // select/highlight/HUD-update sequence.
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain('function selectNode(node)');
         expect(html).toMatch(/cy\.on\('tap', 'node', \(event\) => \{\s*selectNode\(event\.target\);\s*\}\)/);
@@ -200,7 +258,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
     });
 
     it('navigateToSccMember looks nodes up by their real, stable cytoscape id - never by label/path text', () => {
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain('function navigateToSccMember(nodeId)');
         expect(html).toContain('cy.getElementById(nodeId)');
@@ -209,7 +267,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
     });
 
     it('delegates the click handler on the HUD panel itself, since its innerHTML is fully replaced on every selection', () => {
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain("hudSelectedBody?.addEventListener('click'");
         expect(html).toContain("event.target.closest('[data-scc-nav-id]')");
@@ -230,7 +288,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
 
     it('embeds full sccId/sccSize/id data for every member of a 7-node SCC', () => {
         const ring = Array.from({ length: 7 }, (_, i) => sccNode(`/repo/src/ring/ring${i}.ts`, `ring${i}.ts`, 0, 7));
-        const html = buildHtmlTemplate({ nodes: ring, edges: [] });
+        const html = buildHtmlTemplate({ nodes: ring, edges: [], findings: EMPTY_FINDINGS });
 
         for (let i = 0; i < 7; i++) {
             expect(html).toContain(`"id":"/repo/src/ring/ring${i}.ts"`);
@@ -244,7 +302,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
             sccNode('/repo/src/pair/left.ts', 'left.ts', 1, 2),
             sccNode('/repo/src/pair/right.ts', 'right.ts', 1, 2),
         ];
-        const html = buildHtmlTemplate({ nodes: pair, edges: [] });
+        const html = buildHtmlTemplate({ nodes: pair, edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain('"id":"/repo/src/pair/left.ts"');
         expect(html).toContain('"id":"/repo/src/pair/right.ts"');
@@ -263,7 +321,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
                 areaColor: '#9ca3af',
             },
         };
-        const html = buildHtmlTemplate({ nodes: [plain], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [plain], edges: [], findings: EMPTY_FINDINGS });
 
         // buildCycleContextHtml()'s existing, untouched guard
         // (data.sccSize < 2 || data.sccId === undefined -> return '')
@@ -276,7 +334,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
     });
 
     it('buildCycleContextHtml only ever renders member-navigation markup for a real (2+) SCC', () => {
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain('data.sccSize < 2 || data.sccId === undefined');
     });
@@ -288,7 +346,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
         // renders the static page shell, not a live cy instance) - this
         // confirms the source contains that exact guard and wording, so a
         // hidden member never gets a data-scc-nav-id in the first place.
-        const html = buildHtmlTemplate({ nodes: [], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain("candidate.hasClass('area-hidden')");
         expect(html).toContain('hud-scc-member-hidden');
@@ -305,7 +363,7 @@ describe('buildHtmlTemplate SCC member navigation', () => {
         // specifically.
         const malicious = sccNode('/repo/"><script>alert(1)</script>.ts', 'evil.ts', 2, 2);
         const partner = sccNode('/repo/partner.ts', 'partner.ts', 2, 2);
-        const html = buildHtmlTemplate({ nodes: [malicious, partner], edges: [] });
+        const html = buildHtmlTemplate({ nodes: [malicious, partner], edges: [], findings: EMPTY_FINDINGS });
 
         expect(html).toContain('function escapeAttribute(value)');
         expect(html).not.toContain('data-scc-nav-id="/repo/"><script>alert(1)</script>.ts"');
@@ -325,7 +383,7 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
     // real click producing a real, larger viewport) is verified separately
     // via headless Chrome against the real large-cycle-app fixture (both its
     // 7-node ring and its 2-node pair).
-    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
     it('renders a Focus SCC action, gated behind the same real-SCC (2+ members) guard as member navigation', () => {
         // focusButtonHtml is computed inside buildCycleContextHtml, after
@@ -450,19 +508,21 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
     });
 
     it('the global SCC summary stays a whole-graph count, unaffected by Focus - never becomes a focused-subset summary', () => {
-        // computeSccSummary(cy) (see the "global SCC summary" describe
-        // block above) reads cy.nodes() - the WHOLE graph's data - and is
-        // computed once, independent of any focusedSccId state. Focus adds
-        // no code path that re-runs or narrows it: this re-confirms (in
-        // this new describe block, since it's the exact property Focus
-        // must not break) that computeSccSummary's own source has no
-        // reference to focusedSccId/focusScc.
-        const summaryFnStart = html.indexOf('function computeSccSummary(cy)');
-        const summaryFnEnd = html.indexOf('function ', summaryFnStart + 1);
-        const summaryFnSource = html.slice(summaryFnStart, summaryFnEnd);
+        // Findings data foundation (Phase 0): the summary is now
+        // server-rendered static markup (#scc-summary/#scc-summary-text,
+        // filled in from the real CycleFindings payload before this
+        // script ever runs) rather than something computeSccSummary(cy)
+        // recomputed client-side - so the property this test protects
+        // ("Focus can't narrow the summary to just the focused SCC") now
+        // holds by construction, not by a client-side guard that could
+        // drift. This re-confirms that construction directly: neither
+        // focusScc() nor exitFocus() ever writes to the summary's markup.
+        const focusFnStart = html.indexOf('function focusScc(sccId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusAndExitSource = html.slice(focusFnStart, focusFnEnd);
 
-        expect(summaryFnSource).not.toContain('focusedSccId');
-        expect(summaryFnSource).not.toContain('focusScc');
+        expect(focusFnStart).toBeGreaterThan(-1);
+        expect(focusAndExitSource).not.toContain('scc-summary');
         expect(html).toContain('entire analyzed graph, not the current filtered view');
     });
 });
@@ -483,7 +543,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
     // every edge in it being a real graph edge, and the same input always
     // producing the same output (called twice) - is verified separately
     // via headless Chrome against the real large-cycle-app fixture.
-    const html = buildHtmlTemplate({ nodes: [], edges: [] });
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
     it('finds one 2-node cycle (A -> B -> A) via a bounded BFS back to the start, not full enumeration', () => {
         // The algorithm: step to the selected node's own first (sorted,
