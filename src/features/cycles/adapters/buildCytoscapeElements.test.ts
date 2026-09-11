@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { DependencyGraph } from '@core/graph/types';
 import { buildCytoscapeElements } from './buildCytoscapeElements';
 import { ModuleMetrics } from '@features/cycles/metrics/types';
@@ -670,6 +671,43 @@ describe('buildCytoscapeElements', () => {
 
             expect(node?.data.id).toBe('/repo/a/very/deeply/nested/directory/structure/file.ts');
             expect(node?.data.dir).toBe('a/very/deeply/nested/directory/structure');
+        });
+
+        it('stays forward-slash even when path.relative returns a Windows-style backslash path', () => {
+            // path.relative rebuilds its result using the platform's own
+            // native separator regardless of the input paths' own style -
+            // on win32 that's '\\', unlike path.dirname (which only
+            // truncates, never rewrites). This dev machine is Linux, so
+            // path.relative here always returns '/' already - the bug this
+            // guards (CI failure on windows-latest: 'src\\core' instead of
+            // 'src/core') can only be reproduced by directly forcing what
+            // path.relative returns, not by picking different input paths.
+            const relativeSpy = jest
+                .spyOn(path, 'relative')
+                .mockReturnValue('src\\features\\regression\\discover.ts');
+
+            try {
+                const graph: DependencyGraph = {
+                    nodes: new Set(['/repo/src/features/regression/discover.ts']),
+                    edges: new Map<string, Set<string>>(),
+                };
+                const metrics = new Map<string, ModuleMetrics>([
+                    ['/repo/src/features/regression/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+                ]);
+
+                const result = buildCytoscapeElements({
+                    graph,
+                    metrics,
+                    sccs: [],
+                    projectRoot: '/repo',
+                });
+
+                expect(result.nodes[0]?.data.dir).toBe('src/features/regression');
+                expect(result.nodes[0]?.data.dir).not.toContain('\\');
+                expect(result.nodes[0]?.data.area).toBe('features');
+            } finally {
+                relativeSpy.mockRestore();
+            }
         });
     });
 });

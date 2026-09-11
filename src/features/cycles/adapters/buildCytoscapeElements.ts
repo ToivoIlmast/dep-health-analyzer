@@ -219,7 +219,18 @@ function buildNodes(args: BuildNodes): CytoscapeNode[] {
         // filesystem path. Falls back to the raw id's own directory
         // otherwise - harmless for the synthetic single-letter ids used in
         // this file's own unit tests.
-        const relativePath = projectRoot ? path.relative(projectRoot, node) : node;
+        // path.relative rebuilds its result using the platform's native
+        // separator regardless of the input paths' own style - on Windows
+        // that means backslashes, even though every other path in this
+        // codebase is normalized to '/' (see scanProject.ts, getArea.ts,
+        // etc.). Normalize immediately, before dir/area derive from it -
+        // path.dirname only truncates (never rewrites separators), so
+        // computing it on an already-normalized string keeps dir/
+        // displayDir forward-slash on every platform.
+        const relativePath = (projectRoot ? path.relative(projectRoot, node) : node).replaceAll(
+            '\\',
+            '/'
+        );
         const dir = path.dirname(relativePath);
         const normalizedDir = dir === '.' ? '' : dir;
         const area = computeModuleArea(relativePath);
