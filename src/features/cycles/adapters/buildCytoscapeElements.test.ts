@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { DependencyGraph } from '@core/graph/types';
 import { buildCytoscapeElements } from './buildCytoscapeElements';
 import { ModuleMetrics } from '@features/cycles/metrics/types';
@@ -137,7 +138,39 @@ describe('buildCytoscapeElements', () => {
         ).toBe(1);
     });
 
-    it('filters out SCCs smaller than size 3', () => {
+    it('filters out trivial size-1 "SCCs" (a node not part of any real cycle)', () => {
+        // findSCCs() (Kosaraju) returns a size-1 component for every node
+        // that isn't part of a real cycle - that's the case that must stay
+        // filtered out, not "anything smaller than 3".
+        const graph: DependencyGraph = {
+            nodes: new Set(['A', 'B']),
+            edges: new Map<string, Set<string>>([['A', new Set(['B'])], ['B', new Set()]]),
+        };
+
+        const sccs = [['A'], ['B']];
+
+        const metrics = new Map<string, ModuleMetrics>([
+            ['A', { ca: 0, ce: 1, instability: 1 }],
+            ['B', { ca: 1, ce: 0, instability: 0 }],
+        ]);
+
+        const result = buildCytoscapeElements({
+            graph,
+            metrics,
+            sccs,
+        });
+
+        expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(0);
+    });
+
+    it('assigns SCC classes to a real 2-node cycle - the CLI already reports this as a real cycle and the graph must show it too', () => {
+        // A direct real bug: the previous `scc.length > 2` filter treated a
+        // 2-node cycle (A <-> B, the single most common real-world circular
+        // import shape) exactly like an ordinary, non-cyclic node - no
+        // color, no `.scc` class - even though `cycles`' own "Cycles
+        // detected"/"Largest SCC" text output correctly reported it. Fixed
+        // to `> 1`, which only ever excludes the genuinely non-cyclic
+        // size-1 case above.
         const graph: DependencyGraph = {
             nodes: new Set(['A', 'B']),
             edges: new Map<string, Set<string>>([
@@ -159,7 +192,7 @@ describe('buildCytoscapeElements', () => {
             sccs,
         });
 
-        expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(0);
+        expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(2);
     });
 
     it('assigns SCC classes to cyclic nodes', () => {
@@ -187,6 +220,90 @@ describe('buildCytoscapeElements', () => {
         });
 
         expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(3);
+    });
+
+    describe('sccId (cycle-node-details data)', () => {
+        it('gives every member of the same cycle the identical sccId', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['A', 'B', 'C']),
+                edges: new Map<string, Set<string>>([
+                    ['A', new Set(['B'])],
+                    ['B', new Set(['C'])],
+                    ['C', new Set(['A'])],
+                ]),
+            };
+
+            const sccs = [['A', 'B', 'C']];
+
+            const metrics = new Map<string, ModuleMetrics>([
+                ['A', { ca: 1, ce: 1, instability: 0.5 }],
+                ['B', { ca: 1, ce: 1, instability: 0.5 }],
+                ['C', { ca: 1, ce: 1, instability: 0.5 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs });
+
+            const ids = result.nodes.map((node) => node.data.sccId);
+
+            expect(ids[0]).toBe(0);
+            expect(new Set(ids).size).toBe(1);
+        });
+
+        it('gives two independent cycles distinct sccIds, not the same one and not derived from color', () => {
+            // color wraps around defaultColors' 8 entries, so once a
+            // project has more simultaneous cycles than that, matching "is
+            // this the same cycle" by color alone would be wrong - sccId
+            // must stay distinct regardless of how many SCCs exist.
+            const graph: DependencyGraph = {
+                nodes: new Set(['A', 'B', 'C', 'D']),
+                edges: new Map<string, Set<string>>([
+                    ['A', new Set(['B'])],
+                    ['B', new Set(['A'])],
+
+                    ['C', new Set(['D'])],
+                    ['D', new Set(['C'])],
+                ]),
+            };
+
+            const sccs = [
+                ['A', 'B'],
+                ['C', 'D'],
+            ];
+
+            const metrics = new Map<string, ModuleMetrics>([
+                ['A', { ca: 1, ce: 1, instability: 0.5 }],
+                ['B', { ca: 1, ce: 1, instability: 0.5 }],
+                ['C', { ca: 1, ce: 1, instability: 0.5 }],
+                ['D', { ca: 1, ce: 1, instability: 0.5 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs });
+
+            const sccIdOf = (id: string) => result.nodes.find((node) => node.data.id === id)?.data.sccId;
+
+            expect(sccIdOf('A')).toBe(sccIdOf('B'));
+            expect(sccIdOf('C')).toBe(sccIdOf('D'));
+            expect(sccIdOf('A')).not.toBe(sccIdOf('C'));
+        });
+
+        it('leaves sccId undefined for a node that is not part of any real cycle', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['A', 'B']),
+                edges: new Map<string, Set<string>>([
+                    ['A', new Set(['B'])],
+                    ['B', new Set()],
+                ]),
+            };
+
+            const metrics = new Map<string, ModuleMetrics>([
+                ['A', { ca: 0, ce: 1, instability: 1 }],
+                ['B', { ca: 1, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            expect(result.nodes.every((node) => node.data.sccId === undefined)).toBe(true);
+        });
     });
 
     it('stores architecture metrics in node data', () => {
@@ -249,12 +366,18 @@ describe('buildCytoscapeElements', () => {
         expect(nodeA?.data.size).toBeGreaterThan(nodeB?.data.size ?? 0);
     });
 
-    it('uses basename labels for high-degree nodes', () => {
+    it('uses basename labels for every node, not just high-degree ones', () => {
+        // A real bug: labels used to be gated behind `degree > 3`, so on a
+        // normal-sized project (where most files have low degree) most
+        // nodes rendered with no label at all - the reader couldn't tell
+        // which module/file most of the graph even was without hovering
+        // every node one at a time. Every node now gets its own short,
+        // real basename regardless of degree.
         const graph: DependencyGraph = {
-            nodes: new Set(['/src/app/service.ts', 'B', 'C', 'D', 'E']),
+            nodes: new Set(['/src/app/service.ts', '/src/app/b.ts', 'C', 'D', 'E']),
             edges: new Map<string, Set<string>>([
-                ['/src/app/service.ts', new Set(['B', 'C', 'D', 'E'])],
-                ['B', new Set()],
+                ['/src/app/service.ts', new Set(['/src/app/b.ts', 'C', 'D', 'E'])],
+                ['/src/app/b.ts', new Set()],
                 ['C', new Set()],
                 ['D', new Set()],
                 ['E', new Set()],
@@ -265,7 +388,7 @@ describe('buildCytoscapeElements', () => {
 
         const metrics = new Map<string, ModuleMetrics>([
             ['/src/app/service.ts', { ca: 0, ce: 4, instability: 1 }],
-            ['B', { ca: 1, ce: 0, instability: 0 }],
+            ['/src/app/b.ts', { ca: 1, ce: 0, instability: 0 }],
             ['C', { ca: 1, ce: 0, instability: 0 }],
             ['D', { ca: 1, ce: 0, instability: 0 }],
             ['E', { ca: 1, ce: 0, instability: 0 }],
@@ -278,9 +401,11 @@ describe('buildCytoscapeElements', () => {
         });
 
         const serviceNode = result.nodes.find((node) => node.data.id === '/src/app/service.ts');
+        const bNode = result.nodes.find((node) => node.data.id === '/src/app/b.ts');
 
-        expect(result.nodes.filter((node) => node.data.label !== '').length).toBe(1);
+        expect(result.nodes.filter((node) => node.data.label !== '').length).toBe(5);
         expect(serviceNode?.data.label).toBe('service.ts');
+        expect(bNode?.data.label).toBe('b.ts');
     });
 
     it('includes a fully isolated file (zero imports, zero importers) - not just nodes that appear in the edges map', () => {
@@ -379,5 +504,210 @@ describe('buildCytoscapeElements', () => {
         expect(
             result.nodes.filter((node) => node.data.id === 'E' && node.classes !== 'scc').length
         ).toBe(1);
+    });
+
+    describe('module area (structural, derived from each node\'s own path)', () => {
+        it('reads the area as the segment after a leading "src" wrapper', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/src/core/scanner/discover.ts', '/src/features/cycles/analyze.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/src/core/scanner/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+                ['/src/features/cycles/analyze.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            const core = result.nodes.find((node) => node.data.id === '/src/core/scanner/discover.ts');
+            const features = result.nodes.find((node) => node.data.id === '/src/features/cycles/analyze.ts');
+
+            expect(core?.data.area).toBe('core');
+            expect(features?.data.area).toBe('features');
+        });
+
+        it('does not assume a "src" wrapper - a top-level folder outside src is its own area', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/scripts/build.js']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/scripts/build.js', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            expect(result.nodes[0]?.data.area).toBe('scripts');
+        });
+
+        it('falls back to a neutral area for a file with no directory at all', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['index.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['index.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            expect(result.nodes[0]?.data.area).toBe('(root)');
+        });
+
+        it('assigns the same color to the same area, deterministically', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/src/core/a.ts', '/src/core/b.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/src/core/a.ts', { ca: 0, ce: 0, instability: 0 }],
+                ['/src/core/b.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [] });
+            const colors = new Set(result.nodes.map((node) => node.data.areaColor));
+
+            expect(colors.size).toBe(1);
+        });
+
+        it('gives different areas different colors, and repeats the same result across separate calls', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/src/core/a.ts', '/src/features/b.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/src/core/a.ts', { ca: 0, ce: 0, instability: 0 }],
+                ['/src/features/b.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const first = buildCytoscapeElements({ graph, metrics, sccs: [] });
+            const second = buildCytoscapeElements({ graph, metrics, sccs: [] });
+
+            const coreColorFirst = first.nodes.find((node) => node.data.area === 'core')?.data.areaColor;
+            const featuresColorFirst = first.nodes.find((node) => node.data.area === 'features')?.data.areaColor;
+            const coreColorSecond = second.nodes.find((node) => node.data.area === 'core')?.data.areaColor;
+
+            expect(coreColorFirst).not.toBe(featuresColorFirst);
+            expect(coreColorFirst).toBe(coreColorSecond);
+        });
+
+        it('resolves the area relative to an explicit projectRoot when one is given', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/repo/src/core/discover.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/repo/src/core/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({
+                graph,
+                metrics,
+                sccs: [],
+                projectRoot: '/repo',
+            });
+
+            expect(result.nodes[0]?.data.area).toBe('core');
+        });
+    });
+
+    describe('displayDir (presentation-only abbreviation of a long path, on-node only)', () => {
+        it('leaves a short directory untouched', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/repo/src/core/discover.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/repo/src/core/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [], projectRoot: '/repo' });
+
+            expect(result.nodes[0]?.data.dir).toBe('src/core');
+            expect(result.nodes[0]?.data.displayDir).toBe('src/core');
+        });
+
+        it('abbreviates a long directory to its trailing segments with a leading ellipsis, without touching the real dir', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set([
+                    '/repo/src/features/regression/ci/reporting/defaultModeReport/types.ts',
+                ]),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                [
+                    '/repo/src/features/regression/ci/reporting/defaultModeReport/types.ts',
+                    { ca: 0, ce: 0, instability: 0 },
+                ],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [], projectRoot: '/repo' });
+            const node = result.nodes[0];
+
+            // The real, canonical dir is completely untouched - this is
+            // the value a tooltip/future HUD must keep being able to rely
+            // on regardless of how the node itself abbreviates it.
+            expect(node?.data.dir).toBe(
+                'src/features/regression/ci/reporting/defaultModeReport'
+            );
+            expect(node?.data.displayDir.startsWith('…/')).toBe(true);
+            expect(node?.data.displayDir.length).toBeLessThan(node!.data.dir.length);
+            // Trailing segments (closest to the actual file) are what's
+            // kept, not the leading ones.
+            expect(node?.data.displayDir.endsWith('defaultModeReport')).toBe(true);
+        });
+
+        it('never lets the abbreviation grow the id/dir themselves', () => {
+            const graph: DependencyGraph = {
+                nodes: new Set(['/repo/a/very/deeply/nested/directory/structure/file.ts']),
+                edges: new Map<string, Set<string>>(),
+            };
+            const metrics = new Map<string, ModuleMetrics>([
+                ['/repo/a/very/deeply/nested/directory/structure/file.ts', { ca: 0, ce: 0, instability: 0 }],
+            ]);
+
+            const result = buildCytoscapeElements({ graph, metrics, sccs: [], projectRoot: '/repo' });
+            const node = result.nodes[0];
+
+            expect(node?.data.id).toBe('/repo/a/very/deeply/nested/directory/structure/file.ts');
+            expect(node?.data.dir).toBe('a/very/deeply/nested/directory/structure');
+        });
+
+        it('stays forward-slash even when path.relative returns a Windows-style backslash path', () => {
+            // path.relative rebuilds its result using the platform's own
+            // native separator regardless of the input paths' own style -
+            // on win32 that's '\\', unlike path.dirname (which only
+            // truncates, never rewrites). This dev machine is Linux, so
+            // path.relative here always returns '/' already - the bug this
+            // guards (CI failure on windows-latest: 'src\\core' instead of
+            // 'src/core') can only be reproduced by directly forcing what
+            // path.relative returns, not by picking different input paths.
+            const relativeSpy = jest
+                .spyOn(path, 'relative')
+                .mockReturnValue('src\\features\\regression\\discover.ts');
+
+            try {
+                const graph: DependencyGraph = {
+                    nodes: new Set(['/repo/src/features/regression/discover.ts']),
+                    edges: new Map<string, Set<string>>(),
+                };
+                const metrics = new Map<string, ModuleMetrics>([
+                    ['/repo/src/features/regression/discover.ts', { ca: 0, ce: 0, instability: 0 }],
+                ]);
+
+                const result = buildCytoscapeElements({
+                    graph,
+                    metrics,
+                    sccs: [],
+                    projectRoot: '/repo',
+                });
+
+                expect(result.nodes[0]?.data.dir).toBe('src/features/regression');
+                expect(result.nodes[0]?.data.dir).not.toContain('\\');
+                expect(result.nodes[0]?.data.area).toBe('features');
+            } finally {
+                relativeSpy.mockRestore();
+            }
+        });
     });
 });

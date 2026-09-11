@@ -119,6 +119,7 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
             graph: result.graph,
             metrics: instabilityMetrics,
             sccs,
+            projectRoot: process.cwd(),
         });
 
         generateHtml({ graph: elements, outputPath: htmlReportOutputPath });

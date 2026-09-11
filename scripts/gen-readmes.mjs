@@ -300,6 +300,25 @@ const readmes = {
             'this is a genuine test of `cycles`\' algorithm at a larger, denser scale than the rest of the corpus - not expected to crash (round 4\'s known stack-overflow limitation needs ~4,649 nodes in a LINEAR chain; this fixture\'s ~40 nodes should be well within safe range even considering its cyclic density)',
         ],
     },
+    'large-cycle-app': {
+        ecosystem: 'Plain TypeScript, no framework, synthetic stress shape',
+        purpose: 'Focused, static graph-visualization stress fixture: a large (7-node) SCC, a cycle member with many real external dependencies, and a second, independent, small cycle both reachable from one shared entry point - the shapes cyclic-app/nightmare-app do not leave standing at HEAD (see nightmare-app README: its own big ring is deliberately broken by a later "partial fix" commit).',
+        characteristics: [
+            'src/leaf/leaf0..5 (6 independent leaf modules), src/ring/ring0..6 (the 7-node cycle), src/pair/{left,right} (a second, independent 2-node cycle), src/entry.ts (imports into both cycles, itself part of neither)',
+        ],
+        history: [
+            '6 independent leaf modules baseline',
+            'wired into a 7-module ring cycle (ring0 -> ring1 -> ... -> ring0)',
+            'ring0 additionally wired to depend on all 6 leaf modules, on top of its one cycle-internal dependency',
+            'a second, independent 2-node cycle (pair/left <-> pair/right) added, plus entry.ts reaching into both cycles',
+        ],
+        observations: [
+            'cycles should report the ring as one 7-node SCC - the largest in the whole corpus (same-directory-complex, the next largest, tops out at 3)',
+            'ring0 should show Ce = 7 (6 leaf dependencies + its one cycle-internal dependency on ring1) - a cycle member with a genuinely large external fan-out, not just the 1-2 external deps flat-app/messy-app already cover',
+            'pair/left and pair/right should register as their OWN separate 2-node SCC, structurally independent of the 7-node ring (no edge connects the two) even though entry.ts reaches into both',
+            'cycles should therefore report exactly 2 SCCs at HEAD: one of size 7, one of size 2',
+        ],
+    },
     'same-directory-complex': {
         ecosystem: 'Plain TypeScript, no framework',
         purpose: 'Minimal, focused heuristic-trap fixture: a real cycle (a -> b -> c -> a) entirely within one flat directory, plus a 4th file depending on two cycle members.',

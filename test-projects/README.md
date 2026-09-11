@@ -1,6 +1,6 @@
 # External Validation Corpus
 
-This directory holds 32 small, realistic JavaScript/TypeScript fixture projects used to validate
+This directory holds 33 small, realistic JavaScript/TypeScript fixture projects used to validate
 `dep-health-analyzer` against a variety of real project shapes - frameworks, ecosystems, monorepo
 layouts, and deliberately tricky dependency-graph structures - instead of only against the
 synthetic unit-test fixtures under `src/**/__tests__`.
@@ -47,7 +47,7 @@ node scripts/gen-fullstack.mjs    # nextjs-ts, vite-react-ts, vite-vue-ts, svelt
 node scripts/gen-libraries.mjs    # typescript-library, typescript-cli
 node scripts/gen-monorepos.mjs    # monorepo-npm, monorepo-pnpm
 node scripts/gen-structural.mjs   # layered-app, feature-oriented-app, flat-app, messy-app
-node scripts/gen-stress.mjs       # cyclic-app, nightmare-app
+node scripts/gen-stress.mjs       # cyclic-app, nightmare-app, large-cycle-app
 node scripts/gen-traps.mjs        # same-directory-complex, deep-but-valid, cross-boundary-but-valid
 node scripts/gen-mts-cts.mjs      # mts-cts
 node scripts/gen-history-lab.mjs  # history-laboratory
@@ -75,6 +75,17 @@ Most fixtures need no `npm install` (they only reference `typescript`/framework 
 `node_modules` present). Monorepo fixtures reference workspace packages by alias (`@corpus/*`) and
 are the intended way to exercise the analyzer's bare-specifier alias resolution (see "Known
 limitations" below for exactly what that does and doesn't cover).
+
+**Manually checking the cycles/SCC HTML report:** `npm run dev:cycle-map` (developer-only convenience
+script, not a product feature) builds the CLI and runs `cycles --mode html` against
+[`large-cycle-app`](large-cycle-app) specifically, printing a clickable path to the generated
+report. dep-health-analyzer's own production dependency graph isn't guaranteed to contain any
+cycles at a given time, which makes it a poor fixture for eyeballing cycle/SCC visualization
+changes - `large-cycle-app` exists precisely so there's always a stable, realistic graph on hand
+with a large (7-module) SCC, an independent 2-module SCC, and a cycle member with several real
+external dependencies (see its own README for the exact shape). The report is written to
+`large-cycle-app/reports/` - already covered by this directory's blanket `.gitignore` rule, so
+nothing from this script can end up committed.
 
 ## Machine-verifiable validation
 
@@ -110,8 +121,11 @@ itself for the exact list of what is and isn't asserted.
 - **Structural diversity:** layered, feature-oriented, flat, and "messy" (organically grown,
   inconsistent) layouts.
 - **Graph stress:** a fixture whose history introduces and removes several distinct cycle shapes,
-  and a larger synthetic fixture combining a ring cycle, a high-fan-in hub module, a deep chain, and
-  cross-directory fan-out.
+  a larger synthetic fixture combining a ring cycle, a high-fan-in hub module, a deep chain, and
+  cross-directory fan-out (its own big ring is deliberately broken again before HEAD, as part of its
+  own history-drift stress story - see its README), and a focused static fixture with a genuinely
+  large (7-node) SCC, a cycle member with a large number of real external dependencies, and two
+  independent cycles reachable from one shared caller.
 - **Heuristic traps:** fixtures built specifically to probe assumptions the analyzer must not make -
   that same-directory implies no cycles, that path depth implies a violation, or that reaching across
   directories implies bad design.
