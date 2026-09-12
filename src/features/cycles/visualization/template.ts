@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
-import { Dictionary, I18N, LanguageCode, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
+import { Dictionary, I18N, LanguageCode, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
 import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
 import { styles } from './styles';
@@ -107,7 +107,7 @@ function renderScaleText(dict: Dictionary, moduleCount: number, dependencyCount:
 // the "What are dependency cycles?" educational modal, both unchanged).
 //
 // Rendered once per supported language (see buildHtmlTemplate below) -
-// all three sit in the page from the start, only one ever visible
+// all fourteen sit in the page from the start, only one ever visible
 // (data-lang matching the active language; the rest carry a plain
 // `hidden` attribute) - never a single English render re-templated by
 // client JS on language change. This keeps every language's Findings
@@ -115,14 +115,27 @@ function renderScaleText(dict: Dictionary, moduleCount: number, dependencyCount:
 // default already was, rather than making translated text depend on the
 // client script successfully re-running a second, parallel template
 // implementation.
+//
+// Arabic (the one entry in RTL_LANGUAGES) gets its own block's dir="rtl"
+// baked in right here, server-side, rather than toggled by client JS -
+// it's simply always correct for that one block regardless of which
+// language is currently visible, the same reasoning already applied to
+// pre-rendering every language's text instead of re-templating it. This
+// is scoped to exactly this wrapper: it never touches <html>/<body> or
+// #graph-explorer/#bottom-hud, so the Graph view (and the dependency
+// graph's own edge direction within it) stays unaffected regardless of
+// the selected language - see applyLanguage() in the script below for
+// the header's own matching (client-side, since there's only one header,
+// not one per language) dir toggle.
 function renderFindingsOverview(findings: CycleFindings, lang: LanguageCode): string {
     const dict = I18N[lang];
     const scaleText = renderScaleText(dict, findings.moduleCount, findings.dependencyCount);
     const hiddenAttr = lang === SUPPORTED_LANGUAGES[0] ? '' : ' hidden';
+    const dirAttr = RTL_LANGUAGES.has(lang) ? ' dir="rtl"' : '';
 
     if (findings.sccs.length === 0) {
         return `
-            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}>
+            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}${dirAttr}>
                 <header class="findings-header">
                     <h1>${escapeHtml(dict.findingsTitle)}</h1>
                     <p class="findings-scale">${scaleText}</p>
@@ -142,7 +155,7 @@ function renderFindingsOverview(findings: CycleFindings, lang: LanguageCode): st
     const rowsHtml = findings.sccs.map((finding) => renderSccFindingRow(finding, dict)).join('');
 
     return `
-            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}>
+            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}${dirAttr}>
                 <header class="findings-header">
                     <h1>${escapeHtml(dict.findingsTitle)}</h1>
                     <p class="findings-scale">${scaleText}</p>
@@ -602,6 +615,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const I18N_DICTIONARIES = ${safeJsonForScript(I18N)};
             const LANGUAGE_STORAGE_KEY = 'dep-health-language';
             const SUPPORTED_LANGUAGE_CODES = ${safeJsonForScript(SUPPORTED_LANGUAGES)};
+            const RTL_LANGUAGE_CODES = ${safeJsonForScript([...RTL_LANGUAGES])};
 
             function applyLanguage(lang) {
                 document.querySelectorAll('.findings-lang-block').forEach((block) => {
@@ -616,6 +630,26 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         el.textContent = text;
                     }
                 });
+
+                // #app-header is the one localized surface that isn't
+                // pre-rendered per language (see the header's own
+                // data-i18n text-swap above) - unlike each
+                // .findings-lang-block, which already has the right
+                // dir="rtl" baked in server-side for Arabic (see
+                // renderFindingsOverview in template.ts), the header
+                // needs its direction flipped here instead. Scoped to
+                // just this element - never <html>/<body> and never
+                // #graph-explorer/#bottom-hud - so the Graph view (and
+                // the dependency graph's own edge direction within it)
+                // never mirrors, regardless of the selected language.
+                const appHeader = document.getElementById('app-header');
+                if (appHeader) {
+                    if (RTL_LANGUAGE_CODES.includes(lang)) {
+                        appHeader.setAttribute('dir', 'rtl');
+                    } else {
+                        appHeader.removeAttribute('dir');
+                    }
+                }
 
                 const languageSelect = document.getElementById('language-select');
                 if (languageSelect) {

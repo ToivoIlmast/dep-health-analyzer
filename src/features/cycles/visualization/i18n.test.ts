@@ -1,4 +1,4 @@
-import { I18N, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
+import { I18N, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
 
 describe('formatI18n', () => {
     it('substitutes a single %token', () => {
@@ -19,9 +19,26 @@ describe('formatI18n', () => {
 });
 
 describe('I18N dictionaries', () => {
-    it('supports exactly English, Finnish, and Swedish - the explicit production language requirement, no more, no fewer', () => {
-        expect(SUPPORTED_LANGUAGES).toEqual(['en', 'fi', 'sv']);
-        expect(Object.keys(I18N).sort()).toEqual(['en', 'fi', 'sv']);
+    const EXPECTED_LANGUAGES = [
+        'en',
+        'fi',
+        'sv',
+        'no',
+        'da',
+        'is',
+        'de',
+        'fr',
+        'es',
+        'pl',
+        'pt',
+        'ru',
+        'ar',
+        'ja',
+    ];
+
+    it('supports exactly the 14 production languages - the explicit production language requirement, no more, no fewer', () => {
+        expect(SUPPORTED_LANGUAGES).toEqual(EXPECTED_LANGUAGES);
+        expect(Object.keys(I18N).sort()).toEqual([...EXPECTED_LANGUAGES].sort());
     });
 
     it('English is the first supported language - the default the report renders visible on load', () => {
@@ -67,9 +84,43 @@ describe('I18N dictionaries', () => {
     });
 
     it('the singular/plural scale templates are genuinely different strings per language, not the same text reused for both', () => {
+        // Japanese is a deliberate, linguistically correct exception for
+        // BOTH pairs - Japanese nouns don't inflect for grammatical
+        // number at all, so its singular/plural pair is legitimately
+        // identical text (see the Dictionary type's own comment in
+        // i18n.ts), not an untranslated placeholder. Icelandic's
+        // "ósjálfstæði" (dependency/dependencies) is a second, narrower
+        // exception for the dependencies pair only - it behaves as an
+        // invariant noun in this technical sense (its own modules
+        // pair, "eining"/"einingar", IS genuinely distinct), not a
+        // whole-language trait the way Japanese is.
+        const noNumberDistinction = new Set(['ja']);
+        const noDependenciesNumberDistinction = new Set(['ja', 'is']);
+
         for (const lang of SUPPORTED_LANGUAGES) {
-            expect(I18N[lang].scaleModules).not.toBe(I18N[lang].scaleModulesSingular);
-            expect(I18N[lang].scaleDependencies).not.toBe(I18N[lang].scaleDependenciesSingular);
+            if (!noNumberDistinction.has(lang)) {
+                expect(I18N[lang].scaleModules).not.toBe(I18N[lang].scaleModulesSingular);
+            }
+            if (!noDependenciesNumberDistinction.has(lang)) {
+                expect(I18N[lang].scaleDependencies).not.toBe(I18N[lang].scaleDependenciesSingular);
+            }
+        }
+    });
+
+    it('Japanese deliberately reuses identical text for its singular/plural pairs - not accidentally, since it has no grammatical number', () => {
+        expect(I18N.ja.scaleModules).toBe(I18N.ja.scaleModulesSingular);
+        expect(I18N.ja.scaleDependencies).toBe(I18N.ja.scaleDependenciesSingular);
+    });
+});
+
+describe('RTL_LANGUAGES', () => {
+    it('contains exactly Arabic - the one RTL language among the 14 supported', () => {
+        expect([...RTL_LANGUAGES]).toEqual(['ar']);
+    });
+
+    it('every RTL language is a real supported language code', () => {
+        for (const lang of RTL_LANGUAGES) {
+            expect(SUPPORTED_LANGUAGES).toContain(lang);
         }
     });
 });

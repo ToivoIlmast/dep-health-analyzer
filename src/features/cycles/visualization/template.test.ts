@@ -1200,41 +1200,98 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
     // a standalone (no assets/, no source project) check.
     const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
-    it('production language support is exactly English, Finnish, and Swedish - no more, no fewer', () => {
+    const ALL_LANGUAGES = ['en', 'fi', 'sv', 'no', 'da', 'is', 'de', 'fr', 'es', 'pl', 'pt', 'ru', 'ar', 'ja'];
+
+    it('production language support is exactly the 14 languages - no more, no fewer', () => {
         const match = html.match(/const SUPPORTED_LANGUAGE_CODES = (\[[^\]]*\]);/);
         expect(match).toBeTruthy();
         const codes = JSON.parse(match![1]!);
-        expect(codes).toEqual(['en', 'fi', 'sv']);
+        expect(codes).toEqual(ALL_LANGUAGES);
 
         const dictMatch = html.match(/const I18N_DICTIONARIES = (\{.*?\});\s*\n\s*const LANGUAGE_STORAGE_KEY/s);
         expect(dictMatch).toBeTruthy();
         const dict = JSON.parse(dictMatch![1]!);
-        expect(Object.keys(dict).sort()).toEqual(['en', 'fi', 'sv']);
+        expect(Object.keys(dict).sort()).toEqual([...ALL_LANGUAGES].sort());
     });
 
-    it('English is the default language - rendered visible, the other two rendered pre-hidden', () => {
-        const enIndex = html.indexOf('data-lang="en"');
-        const fiIndex = html.indexOf('data-lang="fi"');
-        const svIndex = html.indexOf('data-lang="sv"');
+    it('English is the default language - rendered visible, all 13 others rendered pre-hidden, in SUPPORTED_LANGUAGES order', () => {
+        let previousIndex = -1;
 
-        expect(enIndex).toBeGreaterThan(-1);
-        expect(fiIndex).toBeGreaterThan(enIndex);
-        expect(svIndex).toBeGreaterThan(fiIndex);
+        for (const lang of ALL_LANGUAGES) {
+            const index = html.indexOf(`data-lang="${lang}"`);
+            expect(index).toBeGreaterThan(previousIndex);
+            previousIndex = index;
 
-        // The English block's own opening tag has no `hidden` attribute
-        // immediately before its closing '>' - the other two do.
-        const enTagEnd = html.indexOf('>', enIndex);
-        const fiTagEnd = html.indexOf('>', fiIndex);
-        expect(html.slice(enIndex, enTagEnd)).not.toContain('hidden');
-        expect(html.slice(fiIndex, fiTagEnd)).toContain('hidden');
+            const tagEnd = html.indexOf('>', index);
+            const openingTag = html.slice(index, tagEnd);
+
+            if (lang === 'en') {
+                expect(openingTag).not.toContain('hidden');
+            } else {
+                expect(openingTag).toContain('hidden');
+            }
+        }
     });
 
-    it('renders a persistent header with Findings/Graph tabs and a language select with exactly 3 options', () => {
+    it('renders a persistent header with Findings/Graph tabs and a language select with exactly 14 options', () => {
         expect(html).toContain('id="app-header"');
         expect(html).toContain('data-view="findings"');
         expect(html).toContain('data-view="graph"');
         expect(html).toContain('id="language-select"');
-        expect(html.match(/<option value="(en|fi|sv)">/g)).toHaveLength(3);
+        expect(html.match(/<option value="(en|fi|sv|no|da|is|de|fr|es|pl|pt|ru|ar|ja)">/g)).toHaveLength(14);
+    });
+
+    it('every language renders its own findings title - no missing translation falls back to English text under a different data-lang', () => {
+        for (const lang of ALL_LANGUAGES) {
+            const start = html.indexOf(`data-lang="${lang}"`);
+            const nextLangStart = html.indexOf('data-lang="', start + 1);
+            const block = html.slice(start, nextLangStart === -1 ? html.length : nextLangStart);
+
+            // Every block has a real, non-empty <h1> title - proof the
+            // dictionary lookup for this language actually resolved to
+            // something, not an empty/undefined string silently rendered.
+            const titleMatch = block.match(/<h1>([^<]+)<\/h1>/);
+            expect(titleMatch).toBeTruthy();
+            expect(titleMatch![1]!.trim().length).toBeGreaterThan(0);
+        }
+    });
+
+    it('Arabic\'s findings block carries dir="rtl", server-rendered - every other language\'s does not', () => {
+        for (const lang of ALL_LANGUAGES) {
+            const index = html.indexOf(`data-lang="${lang}"`);
+            const tagEnd = html.indexOf('>', index);
+            const openingTag = html.slice(index, tagEnd);
+
+            if (lang === 'ar') {
+                expect(openingTag).toContain('dir="rtl"');
+            } else {
+                expect(openingTag).not.toContain('dir="rtl"');
+            }
+        }
+    });
+
+    it('RTL is scoped to the Findings surfaces only - never applied to <html>/<body> or the Graph view, so the dependency graph itself never mirrors', () => {
+        expect(html).not.toMatch(/<html[^>]*\bdir=/);
+        expect(html).not.toMatch(/<body[^>]*\bdir=/);
+        expect(html).not.toMatch(/id="graph-explorer"[^>]*\bdir=/);
+        expect(html).not.toMatch(/id="bottom-hud"[^>]*\bdir=/);
+    });
+
+    it('applyLanguage toggles dir="rtl" on #app-header specifically for Arabic - the header is not pre-rendered per language, unlike the findings blocks', () => {
+        const appHeaderBlockStart = html.indexOf("const appHeader = document.getElementById('app-header');");
+        const appHeaderBlockEnd = html.indexOf('const languageSelect', appHeaderBlockStart);
+        const block = html.slice(appHeaderBlockStart, appHeaderBlockEnd);
+
+        expect(appHeaderBlockStart).toBeGreaterThan(-1);
+        expect(block).toContain("RTL_LANGUAGE_CODES.includes(lang)");
+        expect(block).toContain("appHeader.setAttribute('dir', 'rtl')");
+        expect(block).toContain('appHeader.removeAttribute(\'dir\')');
+    });
+
+    it('RTL_LANGUAGE_CODES embedded client-side contains exactly Arabic', () => {
+        const match = html.match(/const RTL_LANGUAGE_CODES = (\[[^\]]*\]);/);
+        expect(match).toBeTruthy();
+        expect(JSON.parse(match![1]!)).toEqual(['ar']);
     });
 
     it('switchToView toggles Findings/Graph via CSS classes only - never destroys or recreates the graph', () => {

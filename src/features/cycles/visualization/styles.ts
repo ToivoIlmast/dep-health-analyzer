@@ -1071,7 +1071,16 @@ export const styles = `
         display: flex;
         gap: 4px;
 
-        margin-left: auto;
+        /* Logical, not physical - a plain margin-left would stay
+           anchored to the physical left edge even under #app-header's
+           own dir="rtl" (set for Arabic), splitting the tabs away from
+           the language switcher instead of keeping both grouped at the
+           "end" edge the way the title/tabs/switcher visually mirror
+           for every other RTL-aware part of the header. Confirmed via
+           headless Chrome: margin-left: auto left the switcher pinned to
+           the physical left edge while flex's own RTL reversal moved the
+           tabs elsewhere, tearing the group apart. */
+        margin-inline-start: auto;
     }
 
     .view-tab {
