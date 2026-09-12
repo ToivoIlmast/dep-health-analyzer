@@ -195,7 +195,12 @@ export const styles = `
         width: 10px;
         height: 10px;
         border-radius: 3px;
-        margin-right: 6px;
+        /* Logical, not physical - #hint now mirrors under dir="rtl" for
+           Arabic (full localization task), and a plain margin-right would
+           stay pinned to the swatch's physical right side even when the
+           row's logical "end" is now the left - the same class of bug
+           found and fixed on #view-tabs earlier. */
+        margin-inline-end: 6px;
         vertical-align: middle;
     }
 
@@ -674,7 +679,8 @@ export const styles = `
         overflow-y: auto;
 
         margin: 6px 0 0;
-        padding-left: 0;
+        /* Logical - #cycle-detail-modal now mirrors under dir="rtl". */
+        padding-inline-start: 0;
 
         list-style: none;
     }
@@ -704,8 +710,11 @@ export const styles = `
        attention). */
     .cycle-detail-item-start {
         background: #f8fafc;
-        border-left: 3px solid #93c5fd;
-        padding-left: 7px;
+        /* Logical - #cycle-detail-modal now mirrors under dir="rtl", so
+           the accent bar belongs on the row's logical start edge (right
+           in RTL), not always the physical left. */
+        border-inline-start: 3px solid #93c5fd;
+        padding-inline-start: 7px;
         border-radius: 4px;
     }
 
@@ -743,7 +752,8 @@ export const styles = `
        (e.g. .hud-scc-member's underline only strengthens on hover too). */
     .cycle-detail-item-arrow {
         flex: 0 0 auto;
-        margin-left: auto;
+        /* Logical - #cycle-detail-modal now mirrors under dir="rtl". */
+        margin-inline-start: auto;
 
         color: #2563eb;
         font-size: 16px;
@@ -823,7 +833,8 @@ export const styles = `
 
     #cycle-info-modal ul,
     #cycle-info-modal ol {
-        padding-left: 20px;
+        /* Logical - #cycle-info-modal now mirrors under dir="rtl". */
+        padding-inline-start: 20px;
     }
 
     #cycle-info-modal li {

@@ -58,7 +58,10 @@ describe('I18N dictionaries', () => {
             for (const value of Object.values(I18N[lang])) {
                 expect(typeof value).toBe('string');
                 expect((value as string).length).toBeGreaterThan(0);
-                expect(value).not.toMatch(/TODO|FIXME/i);
+                // Case-sensitive: several languages legitimately contain
+                // the word "todo" (Spanish "all/every") - a real
+                // placeholder marker is always shouted-case.
+                expect(value).not.toMatch(/\bTODO\b|\bFIXME\b/);
             }
         }
     });

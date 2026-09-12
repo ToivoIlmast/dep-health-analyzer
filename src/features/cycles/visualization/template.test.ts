@@ -118,9 +118,15 @@ describe('buildHtmlTemplate SCC-vs-cycle terminology', () => {
     const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
     it('the per-node SCC context block describes an SCC, not "a cycle"', () => {
-        expect(html).toContain('strongly connected component (SCC #');
+        // Full localization task: this text is now composed at runtime
+        // from I18N_DICTIONARIES via formatI18nClient/dict lookups rather
+        // than baked into the JS source as literal English - the English
+        // wording itself still lives in the embedded dictionary JSON, so
+        // it's asserted there instead of as literal template-string text.
+        expect(html).toContain('strongly connected component (SCC #%id) of %n modules.');
         expect(html).toContain('This SCC contains one or more dependency cycles.');
-        expect(html).toContain("'Other modules in this SCC: '");
+        expect(html).toContain('Other modules in this SCC:');
+        expect(html).toContain('dict.sccContextOtherMembers');
     });
 
     it('never claims a group of SCC members IS a single detected cycle', () => {
@@ -130,10 +136,10 @@ describe('buildHtmlTemplate SCC-vs-cycle terminology', () => {
     });
 
     it('the educational modal explains that an SCC is not itself one cycle', () => {
-        expect(html).toContain('<h3>What is an SCC?</h3>');
+        expect(html).toContain('data-i18n="eduModalWhatIsSccHeading">What is an SCC?</h3>');
         expect(html).toContain('an SCC is not itself a');
         expect(html).toContain('single cycle');
-        expect(html).toContain('<h3>How to investigate a detected SCC</h3>');
+        expect(html).toContain('data-i18n="eduModalHowToInvestigateHeading">How to investigate a detected SCC</h3>');
     });
 
     it('preserves the architectural-awareness emphasis line, extended to cover SCC', () => {
@@ -173,7 +179,7 @@ describe('buildHtmlTemplate global SCC summary (findings data foundation)', () =
             },
         });
 
-        expect(html).toContain('Detected SCCs: 1 · Largest SCC: 3 modules.');
+        expect(html).toContain('Detected SCCs: 1 &middot; Largest SCC: 3 modules.');
         expect(html).toContain('5 modules · 6 dependencies');
     });
 
@@ -196,7 +202,7 @@ describe('buildHtmlTemplate global SCC summary (findings data foundation)', () =
             },
         });
 
-        expect(html).toContain('Detected SCCs: 2 · Largest SCC: 7 modules.');
+        expect(html).toContain('Detected SCCs: 2 &middot; Largest SCC: 7 modules.');
     });
 
     it('never phrases the SCC summary as a cycle count', () => {
@@ -526,9 +532,17 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
         // whenever a filter has hidden part of the SCC (visibleMemberCount
         // < data.sccSize), rather than presenting a plain "(M modules)"
         // count that would read as "the whole thing is on screen".
+        // Full localization task: the label text itself now comes from
+        // I18N_DICTIONARIES (dict.focusSccButton + a formatted
+        // moduleCountVisibleParen/moduleCountParen suffix) instead of a
+        // literal English template string, but the same "of M" vs. plain
+        // "(M modules)" distinction still gates on the same condition.
         expect(html).toContain('visibleMemberCount < data.sccSize');
-        expect(html).toContain('Focus SCC (${visibleMemberCount} of ${data.sccSize} modules visible)');
-        expect(html).toContain('Focus SCC (${data.sccSize} modules)');
+        expect(html).toContain(
+            "dict.focusSccButton + ' ' + focusCountSuffix"
+        );
+        expect(html).toContain('moduleCountVisibleParen');
+        expect(html).toContain('moduleCountParen');
     });
 
     it('the global SCC summary stays a whole-graph count, unaffected by Focus - never becomes a focused-subset summary', () => {
@@ -683,7 +697,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         // cycles - there's exactly one path-finding pass per click,
         // independent of the SCC's size.
         expect(html).toContain('const MAX_CYCLE_CHIPS_SHOWN = 20;');
-        expect(html).toMatch(/function buildCycleListHtml\(memberNodes\) \{\s*return memberNodes\s*\.map/);
+        expect(html).toMatch(/function buildCycleListHtml\(memberNodes, dict\) \{\s*return memberNodes\s*\.map/);
         expect(html).not.toMatch(/function buildCycleListHtml[\s\S]{0,400}\.slice\(/);
     });
 
@@ -736,8 +750,15 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
     // result (badge text, chip layout, hover affordances) is verified via
     // headless Chrome against the real large-cycle-app fixture.
     it('the header badge shows the module count without duplicating the SCC size or the old long sentence', () => {
+        // Full localization task: the count text now goes through the same
+        // scaleModules/scaleModulesSingular dictionary keys the Findings
+        // scale text already used, instead of a hand-rolled English
+        // singular/plural literal.
         expect(html).toContain('id="cycle-detail-count-badge"');
-        expect(html).toContain('cycleDetailCountBadge.textContent = `${memberNodes.length} module${memberNodes.length === 1 ? \'\' : \'s\'}`;');
+        expect(html).toContain(
+            'cycleDetailCountBadge.textContent = formatI18nClient('
+        );
+        expect(html).toContain('memberNodes.length === 1 ? dict.scaleModulesSingular : dict.scaleModules');
     });
 
     it('the start/selected node gets the same accent class everywhere it appears - the flow diagram, the closing line, and the list', () => {
@@ -749,7 +770,13 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         // list-row class under the same index === 0 condition.
         expect(html).toContain('renderCycleChip(node, index === 0)');
         expect(html).toContain("classes.push('cycle-node-start');");
-        expect(html).toContain("<span class=\"cycle-arrow\">&#8618;</span> back to <span class=\"cycle-chip cycle-node-start\">");
+        // Full localization task: "back to" is now dict.cycleFlowBackTo,
+        // translated, and the arrow+chip are wrapped in their own
+        // dir="ltr" span (see the RTL note above buildCycleFlowHtml) so
+        // this real directional indicator never mirrors under Arabic -
+        // still the same arrow entity and .cycle-node-start chip class.
+        expect(html).toContain('escapeHtml(dict.cycleFlowBackTo)');
+        expect(html).toContain('<span class="cycle-arrow">&#8618;</span> <span class="cycle-chip cycle-node-start">');
         expect(html).toContain("const startCls = index === 0 ? ' cycle-detail-item-start' : '';");
     });
 
@@ -760,7 +787,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
     });
 
     it('the closing indicator is a distinct, explicit line - not one more chip silently appended to the last row', () => {
-        expect(html).toContain('function buildCycleFlowHtml(memberNodes, startLabel)');
+        expect(html).toContain('function buildCycleFlowHtml(memberNodes, startLabel, dict)');
         expect(html).toContain('class="cycle-flow-closing"');
     });
 
@@ -1109,10 +1136,16 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
     });
 
     it('"Show in graph" is honest about partial visibility - gated on the WHOLE SCC\'s visible member count, matching the HUD\'s own Focus SCC rule', () => {
+        // Full localization task: the label text now comes from
+        // I18N_DICTIONARIES (dict.showInGraphButton + a formatted
+        // moduleCountVisibleParen suffix), matching the same "of N" rule
+        // the HUD's own Focus SCC button already uses.
         expect(html).toContain('const visibleSccMemberCount = cy');
         expect(html).toContain("candidate.data('sccId') === sccId && !candidate.hasClass('area-hidden')");
         expect(html).toContain('visibleSccMemberCount >= 2');
-        expect(html).toContain('Show in graph (${visibleSccMemberCount} of ${sccSize} modules visible)');
+        expect(html).toContain(
+            "dict.showInGraphButton + ' ' + formatI18nClient(dict.moduleCountVisibleParen, { visible: visibleSccMemberCount, n: sccSize })"
+        );
     });
 
     it('"Show in graph" closes the modal and switches to the Graph view, since the user may be looking at the Findings view when they click it', () => {
@@ -1278,14 +1311,28 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
     });
 
     it('applyLanguage toggles dir="rtl" on #app-header specifically for Arabic - the header is not pre-rendered per language, unlike the findings blocks', () => {
+        // Full localization task: isRtl is now computed once and reused
+        // for #app-header AND the newly-localized Graph chrome panels
+        // (#hint/#toolbar/#bottom-hud/both modals) below it, rather than
+        // each caller re-evaluating RTL_LANGUAGE_CODES.includes(lang).
+        const isRtlLineIndex = html.indexOf('const isRtl = RTL_LANGUAGE_CODES.includes(lang);');
         const appHeaderBlockStart = html.indexOf("const appHeader = document.getElementById('app-header');");
-        const appHeaderBlockEnd = html.indexOf('const languageSelect', appHeaderBlockStart);
+        const appHeaderBlockEnd = html.indexOf("['hint', 'toolbar'", appHeaderBlockStart);
         const block = html.slice(appHeaderBlockStart, appHeaderBlockEnd);
 
+        expect(isRtlLineIndex).toBeGreaterThan(-1);
+        expect(isRtlLineIndex).toBeLessThan(appHeaderBlockStart);
         expect(appHeaderBlockStart).toBeGreaterThan(-1);
-        expect(block).toContain("RTL_LANGUAGE_CODES.includes(lang)");
+        expect(block).toContain('if (isRtl) {');
         expect(block).toContain("appHeader.setAttribute('dir', 'rtl')");
         expect(block).toContain('appHeader.removeAttribute(\'dir\')');
+    });
+
+    it('applyLanguage also toggles dir="rtl" on the localized Graph chrome panels, but never on #graph-explorer/#cy or the minimap - the dependency graph itself must never mirror', () => {
+        expect(html).toContain(
+            "['hint', 'toolbar', 'edge-clarity-note', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal'].forEach("
+        );
+        expect(html).not.toMatch(/\[('|")hint('|")[\s\S]{0,200}'graph-explorer'/);
     });
 
     it('RTL_LANGUAGE_CODES embedded client-side contains exactly Arabic', () => {

@@ -12,23 +12,27 @@ type BuildHtmlTemplate = {
     findings: CycleFindings;
 };
 
-// Server-rendered - the exact same wording renderSccSummary() used to
-// compute client-side from cy.nodes()'s sccId/sccSize attributes, now
-// read directly from the real Kosaraju-derived findings payload instead.
-// "No dependency SCCs detected" rather than a fabricated "0 cycles" - SCC
-// count is not cycle count (a single SCC can contain more than one
-// cycle), the same terminology distinction already established elsewhere
-// in this report. Deliberately English-only, like the rest of the Graph's
-// own UI (see i18n.ts's own scoping note) - #scc-summary lives inside the
-// Graph view, not the localized Findings view.
-function renderSccSummaryText(findings: CycleFindings): string {
+// Server-rendered for the initial (English, or whatever getInitialLanguage()
+// resolves to before the client script runs) paint - the exact same wording
+// renderSccSummary() used to compute client-side from cy.nodes()'s
+// sccId/sccSize attributes, now read directly from the real
+// Kosaraju-derived findings payload instead. "No dependency SCCs detected"
+// rather than a fabricated "0 cycles" - SCC count is not cycle count (a
+// single SCC can contain more than one cycle), the same terminology
+// distinction already established elsewhere in this report. #scc-summary
+// lives inside the Graph view (not a per-language .findings-lang-block, of
+// which there are 14), so unlike Findings this text is re-rendered
+// client-side on language change - see renderGraphScaleTexts() in the
+// script below, which reads the same raw counts back out of
+// GRAPH_SCC_SUMMARY_COUNTS.
+function renderSccSummaryText(findings: CycleFindings, dict: Dictionary): string {
     if (findings.sccs.length === 0) {
-        return 'No dependency SCCs detected.';
+        return dict.noDependencySccsDetected;
     }
 
     const largestSize = Math.max(...findings.sccs.map((scc) => scc.size));
 
-    return `Detected SCCs: ${findings.sccs.length} · Largest SCC: ${largestSize} modules.`;
+    return formatI18n(dict.detectedSccsSummary, { n: findings.sccs.length, largest: largestSize });
 }
 
 // Findings-first overview (Phase 1). A one-line, presentation-only preview
@@ -211,10 +215,26 @@ function renderAppHeader(): string {
 
 export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     const { nodes, edges, findings } = args;
-    const sccSummaryText = renderSccSummaryText(findings);
-    const graphScaleText = renderScaleText(I18N[SUPPORTED_LANGUAGES[0]], findings.moduleCount, findings.dependencyCount);
+    const defaultDict = I18N[SUPPORTED_LANGUAGES[0]];
+    const sccSummaryText = renderSccSummaryText(findings, defaultDict);
+    const graphScaleText = renderScaleText(defaultDict, findings.moduleCount, findings.dependencyCount);
     const appHeaderHtml = renderAppHeader();
     const findingsViewHtml = renderFindingsView(findings);
+
+    // Raw counts behind #scc-summary/#graph-scale-text, embedded so
+    // renderGraphScaleTexts() (script below) can recompute both strings
+    // for any language on demand - #graph-explorer is not duplicated
+    // per-language the way .findings-lang-block is (14 of those would be
+    // wasteful for a live cytoscape instance), so this content is
+    // client-re-rendered on language change instead of server-pre-rendered.
+    const graphSccSummaryCounts = {
+        sccCount: findings.sccs.length,
+        largestSccSize: findings.sccs.length === 0 ? 0 : Math.max(...findings.sccs.map((scc) => scc.size)),
+    };
+    const graphScaleCounts = {
+        moduleCount: findings.moduleCount,
+        dependencyCount: findings.dependencyCount,
+    };
 
     return `
     <!DOCTYPE html>
@@ -280,43 +300,43 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                  come from the whole scanned graph, not from
                  visibleNodes/visibleEdges. -->
             <div id="scc-summary">
-                <strong>Detected SCCs</strong><br />
-                <span style="font-size: 11px; color: #6b7280;">(entire analyzed graph, not the current filtered view)</span><br />
-                <span style="font-size: 11px; color: #6b7280;">${graphScaleText}</span><br />
+                <strong data-i18n="detectedSccsHeading">Detected SCCs</strong><br />
+                <span style="font-size: 11px; color: #6b7280;" data-i18n="detectedSccsCaption">(entire analyzed graph, not the current filtered view)</span><br />
+                <span id="graph-scale-text" style="font-size: 11px; color: #6b7280;">${graphScaleText}</span><br />
                 <span id="scc-summary-text">${sccSummaryText}</span>
             </div>
 
-            <strong>Module area</strong><br />
-            <span style="font-size: 11px; color: #6b7280;">(from project structure)</span>
+            <strong data-i18n="moduleAreaHeading">Module area</strong><br />
+            <span style="font-size: 11px; color: #6b7280;" data-i18n="moduleAreaCaption">(from project structure)</span>
             <div id="area-legend" style="display: flex; flex-direction: column; gap: 3px; margin-top: 6px;"></div>
             <br />
 
             <label style="display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" id="highlight-toggle" checked />
-                Highlight connected modules
+                <span data-i18n="highlightConnectedToggle">Highlight connected modules</span>
             </label>
         </div>
 
         <div id="toolbar">
             <label>
-                Layout:
+                <span data-i18n="layoutLabel">Layout:</span>
                 <select id="layout-select">
-                    <option value="dagreLR">Dagre LR</option>
-                    <option value="dagreTB">Dagre TB</option>
-                    <option value="dagreLRClean">Dagre LR (straight edges, no overlap)</option>
-                    <option value="flowTB">Flow / Hierarchical (Top to Bottom)</option>
-                    <option value="flowOrthogonal">Hierarchical (Orthogonal, Top to Bottom)</option>
-                    <option value="flowOrthogonalLR">Hierarchical (Orthogonal, Left to Right)</option>
-                    <option value="flowVertical" selected>Hierarchical (Orthogonal, Vertical Flow)</option>
-                    <option value="breadthfirst">Breadth First</option>
-                    <option value="cose">Force Directed</option>
+                    <option value="dagreLR" data-i18n="layoutDagreLR">Dagre LR</option>
+                    <option value="dagreTB" data-i18n="layoutDagreTB">Dagre TB</option>
+                    <option value="dagreLRClean" data-i18n="layoutDagreLRClean">Dagre LR (straight edges, no overlap)</option>
+                    <option value="flowTB" data-i18n="layoutFlowTB">Flow / Hierarchical (Top to Bottom)</option>
+                    <option value="flowOrthogonal" data-i18n="layoutFlowOrthogonal">Hierarchical (Orthogonal, Top to Bottom)</option>
+                    <option value="flowOrthogonalLR" data-i18n="layoutFlowOrthogonalLR">Hierarchical (Orthogonal, Left to Right)</option>
+                    <option value="flowVertical" selected data-i18n="layoutFlowVertical">Hierarchical (Orthogonal, Vertical Flow)</option>
+                    <option value="breadthfirst" data-i18n="layoutBreadthfirst">Breadth First</option>
+                    <option value="cose" data-i18n="layoutCose">Force Directed</option>
                 </select>
             </label>
 
             <label>
-                Area:
+                <span data-i18n="areaLabel">Area:</span>
                 <select id="area-select">
-                    <option value="">All</option>
+                    <option value="" data-i18n="areaAllOption">All</option>
                 </select>
             </label>
 
@@ -328,14 +348,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                  until a specific area is selected. See
                  refreshAreaView() below for the full rationale. -->
             <label>
-                Connections:
+                <span data-i18n="connectionsLabel">Connections:</span>
                 <select id="connection-select" disabled>
-                    <option value="internal" selected>Internal only</option>
-                    <option value="external">With external connections</option>
+                    <option value="internal" selected data-i18n="connectionsInternal">Internal only</option>
+                    <option value="external" data-i18n="connectionsExternal">With external connections</option>
                 </select>
             </label>
 
-            <button id="fit-btn">
+            <button id="fit-btn" data-i18n="fitGraphButton">
                 Fit Graph
             </button>
 
@@ -346,14 +366,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                  (its content fully regenerates on every selection change,
                  so an exit control living only inside it would be an
                  unreliable moving target). -->
-            <button id="show-full-graph-btn" hidden>
+            <button id="show-full-graph-btn" hidden data-i18n="showFullGraphButton">
                 Show full graph
             </button>
 
             <div id="zoom-controls">
-                <button id="zoom-out-btn" aria-label="Zoom out">&minus;</button>
+                <button id="zoom-out-btn" aria-label="Zoom out" data-i18n-aria="zoomOutLabel">&minus;</button>
                 <span id="zoom-level">100%</span>
-                <button id="zoom-in-btn" aria-label="Zoom in">+</button>
+                <button id="zoom-in-btn" aria-label="Zoom in" data-i18n-aria="zoomInLabel">+</button>
             </div>
 
             <!-- Experimental (branch: experiment/cycle-map-v2, cycle node
@@ -362,12 +382,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                  whatever node (if any) is currently selected. Deliberately
                  not attached to any specific node/badge - see
                  cycle-info-modal below for why. -->
-            <button id="cycle-info-btn" type="button">
+            <button id="cycle-info-btn" type="button" data-i18n="cycleInfoButton">
                 What are dependency cycles?
             </button>
         </div>
 
-        <div id="edge-clarity-note">
+        <div id="edge-clarity-note" data-i18n="edgeClarityNote">
             Edges route as right-angle connectors, spread out to stay clear of other modules.
         </div>
         </div>
@@ -379,18 +399,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             <div id="hud-help">
                 <strong>dep-health-analyzer</strong><br /><br />
 
-                Hover over a module to see dependency metrics.<br />
-                Click a module <strong>to pin</strong> the tooltip.<br /><br />
+                <span data-i18n="hudHelpHoverLine">Hover over a module to see dependency metrics.</span><br />
+                <span data-i18n-html="hudHelpClickLine">Click a module <strong>to pin</strong> the tooltip.</span><br /><br />
 
-                <strong>Ca</strong> — incoming dependencies<br />
-                How many modules depend on this module.<br /><br />
+                <strong>Ca</strong> <span data-i18n-html="hudHelpCaExplanation">&mdash; incoming dependencies<br />How many modules depend on this module.</span><br /><br />
 
-                <strong>Ce</strong> — outgoing dependencies<br />
-                How many modules this module depends on.<br /><br />
+                <strong>Ce</strong> <span data-i18n-html="hudHelpCeExplanation">&mdash; outgoing dependencies<br />How many modules this module depends on.</span><br /><br />
 
-                <strong>Instability</strong><br />
-                0.00 = stable module<br />
-                1.00 = highly unstable module
+                <strong data-i18n="instabilityLabel">Instability</strong><br />
+                <span data-i18n-html="hudHelpInstabilityScale">0.00 = stable module<br />1.00 = highly unstable module</span>
                 <br /><br />
             </div>
 
@@ -419,28 +436,28 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
              SCC is an observed graph fact to investigate, never a
              verdict. -->
         <dialog id="cycle-info-modal">
-            <h2>Dependency cycles</h2>
+            <h2 data-i18n="eduModalTitle">Dependency cycles</h2>
 
-            <h3>What is a dependency cycle?</h3>
-            <p>
+            <h3 data-i18n="eduModalWhatIsCycleHeading">What is a dependency cycle?</h3>
+            <p data-i18n="eduModalWhatIsCycleBody">
                 A dependency cycle happens when a chain of dependency
                 relationships eventually leads back to a module already
                 reached earlier in the same chain - for example:
             </p>
-            <p class="cycle-info-example">A &rarr; B &rarr; C &rarr; A</p>
-            <p>
+            <p class="cycle-info-example" dir="ltr">A &rarr; B &rarr; C &rarr; A</p>
+            <p data-i18n="eduModalExampleCaption">
                 Here, A depends on B, B depends on C, and C depends back on
                 A - closing the chain into a cycle.
             </p>
 
-            <h3>What is an SCC?</h3>
-            <p>
+            <h3 data-i18n="eduModalWhatIsSccHeading">What is an SCC?</h3>
+            <p data-i18n="eduModalWhatIsSccBody1">
                 dep-health-analyzer detects cycles by finding Strongly
                 Connected Components (SCCs): an SCC is a group of modules
                 where every module can reach every other module in the
                 group by following dependency relationships.
             </p>
-            <p>
+            <p data-i18n="eduModalWhatIsSccBody2">
                 A non-trivial SCC (2 or more modules) always contains at
                 least one dependency cycle - but an SCC is not itself a
                 single cycle. It can contain several distinct cycles that
@@ -449,40 +466,40 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 within it.
             </p>
 
-            <h3>Why can cycles matter?</h3>
-            <p>A dependency cycle may:</p>
+            <h3 data-i18n="eduModalWhyMatterHeading">Why can cycles matter?</h3>
+            <p data-i18n="eduModalWhyMatterIntro">A dependency cycle may:</p>
             <ul>
-                <li>make the dependency relationships between those modules harder to reason about</li>
-                <li>increase coupling between the modules involved</li>
-                <li>make it harder to isolate or reuse a single module from the group on its own</li>
-                <li>make changes touch more of the SCC than a change to a single, non-cyclic module would</li>
+                <li data-i18n="eduModalWhyMatterItem1">make the dependency relationships between those modules harder to reason about</li>
+                <li data-i18n="eduModalWhyMatterItem2">increase coupling between the modules involved</li>
+                <li data-i18n="eduModalWhyMatterItem3">make it harder to isolate or reuse a single module from the group on its own</li>
+                <li data-i18n="eduModalWhyMatterItem4">make changes touch more of the SCC than a change to a single, non-cyclic module would</li>
             </ul>
 
-            <h3>What does dep-health-analyzer report?</h3>
-            <p>
+            <h3 data-i18n="eduModalWhatReportsHeading">What does dep-health-analyzer report?</h3>
+            <p data-i18n="eduModalWhatReportsBody">
                 dep-health-analyzer reports the dependency structures it
                 detects in the scanned graph - it does not know this
                 project's intended architecture.
             </p>
-            <p class="cycle-info-emphasis">
+            <p class="cycle-info-emphasis" data-i18n="eduModalEmphasis">
                 A detected cycle or SCC is not automatically an architectural violation.
             </p>
-            <p>
+            <p data-i18n="eduModalIntentionalBody">
                 Some cyclic relationships are intentional. Only someone who
                 knows this project's intended architecture can decide
                 whether a specific detected cycle is one worth changing.
             </p>
 
-            <h3>How to investigate a detected SCC</h3>
+            <h3 data-i18n="eduModalHowToInvestigateHeading">How to investigate a detected SCC</h3>
             <ol>
-                <li>Select a module that is part of a detected SCC.</li>
-                <li>Inspect the other modules in that SCC.</li>
-                <li>Follow the dependency directions between them.</li>
-                <li>Understand why the relationships exist.</li>
-                <li>Decide whether the structure is appropriate for the project's intended architecture.</li>
+                <li data-i18n="eduModalStep1">Select a module that is part of a detected SCC.</li>
+                <li data-i18n="eduModalStep2">Inspect the other modules in that SCC.</li>
+                <li data-i18n="eduModalStep3">Follow the dependency directions between them.</li>
+                <li data-i18n="eduModalStep4">Understand why the relationships exist.</li>
+                <li data-i18n="eduModalStep5">Decide whether the structure is appropriate for the project's intended architecture.</li>
             </ol>
 
-            <button id="cycle-info-close-btn" type="button">Close</button>
+            <button id="cycle-info-close-btn" type="button" data-i18n="closeButton">Close</button>
         </dialog>
 
         <!-- Experimental (branch: experiment/cycle-map-v2, concrete
@@ -499,11 +516,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
              cycle-info-modal (no new modal infrastructure). -->
         <dialog id="cycle-detail-modal">
             <div class="cycle-detail-header">
-                <h2>Dependency cycle</h2>
+                <h2 data-i18n="cycleModalTitle">Dependency cycle</h2>
                 <span id="cycle-detail-count-badge" class="cycle-count-badge"></span>
             </div>
             <div id="cycle-detail-body"></div>
-            <button id="cycle-detail-close-btn" type="button">Close</button>
+            <button id="cycle-detail-close-btn" type="button" data-i18n="closeButton">Close</button>
         </dialog>
 
         <script>
@@ -617,7 +634,80 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const SUPPORTED_LANGUAGE_CODES = ${safeJsonForScript(SUPPORTED_LANGUAGES)};
             const RTL_LANGUAGE_CODES = ${safeJsonForScript([...RTL_LANGUAGES])};
 
+            // Full localization task. Raw counts behind the Graph view's
+            // own #graph-scale-text/#scc-summary-text (see renderSccSummaryText/
+            // the graphScaleCounts computation in template.ts) - unlike
+            // .findings-lang-block, #graph-explorer is never duplicated
+            // per language, so this text is recomputed here on every
+            // language change instead of being one of 14 pre-rendered
+            // server-side blocks.
+            const GRAPH_SCALE_COUNTS = ${safeJsonForScript(graphScaleCounts)};
+            const GRAPH_SCC_SUMMARY_COUNTS = ${safeJsonForScript(graphSccSummaryCounts)};
+
+            // The currently active language and (once the graph exists)
+            // whichever dynamic Graph content is on screen right now, so a
+            // language switch mid-session can re-render it instead of
+            // leaving it stuck in the previous language. graphReady stays
+            // false until the very end of this script - applyLanguage()'s
+            // very first call (below) runs before cy/selectedNodeId/the
+            // modals exist, and at that point there is nothing selected or
+            // open yet to re-render anyway.
+            let currentLanguage = SUPPORTED_LANGUAGE_CODES[0];
+            let graphReady = false;
+
+            // Plain %token substitution, mirroring i18n.ts's own
+            // formatI18n() (server-side) - kept as a small separate copy
+            // rather than an import, the same split already established
+            // for escapeHtml (browser code can't import the Node-side
+            // module). Used by every client-side dynamic-content function
+            // below (updateSelectedModulePanel, buildCycleContextHtml,
+            // openCycleDetailModal, ...) that has to build translated text
+            // at generation time, since - unlike Findings - that content is
+            // regenerated on every selection/click, not pre-rendered once
+            // per language server-side.
+            function formatI18nClient(template, vars) {
+                return template.replace(/%(\\w+)/g, (match, key) => (key in vars ? String(vars[key]) : match));
+            }
+
+            function renderGraphScaleTexts(dict) {
+                const scaleEl = document.getElementById('graph-scale-text');
+                if (scaleEl) {
+                    const modulesText = formatI18nClient(
+                        GRAPH_SCALE_COUNTS.moduleCount === 1 ? dict.scaleModulesSingular : dict.scaleModules,
+                        { n: GRAPH_SCALE_COUNTS.moduleCount }
+                    );
+                    const dependenciesText = formatI18nClient(
+                        GRAPH_SCALE_COUNTS.dependencyCount === 1
+                            ? dict.scaleDependenciesSingular
+                            : dict.scaleDependencies,
+                        { n: GRAPH_SCALE_COUNTS.dependencyCount }
+                    );
+                    scaleEl.textContent = modulesText + ' \\u00b7 ' + dependenciesText;
+                }
+
+                const summaryEl = document.getElementById('scc-summary-text');
+                if (summaryEl) {
+                    // innerHTML, not textContent - detectedSccsSummary
+                    // embeds a real &middot; entity (matching sccLabel's
+                    // own convention elsewhere in this dictionary), which
+                    // textContent would print as the literal 6 characters
+                    // "&middot;" instead of rendering the dot. Trusted,
+                    // translator-authored dictionary text, never user
+                    // input - same trust boundary as the data-i18n-html
+                    // swap loop in applyLanguage() above.
+                    summaryEl.innerHTML =
+                        GRAPH_SCC_SUMMARY_COUNTS.sccCount === 0
+                            ? dict.noDependencySccsDetected
+                            : formatI18nClient(dict.detectedSccsSummary, {
+                                  n: GRAPH_SCC_SUMMARY_COUNTS.sccCount,
+                                  largest: GRAPH_SCC_SUMMARY_COUNTS.largestSccSize,
+                              });
+                }
+            }
+
             function applyLanguage(lang) {
+                currentLanguage = lang;
+
                 document.querySelectorAll('.findings-lang-block').forEach((block) => {
                     block.hidden = block.dataset.lang !== lang;
                 });
@@ -631,29 +721,99 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     }
                 });
 
+                // Rich-HTML dictionary entries (embedded <br /> / entities,
+                // e.g. the Ca/Ce HUD-help explanations) - trusted,
+                // translator-authored content baked into I18N_DICTIONARIES
+                // at build time, never user input, so innerHTML here carries
+                // the same trust boundary as the escapeHtml(dict.x) calls
+                // used for these same dictionaries server-side.
+                document.querySelectorAll('[data-i18n-html]').forEach((el) => {
+                    const html = dict[el.dataset.i18nHtml];
+                    if (typeof html === 'string') {
+                        el.innerHTML = html;
+                    }
+                });
+
+                document.querySelectorAll('[data-i18n-aria]').forEach((el) => {
+                    const text = dict[el.dataset.i18nAria];
+                    if (typeof text === 'string') {
+                        el.setAttribute('aria-label', text);
+                    }
+                });
+
+                const isRtl = RTL_LANGUAGE_CODES.includes(lang);
+
                 // #app-header is the one localized surface that isn't
                 // pre-rendered per language (see the header's own
                 // data-i18n text-swap above) - unlike each
                 // .findings-lang-block, which already has the right
                 // dir="rtl" baked in server-side for Arabic (see
                 // renderFindingsOverview in template.ts), the header
-                // needs its direction flipped here instead. Scoped to
-                // just this element - never <html>/<body> and never
-                // #graph-explorer/#bottom-hud - so the Graph view (and
-                // the dependency graph's own edge direction within it)
-                // never mirrors, regardless of the selected language.
+                // needs its direction flipped here instead.
                 const appHeader = document.getElementById('app-header');
                 if (appHeader) {
-                    if (RTL_LANGUAGE_CODES.includes(lang)) {
+                    if (isRtl) {
                         appHeader.setAttribute('dir', 'rtl');
                     } else {
                         appHeader.removeAttribute('dir');
                     }
                 }
 
+                // Full localization task. These are the Graph view's own
+                // chrome/text panels, now localized the same way - plain
+                // information/control surfaces around the graph, never the
+                // graph itself. #graph-explorer (and #cy within it) and
+                // #minimap-canvas's own drawing are deliberately never
+                // included in this list, so the dependency graph's own
+                // node layout and edge/arrow direction (A -> B meaning)
+                // never mirrors regardless of interface language - the
+                // concrete-cycle modal's own flow diagram gets the same
+                // protection for the same reason (see the unconditional
+                // dir="ltr" on .cycle-flow in buildCycleFlowHtml below): it
+                // renders one real, ordered dependency path, not prose.
+                ['hint', 'toolbar', 'edge-clarity-note', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal'].forEach(
+                    (id) => {
+                        const el = document.getElementById(id);
+                        if (!el) {
+                            return;
+                        }
+                        if (isRtl) {
+                            el.setAttribute('dir', 'rtl');
+                        } else {
+                            el.removeAttribute('dir');
+                        }
+                    }
+                );
+
+                renderGraphScaleTexts(dict);
+
                 const languageSelect = document.getElementById('language-select');
                 if (languageSelect) {
                     languageSelect.value = lang;
+                }
+
+                // Re-render whichever dynamic Graph content is currently on
+                // screen so a language switch mid-session doesn't leave it
+                // stuck in the previous language. Guarded on graphReady -
+                // see its own declaration above.
+                if (graphReady) {
+                    if (selectedNodeId) {
+                        const node = cy.getElementById(selectedNodeId);
+                        if (!node.empty()) {
+                            if (node.data('isExternalProxy')) {
+                                updateSelectedAreaProxyPanel(node);
+                            } else {
+                                updateSelectedModulePanel(node);
+                            }
+                        }
+                    } else if (hudSelectedBody) {
+                        hudSelectedBody.className = 'hud-selected-empty';
+                        hudSelectedBody.textContent = dict.hudSelectedEmptyText;
+                    }
+
+                    if (cycleDetailModal && cycleDetailModal.open && currentCycleDetailNodeId) {
+                        openCycleDetailModal(currentCycleDetailNodeId);
+                    }
                 }
 
                 // Wrapped defensively - private browsing / a disabled
@@ -2460,8 +2620,6 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             const hudSelectedBody = document.getElementById('hud-selected-body');
 
-            const HUD_SELECTED_EMPTY_TEXT = 'Click a module to see details.';
-
             // Bottom HUD's persistent "selected module" panel (center
             // section) - reuses the exact same node.data() fields the old
             // floating tooltip read (label/id/ca/ce/instability/sccSize),
@@ -2469,15 +2627,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // cursor. data.id is the full canonical path (never the
             // abbreviated on-node displayDir) - required so the HUD always
             // shows the complete path regardless of how short the node's
-            // own label is.
+            // own label is. "Ca"/"Ce" stay untranslated technical
+            // abbreviations in every language (see i18n.ts) - only the
+            // "Instability"/"SCC size" labels around them are translated.
             function updateSelectedModulePanel(node) {
                 if (!hudSelectedBody) {
                     return;
                 }
 
+                const dict = I18N_DICTIONARIES[currentLanguage];
+
                 if (!node) {
                     hudSelectedBody.className = 'hud-selected-empty';
-                    hudSelectedBody.textContent = HUD_SELECTED_EMPTY_TEXT;
+                    hudSelectedBody.textContent = dict.hudSelectedEmptyText;
                     return;
                 }
 
@@ -2489,8 +2651,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     <strong>\${escapeHtml(title)}</strong><br />
                     <span class="hud-selected-path">\${escapeHtml(data.id)}</span><br />
                     Ca: \${data.ca} &nbsp;&nbsp; Ce: \${data.ce} &nbsp;&nbsp;
-                    Instability: \${Number(data.instability).toFixed(2)} &nbsp;&nbsp;
-                    SCC size: \${data.sccSize ?? 0}
+                    \${escapeHtml(dict.instabilityLabel)}: \${Number(data.instability).toFixed(2)} &nbsp;&nbsp;
+                    \${escapeHtml(dict.sccSizeLabel)}: \${data.sccSize ?? 0}
                     \${buildCycleContextHtml(node)}
                 \`;
             }
@@ -2525,6 +2687,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const MAX_SCC_MEMBERS_SHOWN = 12;
 
             function buildCycleContextHtml(node) {
+                const dict = I18N_DICTIONARIES[currentLanguage];
                 const data = node.data();
 
                 if (!data.sccSize || data.sccSize < 2 || data.sccId === undefined) {
@@ -2552,19 +2715,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // user can't actually see on screen (worse) - this task
                 // doesn't change what the Area/Connections filters do, only
                 // how a currently-invisible member is presented here.
-                const otherMembersHtml = shown
-                    .map((candidate) => {
-                        const label = escapeHtml(candidate.data('label'));
+                const otherMembersHtml =
+                    shown
+                        .map((candidate) => {
+                            const label = escapeHtml(candidate.data('label'));
 
-                        if (candidate.hasClass('area-hidden')) {
-                            return \`<span class="hud-scc-member hud-scc-member-hidden">\${label} (hidden by filter)</span>\`;
-                        }
+                            if (candidate.hasClass('area-hidden')) {
+                                return \`<span class="hud-scc-member hud-scc-member-hidden">\${label} \${escapeHtml(dict.hiddenByFilterNote)}</span>\`;
+                            }
 
-                        const id = escapeAttribute(candidate.id());
+                            const id = escapeAttribute(candidate.id());
 
-                        return \`<span class="hud-scc-member" data-scc-nav-id="\${id}">\${label}</span>\`;
-                    })
-                    .join(', ') + (remaining > 0 ? \`, +\${remaining} more\` : '');
+                            return \`<span class="hud-scc-member" data-scc-nav-id="\${id}">\${label}</span>\`;
+                        })
+                        .join(', ') +
+                    (remaining > 0 ? escapeHtml(formatI18nClient(dict.moreCountSuffix, { n: remaining })) : '');
 
                 // Experimental (branch: experiment/cycle-map-v2, SCC
                 // focus). visibleMemberCount counts the SELECTED node
@@ -2581,13 +2746,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // once fewer than 2 members are actually visible, since
                 // there'd be nothing left to see the SCC's shape through.
                 const visibleMemberCount = 1 + otherMembers.filter((candidate) => !candidate.hasClass('area-hidden')).length;
+                const focusCountSuffix =
+                    visibleMemberCount < data.sccSize
+                        ? formatI18nClient(dict.moduleCountVisibleParen, { visible: visibleMemberCount, n: data.sccSize })
+                        : formatI18nClient(dict.moduleCountParen, { n: data.sccSize });
                 const focusButtonHtml =
                     visibleMemberCount >= 2
-                        ? \`<button type="button" class="hud-focus-scc-btn" data-focus-scc-id="\${data.sccId}">\${
-                              visibleMemberCount < data.sccSize
-                                  ? \`Focus SCC (\${visibleMemberCount} of \${data.sccSize} modules visible)\`
-                                  : \`Focus SCC (\${data.sccSize} modules)\`
-                          }</button>\`
+                        ? \`<button type="button" class="hud-focus-scc-btn" data-focus-scc-id="\${data.sccId}">\${escapeHtml(
+                              dict.focusSccButton + ' ' + focusCountSuffix
+                          )}</button>\`
                         : '';
 
                 // Experimental (branch: experiment/cycle-map-v2, concrete
@@ -2603,14 +2770,25 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // Carries the SELECTED node's own id (not the SCC's id) -
                 // the whole point is "a cycle through THIS module", not
                 // just any cycle inside its SCC.
-                const cycleButtonHtml = \`<button type="button" class="hud-cycle-detail-btn" data-show-cycle-node-id="\${escapeAttribute(data.id)}">Show a dependency cycle</button>\`;
+                const cycleButtonHtml = \`<button type="button" class="hud-cycle-detail-btn" data-show-cycle-node-id="\${escapeAttribute(data.id)}">\${escapeHtml(dict.showDependencyCycleButton)}</button>\`;
+
+                // Not escapeHtml()'d - dict.sccContextPartOf is trusted,
+                // translator-authored template text, and for French/
+                // Spanish/Portuguese it embeds a real &deg;/&ordm; entity
+                // (matching sccLabel's own precedent elsewhere in this
+                // dictionary) that escapeHtml() would otherwise turn into
+                // the literal, broken text "&amp;deg;".
+                const partOfText = formatI18nClient(dict.sccContextPartOf, { id: data.sccId + 1, n: data.sccSize });
+                const otherMembersLine = otherMembersHtml
+                    ? dict.sccContextOtherMembers + ' ' + otherMembersHtml + '.'
+                    : '';
 
                 return \`
                     <br />
                     <span class="hud-cycle-context">
-                        Part of a strongly connected component (SCC #\${data.sccId + 1}) of \${data.sccSize} modules.
-                        This SCC contains one or more dependency cycles.
-                        \${otherMembersHtml ? 'Other modules in this SCC: ' + otherMembersHtml + '.' : ''}
+                        \${partOfText}
+                        \${dict.sccContextContainsCycles}
+                        \${otherMembersLine}
                         <br />
                         \${focusButtonHtml}
                         \${cycleButtonHtml}
@@ -2630,14 +2808,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     return;
                 }
 
+                const dict = I18N_DICTIONARIES[currentLanguage];
                 const data = node.data();
                 const connectionCount = node.connectedEdges().length;
 
+                // Format with the RAW area name, then escape the whole
+                // composed sentence once - escaping data.label first and
+                // then escaping the composed string again would
+                // double-escape it (e.g. an "&" in a folder name).
                 hudSelectedBody.className = '';
                 hudSelectedBody.innerHTML = \`
-                    <strong>External area: \${escapeHtml(data.label)}</strong><br />
-                    <span class="hud-selected-path">Aggregated view of connections between the selected area and \${escapeHtml(data.label)}.</span><br />
-                    Connections shown: \${connectionCount}
+                    <strong>\${escapeHtml(formatI18nClient(dict.externalAreaLabel, { name: data.label }))}</strong><br />
+                    <span class="hud-selected-path">\${escapeHtml(formatI18nClient(dict.externalAreaAggregatedView, { name: data.label }))}</span><br />
+                    \${escapeHtml(formatI18nClient(dict.externalAreaConnectionsShown, { n: connectionCount }))}
                 \`;
             }
 
@@ -3077,7 +3260,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 return [...headChips, ellipsisHtml, ...tailChips];
             }
 
-            function buildCycleFlowHtml(memberNodes, startLabel) {
+            function buildCycleFlowHtml(memberNodes, startLabel, dict) {
                 const cells = buildCycleFlowCells(memberNodes);
                 const rows = [];
                 for (let i = 0; i < cells.length; i += CYCLE_FLOW_ROW_SIZE) {
@@ -3115,9 +3298,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // ties back to the same accent color as the highlighted
                 // start chip above so the two read as "the same module".
                 return \`
-                    <div class="cycle-flow">\${rowsHtml}</div>
+                    <div class="cycle-flow" dir="ltr">\${rowsHtml}</div>
                     <div class="cycle-flow-closing">
-                        <span class="cycle-arrow">&#8618;</span> back to <span class="cycle-chip cycle-node-start">\${startLabel}</span>
+                        \${escapeHtml(dict.cycleFlowBackTo)} <span dir="ltr"><span class="cycle-arrow">&#8618;</span> <span class="cycle-chip cycle-node-start">\${startLabel}</span></span>
                     </div>
                 \`;
             }
@@ -3130,7 +3313,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // (same '.area-hidden' check used throughout this file) is
             // rendered plain and non-navigable, exactly like the SCC
             // member list above, and never gets a data-cycle-nav-id.
-            function buildCycleListHtml(memberNodes) {
+            function buildCycleListHtml(memberNodes, dict) {
                 return memberNodes
                     .map((node, index) => {
                         const label = escapeHtml(node.data('label'));
@@ -3139,7 +3322,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         const startCls = index === 0 ? ' cycle-detail-item-start' : '';
 
                         if (node.hasClass('area-hidden')) {
-                            return \`<li class="cycle-detail-item cycle-detail-item-hidden\${startCls}">\${position}<span class="cycle-detail-item-main"><strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span></span><span class="hud-scc-member-hidden">(hidden by filter)</span></li>\`;
+                            return \`<li class="cycle-detail-item cycle-detail-item-hidden\${startCls}">\${position}<span class="cycle-detail-item-main"><strong>\${label}</strong><span class="hud-selected-path">\${filePath}</span></span><span class="hud-scc-member-hidden">\${escapeHtml(dict.hiddenByFilterNote)}</span></li>\`;
                         }
 
                         const navId = escapeAttribute(node.id());
@@ -3153,7 +3336,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const cycleDetailCloseButton = document.getElementById('cycle-detail-close-btn');
             const cycleDetailCountBadge = document.getElementById('cycle-detail-count-badge');
 
+            // Tracks whichever node the modal is currently showing a cycle
+            // through, so applyLanguage() (see above) can re-render this
+            // modal's content in the newly selected language while it's
+            // open, and so the close handlers below can clear it again.
+            let currentCycleDetailNodeId = null;
+
             cycleDetailCloseButton?.addEventListener('click', () => cycleDetailModal?.close());
+            cycleDetailModal?.addEventListener('close', () => {
+                currentCycleDetailNodeId = null;
+            });
 
             // Opening/closing this modal never touches Focus, selection,
             // or the Area/Connections filters on its own - it's a
@@ -3178,6 +3370,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     return;
                 }
 
+                const dict = I18N_DICTIONARIES[currentLanguage];
+                currentCycleDetailNodeId = nodeId;
+
                 // path is [startId, ..., startId] (closed loop, startId
                 // repeated at both ends) - memberNodes drops that repeat,
                 // one entry per distinct module, in cycle order.
@@ -3192,12 +3387,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // never phrased as "the cycle" - moves to its own quiet
                 // line rather than staying folded into one long sentence.
                 if (cycleDetailCountBadge) {
-                    cycleDetailCountBadge.textContent = \`\${memberNodes.length} module\${memberNodes.length === 1 ? '' : 's'}\`;
+                    cycleDetailCountBadge.textContent = formatI18nClient(
+                        memberNodes.length === 1 ? dict.scaleModulesSingular : dict.scaleModules,
+                        { n: memberNodes.length }
+                    );
                 }
 
                 const hiddenNoteHtml =
                     hiddenCount > 0
-                        ? \`<p class="cycle-detail-hidden-note">&#8505; \${hiddenCount} module\${hiddenCount === 1 ? '' : 's'} hidden by the current filter.</p>\`
+                        ? \`<p class="cycle-detail-hidden-note">&#8505; \${escapeHtml(
+                              formatI18nClient(hiddenCount === 1 ? dict.cycleHiddenNoteSingular : dict.cycleHiddenNotePlural, {
+                                  n: hiddenCount,
+                              })
+                          )}</p>\`
                         : '';
 
                 // Findings-first navigation (connecting the overview to
@@ -3222,31 +3424,36 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     ).length;
                 const showInGraphHtml =
                     visibleSccMemberCount >= 2
-                        ? \`<button type="button" class="cycle-detail-focus-btn" data-focus-scc-id="\${sccId}">\${
+                        ? \`<button type="button" class="cycle-detail-focus-btn" data-focus-scc-id="\${sccId}">\${escapeHtml(
                               visibleSccMemberCount < sccSize
-                                  ? \`Show in graph (\${visibleSccMemberCount} of \${sccSize} modules visible)\`
-                                  : \`Show in graph\`
-                          }</button>\`
+                                  ? dict.showInGraphButton + ' ' + formatI18nClient(dict.moduleCountVisibleParen, { visible: visibleSccMemberCount, n: sccSize })
+                                  : dict.showInGraphButton
+                          )}</button>\`
                         : '';
 
                 if (cycleDetailBody) {
+                    // dict.cycleModalSubtitle is not escapeHtml()'d for the
+                    // same reason as sccContextPartOf above - it embeds a
+                    // real &deg;/&ordm; entity for French/Spanish/
+                    // Portuguese, which escaping would corrupt into the
+                    // literal text "&amp;deg;".
                     cycleDetailBody.innerHTML = \`
-                        <p class="cycle-detail-subtitle">One concrete cycle through <strong>\${startLabel}</strong> within SCC #\${sccId + 1}.</p>
-                        <p class="cycle-detail-note">This SCC may contain other dependency cycles.</p>
+                        <p class="cycle-detail-subtitle">\${formatI18nClient(dict.cycleModalSubtitle, { module: '<strong>' + startLabel + '</strong>', id: sccId + 1 })}</p>
+                        <p class="cycle-detail-note">\${escapeHtml(dict.cycleModalNote)}</p>
 
                         \${showInGraphHtml}
 
                         <div class="cycle-detail-metadata">
-                            <span class="cycle-meta-chip">\${memberNodes.length} modules</span>
-                            <span class="cycle-meta-chip">\${memberNodes.length} dependencies</span>
+                            <span class="cycle-meta-chip">\${escapeHtml(formatI18nClient(memberNodes.length === 1 ? dict.scaleModulesSingular : dict.scaleModules, { n: memberNodes.length }))}</span>
+                            <span class="cycle-meta-chip">\${escapeHtml(formatI18nClient(memberNodes.length === 1 ? dict.scaleDependenciesSingular : dict.scaleDependencies, { n: memberNodes.length }))}</span>
                         </div>
 
-                        \${buildCycleFlowHtml(memberNodes, startLabel)}
+                        \${buildCycleFlowHtml(memberNodes, startLabel, dict)}
 
                         \${hiddenNoteHtml}
 
-                        <h3>Cycle modules</h3>
-                        <ol class="cycle-detail-list">\${buildCycleListHtml(memberNodes)}</ol>
+                        <h3>\${escapeHtml(dict.cycleModulesHeading)}</h3>
+                        <ol class="cycle-detail-list">\${buildCycleListHtml(memberNodes, dict)}</ol>
                     \`;
                 }
 
@@ -3340,6 +3547,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     updateSelectedModulePanel(null);
                 }
             });
+
+            // Everything applyLanguage() might need to re-render on a
+            // language switch (cy, selectedNodeId, the HUD/modal wiring)
+            // now exists - see graphReady's own declaration further up.
+            graphReady = true;
         </script>
     </body>
     </html>
