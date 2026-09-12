@@ -1104,3 +1104,51 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
         expect(occurrences).toHaveLength(1);
     });
 });
+
+describe('buildHtmlTemplate initial graph view (UX fix, pre-existing behavior - not a Findings regression)', () => {
+    // Pre-existing bug (confirmed by reproducing the identical zoom/pan
+    // values on master before any Findings Phase 0/1/2 work existed):
+    // applyInitialView() used to fall back to cy.zoom(1) +
+    // cy.center(currentView) whenever the graph didn't "fit comfortably" -
+    // for a tall, narrow vertical-flow layout (a cycle's members each
+    // land on a different rank), that centers the viewport on mostly
+    // empty vertical space, showing almost nothing at first load. Fixed
+    // by always using the exact same fit-to-viewport call "Fit Graph"
+    // already makes - no second implementation, no new heuristic/
+    // threshold, no layout change.
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('applyInitialView always uses the same fit-to-viewport logic as the "Fit Graph" button - no separate zoom(1)/center() fallback', () => {
+        const fnStart = html.indexOf('function applyInitialView(cy)');
+        const fnEnd = html.indexOf('}', fnStart);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnStart).toBeGreaterThan(-1);
+        expect(fnSource).toContain('fitCyAvoidingChrome(cy, 80);');
+        expect(fnSource).not.toContain('cy.zoom(1)');
+        expect(fnSource).not.toContain('cy.center(');
+    });
+
+    it('removes the now-dead "fits comfortably" branch and its threshold entirely, rather than leaving unreachable code behind', () => {
+        expect(html).not.toContain('FIT_TOLERANCE');
+        expect(html).not.toContain('fitsComfortably');
+    });
+
+    it('the manual "Fit Graph" button keeps its own existing behavior unchanged', () => {
+        // Regression guard: the button's own call uses a different base
+        // padding (40) than the initial view's (80) - confirmed still
+        // distinct, i.e. this fix didn't accidentally merge the two
+        // call sites into one shared constant/behavior change.
+        const fitBtnStart = html.indexOf("fitButton.addEventListener(");
+        const fitBtnEnd = html.indexOf('});', fitBtnStart);
+        const fitBtnSource = html.slice(fitBtnStart, fitBtnEnd);
+
+        expect(fitBtnStart).toBeGreaterThan(-1);
+        expect(fitBtnSource).toContain('fitCyAvoidingChrome(cy, 40);');
+    });
+
+    it('fitCyAvoidingChrome itself (the shared chrome-avoiding fit math) is untouched - still the one implementation, reused, not duplicated', () => {
+        const occurrences = html.match(/function fitCyAvoidingChrome\(cy, basePadding, targetCollection\)/g);
+        expect(occurrences).toHaveLength(1);
+    });
+});

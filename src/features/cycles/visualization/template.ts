@@ -1457,15 +1457,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // Experimental (branch: experiment/cycle-map-v2, navigation layer).
             // Every layout config above now has fit:false - "fit the whole
             // graph into the viewport" is no longer the automatic outcome of
-            // running a layout. On a small graph that still comfortably fits
-            // at a readable zoom, this behaves like a fit. On a large one
-            // (dep-health's own ~400-module graph, for instance), this keeps
-            // nodes at their real, readable size and centers the viewport on
-            // the graph instead of shrinking everything to fit - matching
-            // the "large canvas, local viewport, navigate via minimap"
-            // model. "Fit Graph" remains available as an explicit, opt-in
-            // overview control (see the button handler below).
-            const FIT_TOLERANCE = 1.2;
+            // running a layout; applyInitialView() below decides what the
+            // very first view looks like instead.
 
             // A real bug found while testing: plain cy.fit() sizes the
             // graph to the FULL container, including the four corners
@@ -1563,23 +1556,39 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 });
             }
 
+            // UX fix (pre-existing, unrelated to Findings Phase 0/1/2 -
+            // confirmed by reproducing the identical zoom/pan on master
+            // before any of that work existed). This used to branch: a
+            // graph that fit comfortably at a readable zoom got
+            // fitCyAvoidingChrome(cy, 80) (the exact same call "Fit
+            // Graph" makes), but one that didn't got cy.zoom(1) +
+            // cy.center(currentView) instead - centering the WHOLE
+            // bounding box's midpoint at 100% zoom. That second branch
+            // was fine for a graph that's large in a roughly balanced
+            // way, but breaks down for an extreme aspect ratio: a tall,
+            // narrow vertical-flow layout (a hierarchical/rank-based
+            // layout puts every member of a cycle on a different rank,
+            // stretching the graph far taller than it is wide) has its
+            // geometric center sitting in mostly empty vertical space,
+            // so the very first thing a reader sees is a near-blank
+            // viewport with one or two orphan-looking nodes - especially
+            // noticeable now that the graph is no longer the report's
+            // first screen (Findings Phase 1's "Explore full graph"
+            // leads here). Always using the same fit-to-viewport logic
+            // "Fit Graph" already uses removes the branch entirely
+            // (rather than a second, parallel implementation) and makes
+            // the very first view exactly what a reader would already
+            // get by clicking "Fit Graph" themselves - never a
+            // surprising, less-oriented default. The one real tradeoff,
+            // accepted deliberately: a genuinely huge, dense graph (e.g.
+            // dep-health's own ~400-module graph) now also starts at a
+            // small "whole graph" overview zoom instead of a
+            // readable-but-narrow-viewport one - matching the manual
+            // "Fit Graph" button's own already-established behavior for
+            // that same case, so this isn't a new tradeoff, just a
+            // consistent one.
             function applyInitialView(cy) {
-                const currentView = visibleElements(cy);
-                const bb = currentView.boundingBox();
-                const container = cy.container();
-                const availableWidth = container.clientWidth - 80;
-                const availableHeight = container.clientHeight - 80;
-
-                const fitsComfortably =
-                    bb.w <= availableWidth * FIT_TOLERANCE &&
-                    bb.h <= availableHeight * FIT_TOLERANCE;
-
-                if (fitsComfortably) {
-                    fitCyAvoidingChrome(cy, 80);
-                } else {
-                    cy.zoom(1);
-                    cy.center(currentView);
-                }
+                fitCyAvoidingChrome(cy, 80);
             }
 
             // --- Minimap -----------------------------------------------
