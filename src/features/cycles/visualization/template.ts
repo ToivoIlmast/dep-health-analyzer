@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
+import { Dictionary, I18N, LanguageCode, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
 import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
 import { styles } from './styles';
@@ -17,7 +18,9 @@ type BuildHtmlTemplate = {
 // "No dependency SCCs detected" rather than a fabricated "0 cycles" - SCC
 // count is not cycle count (a single SCC can contain more than one
 // cycle), the same terminology distinction already established elsewhere
-// in this report.
+// in this report. Deliberately English-only, like the rest of the Graph's
+// own UI (see i18n.ts's own scoping note) - #scc-summary lives inside the
+// Graph view, not the localized Findings view.
 function renderSccSummaryText(findings: CycleFindings): string {
     if (findings.sccs.length === 0) {
         return 'No dependency SCCs detected.';
@@ -39,7 +42,9 @@ function renderSccSummaryText(findings: CycleFindings): string {
 // required here, unlike the modal's client-side escapeHtml(): this runs in
 // Node at report-generation time, so nothing sanitizes these values later -
 // a crafted file/directory name is exactly as real an XSS vector here as
-// anywhere else user-controlled text reaches this report.
+// anywhere else user-controlled text reaches this report. Module/file
+// names are identifiers, not prose - never translated, so this one
+// function is shared unchanged across all three rendered language blocks.
 const MAX_INLINE_CYCLE_MEMBERS = 4;
 
 function summarizeExampleCycle(exampleCycle: string[]): string {
@@ -55,27 +60,44 @@ function summarizeExampleCycle(exampleCycle: string[]): string {
 
 // One finding = one non-trivial SCC, never "a cycle" - matches the same
 // distinction the concrete-cycle modal already draws (SCC #N, size, vs.
-// "one concrete cycle through X"). data-finding-scc-id is inert markup in
-// this phase - Phase 2's job is wiring an actual click behavior to it
-// (e.g. jumping into the graph focused on this SCC, mirroring focusScc());
-// this phase only needs the row to visually read as clickable and carry
-// the id a later phase can hook into, per the task's explicit scope split.
-function renderSccFindingRow(finding: SccFinding): string {
+// "one concrete cycle through X"). data-finding-scc-id carries the real
+// sccId the click wiring below (openCycleDetailModalForScc) reads
+// directly - never re-derived by module name. "View cycle" is this card's
+// one explicit primary action; the card itself stays clickable too
+// (event delegation on #findings-view handles both).
+function renderSccFindingRow(finding: SccFinding, dict: Dictionary): string {
+    const label = formatI18n(dict.sccLabel, { id: finding.id + 1, n: finding.size });
+
     return `
                     <li class="finding-row" data-finding-scc-id="${finding.id}">
-                        <div class="finding-row-header">SCC #${finding.id + 1} &middot; ${finding.size} modules</div>
-                        <div class="finding-cycle-preview">${summarizeExampleCycle(finding.exampleCycle)}</div>
+                        <div class="finding-row-main">
+                            <div class="finding-row-header">${label}</div>
+                            <div class="finding-cycle-preview">${summarizeExampleCycle(finding.exampleCycle)}</div>
+                        </div>
+                        <button type="button" class="btn-secondary finding-view-cycle-btn">${escapeHtml(dict.viewCycleButton)}</button>
                     </li>`;
+}
+
+function renderScaleText(dict: Dictionary, moduleCount: number, dependencyCount: number): string {
+    const modulesText = formatI18n(moduleCount === 1 ? dict.scaleModulesSingular : dict.scaleModules, {
+        n: moduleCount,
+    });
+    const dependenciesText = formatI18n(
+        dependencyCount === 1 ? dict.scaleDependenciesSingular : dict.scaleDependencies,
+        { n: dependencyCount }
+    );
+
+    return `${modulesText} · ${dependenciesText}`;
 }
 
 // The very first thing a reader sees - "what is this report, how big is
 // the project, is there anything here worth looking at" - before the graph
 // itself, which stays exactly as capable as before, just no longer the
 // mandatory first screen. Entirely server-rendered from the same
-// CycleFindings payload #scc-summary already uses (see
-// renderSccSummaryText above) - this section needs nothing from the client
-// script or the graph libraries to render correctly, including in a copy
-// of this report missing its assets/ directory.
+// CycleFindings payload #scc-summary already uses - this section needs
+// nothing from the client script or the graph libraries to render
+// correctly, including in a copy of this report missing its assets/
+// directory.
 //
 // Deliberately never claims a shown exampleCycle is the only cycle in its
 // SCC - the caveat line above the list states this once, for the whole
@@ -83,41 +105,103 @@ function renderSccFindingRow(finding: SccFinding): string {
 // is staying scannable, not re-explaining SCC-vs-cycle semantics per
 // finding - that explanation already lives in the concrete-cycle modal and
 // the "What are dependency cycles?" educational modal, both unchanged).
-function renderFindingsOverview(findings: CycleFindings, graphScaleText: string): string {
+//
+// Rendered once per supported language (see buildHtmlTemplate below) -
+// all three sit in the page from the start, only one ever visible
+// (data-lang matching the active language; the rest carry a plain
+// `hidden` attribute) - never a single English render re-templated by
+// client JS on language change. This keeps every language's Findings
+// content exactly as real-server-rendered-and-standalone as the English
+// default already was, rather than making translated text depend on the
+// client script successfully re-running a second, parallel template
+// implementation.
+function renderFindingsOverview(findings: CycleFindings, lang: LanguageCode): string {
+    const dict = I18N[lang];
+    const scaleText = renderScaleText(dict, findings.moduleCount, findings.dependencyCount);
+    const hiddenAttr = lang === SUPPORTED_LANGUAGES[0] ? '' : ' hidden';
+
     if (findings.sccs.length === 0) {
         return `
-        <section id="findings-overview">
-            <h1>Dependency health</h1>
-            <p class="findings-scale">${graphScaleText}</p>
-            <p class="findings-zero-state">No dependency cycles detected.</p>
-            <a class="findings-explore-link" href="#graph-explorer">Explore dependency graph</a>
-        </section>`;
+            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}>
+                <header class="findings-header">
+                    <h1>${escapeHtml(dict.findingsTitle)}</h1>
+                    <p class="findings-scale">${scaleText}</p>
+                </header>
+
+                <div class="findings-zero-card">
+                    <p class="findings-zero-state">${escapeHtml(dict.findingsZeroState)}</p>
+                    <button type="button" class="btn-primary findings-explore-btn" data-action="explore-graph">${escapeHtml(dict.exploreGraphZero)}</button>
+                </div>
+            </div>`;
     }
 
-    const rowsHtml = findings.sccs.map(renderSccFindingRow).join('');
+    const caveatText =
+        findings.sccs.length === 1
+            ? dict.findingsCaveatSingular
+            : formatI18n(dict.findingsCaveatPlural, { n: findings.sccs.length });
+    const rowsHtml = findings.sccs.map((finding) => renderSccFindingRow(finding, dict)).join('');
 
     return `
-        <section id="findings-overview">
-            <h1>Dependency health</h1>
-            <p class="findings-scale">${graphScaleText}</p>
+            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}>
+                <header class="findings-header">
+                    <h1>${escapeHtml(dict.findingsTitle)}</h1>
+                    <p class="findings-scale">${scaleText}</p>
+                </header>
 
-            <h2>Dependency cycles</h2>
-            <p class="findings-caveat">
-                ${findings.sccs.length} SCC${findings.sccs.length === 1 ? '' : 's'} containing cycles - each row shows one representative cycle; an SCC may contain others.
-            </p>
+                <section class="findings-cycles-section">
+                    <h2>${escapeHtml(dict.findingsCyclesHeading)}</h2>
+                    <p class="findings-caveat">${escapeHtml(caveatText)}</p>
 
-            <ol class="findings-list">${rowsHtml}
-            </ol>
+                    <ol class="findings-list">${rowsHtml}
+                    </ol>
 
-            <a class="findings-explore-link" href="#graph-explorer">Explore full graph</a>
-        </section>`;
+                    <button type="button" class="btn-secondary findings-explore-btn" data-action="explore-graph">${escapeHtml(dict.exploreFullGraph)}</button>
+                </section>
+            </div>`;
+}
+
+function renderFindingsView(findings: CycleFindings): string {
+    const blocksHtml = SUPPORTED_LANGUAGES.map((lang) => renderFindingsOverview(findings, lang)).join('\n');
+
+    return `
+        <main id="findings-view">
+            ${blocksHtml}
+        </main>`;
+}
+
+// Small, plain, always-visible switcher (Findings/Graph tabs + language
+// select) - a persistent header, not per-view chrome, so it survives
+// switching either way. Tab/language LABELS are the only Graph-adjacent
+// text this task localizes (data-i18n, swapped by applyLanguage() below)
+// - everything else in the Graph view keeps its existing English text
+// unchanged, per this task's explicit scope (see i18n.ts).
+function renderAppHeader(): string {
+    const dict = I18N[SUPPORTED_LANGUAGES[0]];
+
+    return `
+        <header id="app-header">
+            <span id="app-header-title">${escapeHtml(dict.appTitle)}</span>
+
+            <nav id="view-tabs" aria-label="Report view">
+                <button type="button" class="view-tab is-active" data-view="findings" aria-selected="true" data-i18n="tabFindings">${escapeHtml(dict.tabFindings)}</button>
+                <button type="button" class="view-tab" data-view="graph" aria-selected="false" data-i18n="tabGraph">${escapeHtml(dict.tabGraph)}</button>
+            </nav>
+
+            <label id="language-switcher">
+                <span data-i18n="languageLabel">${escapeHtml(dict.languageLabel)}</span>:
+                <select id="language-select" aria-label="Language">
+                    ${SUPPORTED_LANGUAGES.map((code) => `<option value="${code}">${code.toUpperCase()}</option>`).join('')}
+                </select>
+            </label>
+        </header>`;
 }
 
 export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     const { nodes, edges, findings } = args;
     const sccSummaryText = renderSccSummaryText(findings);
-    const graphScaleText = `${findings.moduleCount} module${findings.moduleCount === 1 ? '' : 's'} · ${findings.dependencyCount} dependenc${findings.dependencyCount === 1 ? 'y' : 'ies'}`;
-    const findingsOverviewHtml = renderFindingsOverview(findings, graphScaleText);
+    const graphScaleText = renderScaleText(I18N[SUPPORTED_LANGUAGES[0]], findings.moduleCount, findings.dependencyCount);
+    const appHeaderHtml = renderAppHeader();
+    const findingsViewHtml = renderFindingsView(findings);
 
     return `
     <!DOCTYPE html>
@@ -136,20 +220,30 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     </head>
     
     <body>
-        ${findingsOverviewHtml}
+        ${appHeaderHtml}
 
-        <!-- Findings-first overview (Phase 1). Everything from here down
-             to the matching closing </div> below is exactly what used to
-             be #cy/#hint/#toolbar/#edge-clarity-note as direct children of
-             <body> - unchanged among themselves, just wrapped in one
-             container so their own "position: absolute, no positioned
-             ancestor" rules (see styles.ts) resolve relative to THIS
-             wrapper's own top-left corner instead of the whole document's,
-             now that #findings-overview above pushes them down the page.
-             #bottom-hud stays outside this wrapper deliberately - it's
-             position: fixed, which is relative to the viewport regardless
-             of any ancestor, so wrapping it here would change nothing
-             except the diff. -->
+        ${findingsViewHtml}
+
+        <!-- Findings/Graph views (information architecture rework).
+             #graph-explorer/#bottom-hud together ARE the "Graph" view -
+             everything from here down to the matching closing </div>
+             below is exactly what used to be #cy/#hint/#toolbar/
+             #edge-clarity-note as direct children of <body>, unchanged
+             among themselves, just wrapped in one container so their own
+             "position: absolute, no positioned ancestor" rules (see
+             styles.ts) resolve relative to THIS wrapper's own top-left
+             corner. Both this wrapper and #bottom-hud are always present
+             in the DOM from page load and hidden via visibility (see
+             styles.ts), never display:none: cytoscape's own container-size
+             reads (applyInitialView/fitCyAvoidingChrome, both unchanged)
+             run synchronously as part of the very first layout below, long
+             before the user could ever click the "Graph" tab - a
+             display:none container would report zero width/height at that
+             exact moment and permanently corrupt the initial zoom/pan
+             math. visibility:hidden keeps real, correct dimensions
+             available the whole time, so switchToView() (see the script
+             below) only ever needs to flip a CSS state, never re-run or
+             repair any existing graph/layout/fit logic. -->
         <div id="graph-explorer">
         <div id="cy"></div>
         <div id="hint">
@@ -426,6 +520,137 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             function escapeAttribute(value) {
                 return escapeHtml(value).replace(/"/g, '&quot;');
             }
+
+            // --- Findings/Graph views + language switcher --------------
+            //
+            // Deliberately placed first, before any of the graph/
+            // cytoscape setup below - none of this depends on cy existing
+            // (it only ever touches plain, already-rendered DOM and a
+            // small embedded dictionary), and running it first means a
+            // returning reader with a saved non-English preference sees
+            // the right language immediately, with no flash of English
+            // while the (heavier) graph initializes underneath.
+            //
+            // "Switching views" is a pure CSS-state flip (see
+            // #findings-view.is-hidden / #graph-explorer.is-active /
+            // #bottom-hud.is-active in styles.ts), never a re-render or
+            // a graph teardown/rebuild - Focus SCC, selection, filters,
+            // zoom/pan, and the minimap all survive switching away and
+            // back for free, simply because nothing here ever touches
+            // them.
+            function switchToView(view) {
+                const isGraph = view === 'graph';
+
+                document.getElementById('findings-view')?.classList.toggle('is-hidden', isGraph);
+                document.getElementById('graph-explorer')?.classList.toggle('is-active', isGraph);
+                document.getElementById('bottom-hud')?.classList.toggle('is-active', isGraph);
+
+                document.querySelectorAll('.view-tab').forEach((tab) => {
+                    const isActiveTab = tab.dataset.view === view;
+                    tab.classList.toggle('is-active', isActiveTab);
+                    tab.setAttribute('aria-selected', String(isActiveTab));
+                });
+            }
+
+            document.querySelectorAll('.view-tab').forEach((tab) => {
+                tab.addEventListener('click', () => switchToView(tab.dataset.view));
+            });
+
+            // Findings-first navigation: a finding row (server-rendered,
+            // see renderSccFindingRow in the Node-side template code)
+            // carries its own sccId as a data attribute
+            // (data-finding-scc-id) - this is the one listener that makes
+            // both the row itself and its "View cycle" button interactive
+            // (a click on the button bubbles up to the same
+            // [data-finding-scc-id] ancestor, so one delegated check
+            // covers both). openCycleDetailModalForScc (defined further
+            // below, after the graph exists - safe to reference here
+            // ahead of its own definition, since nothing calls it until a
+            // real click happens, long after the whole script has run
+            // once) never searches by module name, only by this id.
+            // data-action="explore-graph" (the zero-state and
+            // end-of-list buttons) is handled in the same listener, since
+            // both live inside the same #findings-view container.
+            document.getElementById('findings-view')?.addEventListener('click', (event) => {
+                const exploreEl = event.target.closest('[data-action="explore-graph"]');
+
+                if (exploreEl) {
+                    switchToView('graph');
+                    return;
+                }
+
+                const row = event.target.closest('[data-finding-scc-id]');
+
+                if (!row) {
+                    return;
+                }
+
+                openCycleDetailModalForScc(Number(row.dataset.findingSccId));
+            });
+
+            // Plain %token substitution, mirroring i18n.ts's own
+            // formatI18n() (server-side) - kept as a small separate copy
+            // rather than an import, the same split already established
+            // for escapeHtml (browser code can't import the Node-side
+            // module). Only used for the header's own tiny static labels
+            // (data-i18n) - the Findings view's own (much larger,
+            // per-finding-dynamic) content is never re-templated
+            // client-side at all; every language's version is already
+            // fully pre-rendered server-side (see renderFindingsOverview
+            // in template.ts) and this only ever toggles which one is
+            // visible.
+            const I18N_DICTIONARIES = ${safeJsonForScript(I18N)};
+            const LANGUAGE_STORAGE_KEY = 'dep-health-language';
+            const SUPPORTED_LANGUAGE_CODES = ${safeJsonForScript(SUPPORTED_LANGUAGES)};
+
+            function applyLanguage(lang) {
+                document.querySelectorAll('.findings-lang-block').forEach((block) => {
+                    block.hidden = block.dataset.lang !== lang;
+                });
+
+                const dict = I18N_DICTIONARIES[lang];
+
+                document.querySelectorAll('[data-i18n]').forEach((el) => {
+                    const text = dict[el.dataset.i18n];
+                    if (typeof text === 'string') {
+                        el.textContent = text;
+                    }
+                });
+
+                const languageSelect = document.getElementById('language-select');
+                if (languageSelect) {
+                    languageSelect.value = lang;
+                }
+
+                // Wrapped defensively - private browsing / a disabled
+                // storage API must never break language switching itself,
+                // only its persistence across page loads.
+                try {
+                    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+                } catch {
+                    // Ignored - the language still applies for this view.
+                }
+            }
+
+            function getInitialLanguage() {
+                try {
+                    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+                    if (saved && SUPPORTED_LANGUAGE_CODES.includes(saved)) {
+                        return saved;
+                    }
+                } catch {
+                    // Ignored - falls through to the English default.
+                }
+                return SUPPORTED_LANGUAGE_CODES[0];
+            }
+
+            document.getElementById('language-select')?.addEventListener('change', (event) => {
+                applyLanguage(event.target.value);
+            });
+
+            applyLanguage(getInitialLanguage());
+
+            // -------------------------------------------------------------
 
             const layouts = {
                 dagreLR: {
@@ -3039,21 +3264,22 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // "Show in graph" button above it, both close the modal before
             // acting - the main graph pan/select/focus either triggers
             // would otherwise happen invisibly behind the native <dialog>
-            // backdrop. "Show in graph" additionally scrolls the page to
-            // #graph-explorer - the user may currently be looking at
-            // #findings-overview at the top of the page (that's how they
-            // could have opened this modal in the first place, via a
-            // finding row), and focusScc() itself only ever touches
-            // viewport/zoom on the existing graph instance, never page
-            // scroll - without this, "Show in graph" would silently
-            // succeed off-screen.
+            // backdrop. "Show in graph" additionally switches to the
+            // Graph view (switchToView(), defined near the top of this
+            // script) - the user may currently be looking at the Findings
+            // view (that's how they could have opened this modal in the
+            // first place, via a finding row), and focusScc() itself only
+            // ever touches viewport/zoom on the existing graph instance,
+            // never which view is showing - without this, "Show in graph"
+            // would silently succeed behind the still-visible Findings
+            // view.
             cycleDetailBody?.addEventListener('click', (event) => {
                 const focusEl = event.target.closest('[data-focus-scc-id]');
 
                 if (focusEl) {
                     cycleDetailModal?.close();
                     focusScc(Number(focusEl.dataset.focusSccId));
-                    document.getElementById('graph-explorer')?.scrollIntoView();
+                    switchToView('graph');
                     return;
                 }
 
@@ -3065,25 +3291,6 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 cycleDetailModal?.close();
                 navigateToSccMember(itemEl.dataset.cycleNavId);
-            });
-
-            // Findings-first navigation: a finding row (server-rendered in
-            // #findings-overview, see renderSccFindingRow in the Node-side
-            // template code) carries its own sccId as inert markup
-            // (data-finding-scc-id) until now - this is the one listener
-            // that makes it interactive. Delegated on the section itself
-            // (not per-row) purely for consistency with how every other
-            // list in this report is wired, even though - unlike
-            // hudSelectedBody/cycleDetailBody - #findings-overview's
-            // content is static from page load and never regenerated.
-            document.getElementById('findings-overview')?.addEventListener('click', (event) => {
-                const row = event.target.closest('[data-finding-scc-id]');
-
-                if (!row) {
-                    return;
-                }
-
-                openCycleDetailModalForScc(Number(row.dataset.findingSccId));
             });
 
             cy.on('tap', 'node', (event) => {

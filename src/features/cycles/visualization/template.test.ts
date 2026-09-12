@@ -10,6 +10,20 @@ import type { CycleFindings } from '../findings/buildCycleFindings';
 // their own CycleFindings value instead of using this.
 const EMPTY_FINDINGS: CycleFindings = { moduleCount: 0, dependencyCount: 0, sccs: [] };
 
+// Information architecture rework: the Findings view now server-renders
+// one block per supported language (see renderFindingsOverview in
+// template.ts), only one of them ever visible at a time client-side -
+// English is always first (SUPPORTED_LANGUAGES[0] in i18n.ts) and is the
+// only block most content-shape tests care about. Slicing out just that
+// block keeps exact-count assertions (e.g. "exactly N finding rows")
+// correct regardless of how many languages exist, rather than every such
+// test needing to know and multiply by that count itself.
+function extractEnglishFindingsBlock(html: string): string {
+    const start = html.indexOf('data-lang="en"');
+    const end = html.indexOf('data-lang="fi"');
+    return html.slice(start, end);
+}
+
 describe('buildHtmlTemplate HTML/script escaping', () => {
     it('does not embed a raw </script> sequence when a node id contains one', () => {
         // A crafted file path containing "</script><script>...</script>" would
@@ -187,9 +201,14 @@ describe('buildHtmlTemplate global SCC summary (findings data foundation)', () =
 
     it('never phrases the SCC summary as a cycle count', () => {
         // The whole point of the earlier terminology fix: SCC count is not
-        // cycle count (one SCC can contain more than one cycle). Neither
-        // wording direction ("N cycles detected" / "N SCCs" mislabeled as
-        // cycles) should ever appear for this summary.
+        // cycle count (one SCC can contain more than one cycle) - checked
+        // against #scc-summary-text's own rendered content specifically
+        // (not the whole page): the page as a whole legitimately contains
+        // the phrase "cycles detected" elsewhere now (the Findings zero
+        // state's own text, embedded via the i18n dictionary for the
+        // language switcher regardless of whether the CURRENT findings
+        // happen to be empty) - that's a different, correct piece of
+        // copy, not this summary being mislabeled.
         const html = buildHtmlTemplate({
             nodes: [],
             edges: [],
@@ -200,7 +219,12 @@ describe('buildHtmlTemplate global SCC summary (findings data foundation)', () =
             },
         });
 
-        expect(html.toLowerCase()).not.toContain('cycles detected');
+        const summaryStart = html.indexOf('id="scc-summary-text"');
+        const summaryEnd = html.indexOf('</span>', summaryStart);
+        const summaryText = html.slice(summaryStart, summaryEnd).toLowerCase();
+
+        expect(summaryStart).toBeGreaterThan(-1);
+        expect(summaryText).not.toContain('cycles detected');
         expect(html).toContain('Detected SCCs:');
     });
 
@@ -686,7 +710,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         expect(html).toContain("cycleDetailCloseButton?.addEventListener('click', () => cycleDetailModal?.close());");
 
         const bodyListenerStart = html.indexOf("cycleDetailBody?.addEventListener('click'");
-        const bodyListenerEnd = html.indexOf("document.getElementById('findings-overview')", bodyListenerStart);
+        const bodyListenerEnd = html.indexOf("cy.on('tap', 'node'", bodyListenerStart);
         const bodyListenerSource = html.slice(bodyListenerStart, bodyListenerEnd);
         expect(bodyListenerSource).toContain('cycleDetailModal?.close();');
         expect(bodyListenerSource).toContain('navigateToSccMember(itemEl.dataset.cycleNavId);');
@@ -769,7 +793,7 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
 
         expect(html).toContain('No dependency cycles detected.');
         expect(html).toContain('8 modules · 6 dependencies');
-        expect(html).toContain('Explore dependency graph');
+        expect(html).toContain('>Explore graph<');
         // The zero-state reads as a deliberate, understood state ("nothing
         // found"), not an empty findings-list with no explanation - no
         // <ol class="findings-list"> should render at all when there's
@@ -837,8 +861,12 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
         expect(html).toContain('SCC #2');
         expect(html.match(/finding-row-header">SCC #1 &middot; 2 modules/)).toBeTruthy();
         expect(html.match(/finding-row-header">SCC #2 &middot; 7 modules/)).toBeTruthy();
-        // Both rows must be present as distinct list items, not merged.
-        expect(html.match(/class="finding-row"/g)).toHaveLength(2);
+        // Both rows must be present as distinct list items, not merged -
+        // scoped to the English block specifically, since the same two
+        // SCCs are also rendered (in Finnish/Swedish) elsewhere on the
+        // page for the language switcher.
+        const englishBlock = extractEnglishFindingsBlock(html);
+        expect(englishBlock.match(/class="finding-row"/g)).toHaveLength(2);
     });
 
     it('abbreviates a large representative cycle to start, one hop, and the closing return - never the full chain', () => {
@@ -979,24 +1007,32 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
         expect(html).not.toContain('<script>alert(1)</script>');
     });
 
-    it('renders the overview section ahead of the graph in document order - findings-first, not graph-first', () => {
+    it('renders the Findings view ahead of the Graph view in document order - findings-first, not graph-first', () => {
         const html = buildHtmlTemplate({
             nodes: [],
             edges: [],
             findings: { moduleCount: 1, dependencyCount: 0, sccs: [] },
         });
 
-        const overviewIndex = html.indexOf('id="findings-overview"');
+        const findingsIndex = html.indexOf('id="findings-view"');
         const graphIndex = html.indexOf('id="graph-explorer"');
 
-        expect(overviewIndex).toBeGreaterThan(-1);
+        expect(findingsIndex).toBeGreaterThan(-1);
         expect(graphIndex).toBeGreaterThan(-1);
-        expect(overviewIndex).toBeLessThan(graphIndex);
+        expect(findingsIndex).toBeLessThan(graphIndex);
     });
 
-    it('the "explore" link targets the graph section by id - a plain anchor, no client JS required for it to work', () => {
+    it('the "explore" button switches to the Graph view - a real UI action (application state, not a URL), not a plain anchor', () => {
+        // Information architecture rework: Findings and Graph are now two
+        // toggleable views (a CSS-state flip, see switchToView() in
+        // template.ts), not two positions on one scrollable page - a
+        // plain #-anchor can no longer meaningfully "go to the graph"
+        // (the graph section is visibility:hidden until switchToView()
+        // runs, see styles.ts), so this is deliberately a <button> wired
+        // to real state-changing JS instead of the old anchor link.
         const zero = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
-        expect(zero).toContain('href="#graph-explorer"');
+        expect(zero).toContain('data-action="explore-graph"');
+        expect(zero).not.toContain('href="#graph-explorer"');
 
         const withFindings = buildHtmlTemplate({
             nodes: [],
@@ -1007,7 +1043,7 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
                 sccs: [{ id: 0, size: 2, memberIds: ['/repo/a.ts', '/repo/b.ts'], exampleCycle: ['/repo/a.ts', '/repo/b.ts', '/repo/a.ts'] }],
             },
         });
-        expect(withFindings).toContain('href="#graph-explorer"');
+        expect(withFindings).toContain('data-action="explore-graph"');
     });
 });
 
@@ -1026,7 +1062,7 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
     const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
     it('a finding row click is wired to openCycleDetailModalForScc via its own data-finding-scc-id, not a new listener per row', () => {
-        expect(html).toContain("document.getElementById('findings-overview')?.addEventListener('click'");
+        expect(html).toContain("document.getElementById('findings-view')?.addEventListener('click'");
         expect(html).toContain("event.target.closest('[data-finding-scc-id]')");
         expect(html).toContain('openCycleDetailModalForScc(Number(row.dataset.findingSccId));');
     });
@@ -1079,7 +1115,7 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
         expect(html).toContain('Show in graph (${visibleSccMemberCount} of ${sccSize} modules visible)');
     });
 
-    it('"Show in graph" closes the modal and scrolls to #graph-explorer, since the user may be looking at #findings-overview when they click it', () => {
+    it('"Show in graph" closes the modal and switches to the Graph view, since the user may be looking at the Findings view when they click it', () => {
         const focusElBlockStart = html.indexOf('const focusEl = event.target.closest');
         const focusElBlockEnd = html.indexOf('const itemEl = event.target.closest', focusElBlockStart);
         const focusElBlock = html.slice(focusElBlockStart, focusElBlockEnd);
@@ -1087,7 +1123,7 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
         expect(focusElBlockStart).toBeGreaterThan(-1);
         expect(focusElBlock).toContain('cycleDetailModal?.close();');
         expect(focusElBlock).toContain('focusScc(Number(focusEl.dataset.focusSccId));');
-        expect(focusElBlock).toContain("document.getElementById('graph-explorer')?.scrollIntoView();");
+        expect(focusElBlock).toContain("switchToView('graph');");
     });
 
     it('the existing direct-node-click -> HUD -> concrete-cycle-modal workflow is untouched', () => {
@@ -1150,5 +1186,125 @@ describe('buildHtmlTemplate initial graph view (UX fix, pre-existing behavior - 
     it('fitCyAvoidingChrome itself (the shared chrome-avoiding fit math) is untouched - still the one implementation, reused, not duplicated', () => {
         const occurrences = html.match(/function fitCyAvoidingChrome\(cy, basePadding, targetCollection\)/g);
         expect(occurrences).toHaveLength(1);
+    });
+});
+
+describe('buildHtmlTemplate Findings/Graph views + language switcher (information architecture rework)', () => {
+    // Findings and Graph are now two toggleable views inside one
+    // standalone page (a CSS-state flip via switchToView(), see
+    // template.ts), not two positions on one long scrollable page. These
+    // tests assert source structure (Jest can't execute this against a
+    // live cytoscape instance) plus the exact shape of the embedded i18n
+    // data; real switching/rendering behavior is verified separately via
+    // headless Chrome against the real large-cycle-app fixture, including
+    // a standalone (no assets/, no source project) check.
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('production language support is exactly English, Finnish, and Swedish - no more, no fewer', () => {
+        const match = html.match(/const SUPPORTED_LANGUAGE_CODES = (\[[^\]]*\]);/);
+        expect(match).toBeTruthy();
+        const codes = JSON.parse(match![1]!);
+        expect(codes).toEqual(['en', 'fi', 'sv']);
+
+        const dictMatch = html.match(/const I18N_DICTIONARIES = (\{.*?\});\s*\n\s*const LANGUAGE_STORAGE_KEY/s);
+        expect(dictMatch).toBeTruthy();
+        const dict = JSON.parse(dictMatch![1]!);
+        expect(Object.keys(dict).sort()).toEqual(['en', 'fi', 'sv']);
+    });
+
+    it('English is the default language - rendered visible, the other two rendered pre-hidden', () => {
+        const enIndex = html.indexOf('data-lang="en"');
+        const fiIndex = html.indexOf('data-lang="fi"');
+        const svIndex = html.indexOf('data-lang="sv"');
+
+        expect(enIndex).toBeGreaterThan(-1);
+        expect(fiIndex).toBeGreaterThan(enIndex);
+        expect(svIndex).toBeGreaterThan(fiIndex);
+
+        // The English block's own opening tag has no `hidden` attribute
+        // immediately before its closing '>' - the other two do.
+        const enTagEnd = html.indexOf('>', enIndex);
+        const fiTagEnd = html.indexOf('>', fiIndex);
+        expect(html.slice(enIndex, enTagEnd)).not.toContain('hidden');
+        expect(html.slice(fiIndex, fiTagEnd)).toContain('hidden');
+    });
+
+    it('renders a persistent header with Findings/Graph tabs and a language select with exactly 3 options', () => {
+        expect(html).toContain('id="app-header"');
+        expect(html).toContain('data-view="findings"');
+        expect(html).toContain('data-view="graph"');
+        expect(html).toContain('id="language-select"');
+        expect(html.match(/<option value="(en|fi|sv)">/g)).toHaveLength(3);
+    });
+
+    it('switchToView toggles Findings/Graph via CSS classes only - never destroys or recreates the graph', () => {
+        const fnStart = html.indexOf('function switchToView(view)');
+        const fnEnd = html.indexOf('document.querySelectorAll(\'.view-tab\').forEach((tab) => {\n                tab.addEventListener', fnStart);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnStart).toBeGreaterThan(-1);
+        expect(fnSource).toContain("classList.toggle('is-hidden', isGraph)");
+        expect(fnSource).toContain("classList.toggle('is-active', isGraph)");
+        // Never rebuilds cytoscape, never re-fetches/re-renders findings.
+        expect(fnSource).not.toContain('cytoscape(');
+        expect(fnSource).not.toContain('innerHTML');
+    });
+
+    it('the Graph view is hidden via visibility, never display:none - a zero-size container would corrupt the initial fit/zoom math', () => {
+        expect(html).toContain('#graph-explorer {');
+        expect(html).toContain('#graph-explorer.is-active {\n        visibility: visible;\n    }');
+        expect(html).toContain('#bottom-hud.is-active {\n        visibility: visible;\n    }');
+
+        const graphExplorerRuleStart = html.indexOf('#graph-explorer {');
+        const graphExplorerRuleEnd = html.indexOf('}', graphExplorerRuleStart);
+        expect(html.slice(graphExplorerRuleStart, graphExplorerRuleEnd)).not.toContain('display: none');
+    });
+
+    it('the Findings view IS hidden via plain display:none when Graph is active - safe, since nothing inside it is a canvas/measurement-sensitive library', () => {
+        expect(html).toContain('#findings-view.is-hidden {\n        display: none;\n    }');
+    });
+
+    it('localStorage access for the saved language is wrapped defensively - private browsing must not break language switching itself', () => {
+        expect(html).toContain('localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);');
+        expect(html).toContain('localStorage.getItem(LANGUAGE_STORAGE_KEY);');
+
+        const getInitialStart = html.indexOf('function getInitialLanguage()');
+        const getInitialEnd = html.indexOf('function applyLanguage', getInitialStart);
+        // applyLanguage is defined BEFORE getInitialLanguage in source
+        // order - fall back to searching forward instead if that lookup
+        // failed (defensive against reordering, not a real expectation
+        // either way).
+        const searchEnd = getInitialEnd > -1 ? getInitialEnd : html.indexOf('document.getElementById(\'language-select\')', getInitialStart);
+        const source = html.slice(getInitialStart, searchEnd);
+
+        expect(getInitialStart).toBeGreaterThan(-1);
+        expect(source).toContain('try {');
+        expect(source).toContain('catch');
+    });
+
+    it('does not introduce any external script/stylesheet dependency - still exactly the three existing local graph assets', () => {
+        // Standalone-HTML requirement: the language switcher and its
+        // dictionaries must work fully offline. No CDN, no i18n library,
+        // no new <script src="http...">.
+        const scriptSrcs = html.match(/<script src="[^"]*"/g) ?? [];
+        expect(scriptSrcs).toEqual([
+            '<script src="./assets/cytoscape.min.js"',
+            '<script src="./assets/dagre.min.js"',
+            '<script src="./assets/cytoscape-dagre.js"',
+        ]);
+        expect(html).not.toContain('http://');
+        expect(html).not.toContain('https://');
+    });
+
+    it('"Show a dependency cycle" from a direct graph node click still works while already in the Graph view - no view switch needed there', () => {
+        // Regression guard: only entry points that ORIGINATE from
+        // Findings (or need to return to the graph after being opened
+        // from Findings) call switchToView() - a click that starts and
+        // ends inside the Graph view must not gain a spurious view
+        // switch.
+        expect(html).toContain("const cycleButtonEl = event.target.closest('[data-show-cycle-node-id]');");
+        const hudListenerIndex = html.indexOf("const cycleButtonEl = event.target.closest");
+        const hudListenerBlockEnd = html.indexOf('});', hudListenerIndex);
+        expect(html.slice(hudListenerIndex, hudListenerBlockEnd)).not.toContain('switchToView');
     });
 });

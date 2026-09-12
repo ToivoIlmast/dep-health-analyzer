@@ -8,47 +8,89 @@ export const styles = `
            minimap's own dimensions. Shared by #cy's height and
            #bottom-hud's height so the two can never drift out of sync. */
         --bottom-hud-height: 178px;
+
+        /* Information architecture rework. The one persistent element
+           visible in BOTH the Findings and Graph views - everything else
+           beneath it is sized relative to this, the same way
+           --bottom-hud-height already anchors #cy's own height. */
+        --app-header-height: 52px;
     }
 
-    /* Findings-first overview (Phase 1). padding-bottom reserves exactly
-       #bottom-hud's own height as extra, otherwise-empty scrollable room
-       at the very end of the document - without it, the document is only
-       exactly as tall as #findings-overview + #graph-explorer, so the
-       browser physically cannot scroll #graph-explorer's top all the way
-       to the viewport's top (it runs out of document to scroll through
-       #bottom-hud's own height too soon, since #bottom-hud is
-       position: fixed and contributes zero scrollable height itself) -
-       "Explore full graph" would land #graph-explorer exactly
-       #bottom-hud's height short of flush, leaving that same strip of the
-       fixed bottom HUD overlapping the graph's own bottom edge instead of
-       sitting cleanly below it. This trades that permanent overlap for a
-       harmless one: scrolling deliberately past the graph now reveals
-       blank padding (with the HUD still docked over it), rather than the
-       HUD ever covering real graph content. */
     body {
         margin: 0;
-        padding: 0 0 var(--bottom-hud-height);
+        padding: 0;
         font-family: sans-serif;
     }
 
-    /* Findings-first overview (Phase 1). #cy/#hint/#toolbar/
-       #edge-clarity-note (all position: absolute with no positioned
-       ancestor of their own, see below) used to rely on <body> itself
-       being their positioning context, which only worked because they
-       were <body>'s very first children - now that #findings-overview
-       sits above them in normal flow, this wrapper becomes their
-       positioning context instead, so "top: 16px"/etc. keep meaning
-       "16px from the graph's own top edge," not "16px from the top of
-       the whole scrollable document." Sized exactly like #cy used to be
-       (100vw / a full viewport minus the bottom HUD) - #cy itself now
-       just fills this wrapper (see its own rule below), so cytoscape's
-       own container.clientWidth/clientHeight - and therefore every
-       fit/zoom/minimap calculation - measures the exact same pixel
-       dimensions as before this wrapper existed. */
+    /* Information architecture rework. Persistent across both views -
+       the Findings/Graph tabs and language switcher live here, fixed to
+       the very top so switching views (a CSS-state flip below, not real
+       navigation) never has to re-render or reposition this. */
+    #app-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--app-header-height);
+        box-sizing: border-box;
+
+        display: flex;
+        align-items: center;
+        gap: 20px;
+
+        padding: 0 20px;
+
+        background: white;
+        border-bottom: 1px solid #d1d5db;
+
+        z-index: 2000;
+    }
+
+    /* Information architecture rework. #findings-view is normal
+       document flow (plain, scrollable page content) - only needs to
+       clear the fixed header above it and hide (plain display:none, safe
+       here since nothing inside it is a canvas/measurement-sensitive
+       library) when the Graph tab is active. */
+    #findings-view {
+        padding-top: var(--app-header-height);
+    }
+
+    #findings-view.is-hidden {
+        display: none;
+    }
+
+    /* Information architecture rework (previously: normal document flow,
+       reached by scrolling). #cy/#hint/#toolbar/#edge-clarity-note (all
+       position: absolute with no positioned ancestor of their own, see
+       below) resolve relative to THIS wrapper's own box regardless of
+       position: fixed vs. relative - switching it to fixed only changes
+       where that box itself sits (a full-viewport overlay, below the
+       header) and how it's hidden.
+
+       Hidden via visibility, not display:none, so its true pixel
+       dimensions are already correct the moment the page loads -
+       applyInitialView/fitCyAvoidingChrome (both unchanged) run
+       synchronously as part of the very first layout, long before a user
+       could click the "Graph" tab, and read container.clientWidth/
+       clientHeight to do it; display:none would report zero for both at
+       that exact moment and permanently corrupt the initial zoom/pan
+       math (there is no later "resize" event to recover from it, since
+       nothing about the container's on-screen size actually changes when
+       switching tabs - only its visibility does). This also means Graph
+       state (zoom, pan, selection, Focus SCC, filters) survives switching
+       away and back for free - nothing here ever tears the graph down or
+       rebuilds it. */
     #graph-explorer {
-        position: relative;
+        position: fixed;
+        top: var(--app-header-height);
+        left: 0;
         width: 100vw;
-        height: calc(100vh - var(--bottom-hud-height));
+        height: calc(100vh - var(--app-header-height) - var(--bottom-hud-height));
+        visibility: hidden;
+    }
+
+    #graph-explorer.is-active {
+        visibility: visible;
     }
 
     #cy {
@@ -215,6 +257,19 @@ export const styles = `
         border-top: 1px solid #d1d5db;
 
         z-index: 999;
+
+        /* Information architecture rework. Toggled together with
+           #graph-explorer (same switchToView() call) - visibility, not
+           display:none, for the same reason: the minimap canvas inside
+           this lives at a fixed pixel size that's already measured and
+           drawn once at load (see redrawMinimapStatic below), and a
+           hidden-via-display container would report zero for its own
+           measurements too. */
+        visibility: hidden;
+    }
+
+    #bottom-hud.is-active {
+        visibility: visible;
     }
 
     #hud-help,
@@ -808,126 +863,263 @@ export const styles = `
         font-size: 13px;
     }
 
-    /* Findings-first overview (Phase 1). The report's actual first screen -
-       "what is this, how big is the project, is anything here worth
-       attention" - ahead of the graph, which stays exactly as capable as
-       before, just no longer the first thing rendered. Plain document
-       flow, not another absolutely-positioned floating panel like #hint/
-       #toolbar - this is content to read top-to-bottom once, not a
-       persistent overlay to glance at while exploring the graph. Reuses
-       this report's own existing typography/color vocabulary (the same
-       grays as #hint's own captions, the same interactive blue
-       .cycle-node-start/.cycle-count-badge already use elsewhere) rather
-       than introducing a second visual language. */
-    #findings-overview {
-        max-width: 720px;
+    /* The report's actual first screen - "what is this, how big is the
+       project, is anything here worth attention" - a normal, scrollable
+       utility-dashboard page rather than a small technical list. Plain
+       document flow, not another absolutely-positioned floating panel
+       like #hint/#toolbar. Reuses this report's own existing color
+       vocabulary (the same grays as #hint's own captions, the same
+       interactive blue .cycle-node-start/.cycle-count-badge already use
+       elsewhere) rather than introducing a second visual language. */
+    .findings-lang-block {
+        max-width: 760px;
         margin: 0 auto;
-        padding: 40px 32px 32px;
+        padding: 48px 32px 64px;
 
         font-family: sans-serif;
         color: #374151;
     }
 
-    #findings-overview h1 {
-        margin: 0 0 6px;
-        font-size: 22px;
+    .findings-header {
+        margin: 0 0 36px;
+    }
+
+    .findings-header h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.25;
         color: #111827;
     }
 
-    #findings-overview h2 {
-        margin: 28px 0 4px;
-        font-size: 16px;
+    .findings-cycles-section h2 {
+        margin: 0 0 6px;
+        font-size: 18px;
+        font-weight: 600;
         color: #111827;
     }
 
     .findings-scale {
         margin: 0;
-        font-size: 14px;
+        font-size: 15px;
         color: #6b7280;
     }
 
     .findings-caveat {
-        margin: 0 0 14px;
-        font-size: 12.5px;
+        margin: 0 0 20px;
+        font-size: 13px;
         color: #6b7280;
     }
 
-    .findings-zero-state {
-        margin: 18px 0 20px;
-        padding: 14px 16px;
+    .findings-zero-card {
+        margin-top: 20px;
+        padding: 32px;
+
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
 
         background: #f9fafb;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 12px;
+    }
 
-        font-size: 14px;
-        color: #374151;
+    .findings-zero-state {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+        color: #111827;
     }
 
     .findings-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
 
-        margin: 0 0 20px;
+        margin: 0 0 28px;
         padding: 0;
 
         list-style: none;
     }
 
-    /* A "clickable-looking" row with no click handler wired up yet - see
-       renderSccFindingRow()'s own comment in template.ts. cursor: pointer
-       plus the same hover treatment this report's other clickable rows
-       already use (.cycle-detail-item) signals "this will do something,"
-       matching the task's explicit scope split without implying behavior
-       that isn't there yet. */
+    /* A real card, not a dense list row: the whole card stays clickable
+       (matches this report's existing "clickable row" affordance
+       language, e.g. .cycle-detail-item) alongside its own explicit
+       "View cycle" primary action - either one opens the same modal via
+       the same data-finding-scc-id, so neither is "the real way" and the
+       other decorative. */
     .finding-row {
         cursor: pointer;
 
-        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+
+        padding: 20px 24px;
 
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 10px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+
+        transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
     }
 
-    .finding-row:hover {
-        background: #f9fafb;
+    .finding-row:hover,
+    .finding-row:focus-within {
         border-color: #93c5fd;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+    }
+
+    .finding-row-main {
+        min-width: 0;
     }
 
     .finding-row-header {
-        font-size: 14px;
+        font-size: 15.5px;
         font-weight: 600;
         color: #111827;
     }
 
     .finding-cycle-preview {
-        margin-top: 4px;
+        margin-top: 6px;
 
-        font-family: monospace;
-        font-size: 12.5px;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        color: #1d4ed8;
+
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    /* Generic primary/secondary button pair, reused by every new control
+       this task adds (Findings' own explore/view-cycle actions, the
+       concrete-cycle modal's "Show in graph") - not applied to the
+       Graph's own pre-existing toolbar controls, which keep their
+       existing look untouched per this task's scope. */
+    .btn-primary,
+    .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+
+        cursor: pointer;
+
+        border-radius: 8px;
+
+        padding: 10px 18px;
+        font-family: sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+
+        transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out;
+    }
+
+    .btn-primary {
+        border: 1px solid #2563eb;
+        background: #2563eb;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #1d4ed8;
+        border-color: #1d4ed8;
+    }
+
+    .btn-secondary {
+        border: 1px solid #2563eb;
+        background: white;
+        color: #2563eb;
+    }
+
+    .btn-secondary:hover {
+        background: #eff6ff;
+    }
+
+    .btn-primary:focus-visible,
+    .btn-secondary:focus-visible,
+    .view-tab:focus-visible,
+    .finding-row:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+    }
+
+    .finding-view-cycle-btn {
+        flex: 0 0 auto;
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+
+    .findings-explore-btn {
+        margin-top: 4px;
+    }
+
+    /* --- App header (Findings/Graph tabs + language switcher) -------- */
+
+    #app-header-title {
+        font-family: sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        color: #111827;
+
+        white-space: nowrap;
+    }
+
+    #view-tabs {
+        display: flex;
+        gap: 4px;
+
+        margin-left: auto;
+    }
+
+    .view-tab {
+        cursor: pointer;
+
+        border: 1px solid transparent;
+        border-radius: 7px;
+
+        background: transparent;
+        color: #6b7280;
+
+        padding: 7px 16px;
+        font-family: sans-serif;
+        font-size: 13.5px;
+        font-weight: 600;
+
+        transition: background-color 0.1s ease-in-out, color 0.1s ease-in-out;
+    }
+
+    .view-tab:hover {
+        background: #f3f4f6;
+        color: #111827;
+    }
+
+    .view-tab.is-active {
+        background: #eff6ff;
+        border-color: #bfdbfe;
         color: #1d4ed8;
     }
 
-    .findings-explore-link {
-        display: inline-block;
+    #language-switcher {
+        display: flex;
+        align-items: center;
+        gap: 6px;
 
-        cursor: pointer;
-        text-decoration: none;
+        font-family: sans-serif;
+        font-size: 12.5px;
+        color: #6b7280;
+    }
 
-        border: 1px solid #2563eb;
+    #language-select {
+        border: 1px solid #d1d5db;
         border-radius: 6px;
 
         background: white;
-        color: #2563eb;
+        color: #374151;
 
-        padding: 8px 16px;
-        font-size: 13px;
-        font-weight: 600;
-    }
-
-    .findings-explore-link:hover {
-        background: #eff6ff;
+        padding: 4px 8px;
+        font-size: 12.5px;
     }
 `;
