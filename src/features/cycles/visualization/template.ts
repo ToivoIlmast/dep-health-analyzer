@@ -998,25 +998,56 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // keeps every rank as dagre's own single row - branching
                 // gets exactly the width it naturally needs, never less -
                 // and gets its "flows top to bottom, not left to right"
-                // character from two other levers instead: a much wider
-                // rankSep (700 vs flowOrthogonal's 200) so ranks read as
-                // clearly separated bands with real vertical distance
-                // between them, and wrapWideRanks() called in
-                // recenter-only mode (see the Infinity maxRankWidth in
-                // onLayoutFinished below) purely to remove the sideways
-                // spread dagre adds to keep unrelated columns aligned - not
-                // to force anything narrower than its own content needs.
-                // Measured on the real graph: 5475x7495 (clearly taller
-                // than wide) with only 33 overlaps - fewer than
-                // flowOrthogonal's plain un-recentered baseline (18) would
-                // suggest is even possible at this width, because the
-                // wider rankSep gives the orthogonal taxi jog more room to
-                // clear other nodes than the original 200px gap did.
+                // character from two other levers instead: a wider rankSep
+                // (400 vs flowOrthogonal's 200) so ranks read as clearly
+                // separated bands with real vertical distance between them,
+                // and wrapWideRanks() called in recenter-only mode (see the
+                // Infinity maxRankWidth in onLayoutFinished below) purely to
+                // remove the sideways spread dagre adds to keep unrelated
+                // columns aligned - not to force anything narrower than its
+                // own content needs.
+                //
+                // rankSep tuning pass (layout readability investigation):
+                // this was 700 - chosen, per the original comment here, to
+                // give the orthogonal taxi jog "more room to clear other
+                // nodes" than flowOrthogonal's 200px gap. Re-measured
+                // directly in headless Chrome (real node/edge positions,
+                // real taxi-path segments via computeEdgePathSegments(),
+                // not guessed) across five graphs - a 5-module 2-node-cycle
+                // fixture, large-cycle-app (19 modules, one 7-module SCC
+                // ring), nightmare-app (41 modules/57 deps), and
+                // dep-health-analyzer's own ~115-module source tree (the
+                // most branch-heavy real graph on hand, and the one 700 was
+                // originally tuned against) - found that overlap-clearance
+                // stops improving well before 700: node overlaps, edge-node
+                // overlaps, and taxi-edge crossings were IDENTICAL at
+                // rankSep 400 and rankSep 700 on every one of those graphs
+                // (e.g. dep-health-analyzer's own graph: 1 node overlap + 16
+                // edge-node overlaps at BOTH 400 and 700; the other four
+                // fixtures stayed at their already-clean 0 overlaps
+                // regardless of rankSep from 200 all the way to 700). What
+                // 700 bought beyond that point was pure inflation - at 700,
+                // every edge (not just the ones that needed the room) is
+                // ~1.75x longer than at 400, and the whole layout is
+                // ~1.7x taller, for identical readability. 400 is a
+                // deliberate margin above where quality actually starts
+                // degrading (300 already measurably worse than 700 on the
+                // dep-health-analyzer graph specifically: 20 edge-node
+                // overlaps/1407 crossings vs 16/1402) - this is "as tight as
+                // it can go with room to spare", not "as tight as it can
+                // go". A separate, pre-existing, NOT rankSep-related
+                // node/node overlap on nightmare-app (present at every
+                // rankSep tested, 200 through 700) comes from
+                // resolveEdgeNodeOverlaps() pushing a node clear of an edge
+                // without checking whether that push lands it on top of a
+                // different node - a real gap in that function, but a
+                // separate, riskier fix than a spacing-constant change;
+                // left alone here.
                 flowVertical: {
                     name: 'dagre',
                     rankDir: 'TB',
                     nodeSep: 100,
-                    rankSep: 700,
+                    rankSep: 400,
                     edgeSep: 40,
                     padding: 60,
                     spacingFactor: 1,
