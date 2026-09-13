@@ -396,19 +396,23 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
              itself is only ever moved here via CSS/DOM nesting; its canvas
              id and all the drawing/drag JS below are untouched. -->
         <div id="bottom-hud">
+            <!-- Presentation-only cleanup (Graph UX pass): the Ca/Ce/
+                 Instability explanation that used to live here was removed
+                 from THIS view because it's a separate concept
+                 (stability/instability) from what this screen is about
+                 (exploring dependency cycles/SCCs) - not because the
+                 underlying data or i18n strings went away. The dictionary
+                 keys (hudHelpCaExplanation, hudHelpCeExplanation,
+                 instabilityLabel, hudHelpInstabilityScale) and the raw
+                 data.ca/data.ce/data.instability values on every node are
+                 all still fully intact (see i18n.ts and
+                 buildCytoscapeElements.ts) for a future, dedicated
+                 stability feature to surface. -->
             <div id="hud-help">
                 <strong>dep-health-analyzer</strong><br /><br />
 
                 <span data-i18n="hudHelpHoverLine">Hover over a module to see dependency metrics.</span><br />
-                <span data-i18n-html="hudHelpClickLine">Click a module <strong>to pin</strong> the tooltip.</span><br /><br />
-
-                <strong>Ca</strong> <span data-i18n-html="hudHelpCaExplanation">&mdash; incoming dependencies<br />How many modules depend on this module.</span><br /><br />
-
-                <strong>Ce</strong> <span data-i18n-html="hudHelpCeExplanation">&mdash; outgoing dependencies<br />How many modules this module depends on.</span><br /><br />
-
-                <strong data-i18n="instabilityLabel">Instability</strong><br />
-                <span data-i18n-html="hudHelpInstabilityScale">0.00 = stable module<br />1.00 = highly unstable module</span>
-                <br /><br />
+                <span data-i18n-html="hudHelpClickLine">Click a module <strong>to pin</strong> the tooltip.</span>
             </div>
 
             <div id="hud-selected">
@@ -2627,9 +2631,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // cursor. data.id is the full canonical path (never the
             // abbreviated on-node displayDir) - required so the HUD always
             // shows the complete path regardless of how short the node's
-            // own label is. "Ca"/"Ce" stay untranslated technical
-            // abbreviations in every language (see i18n.ts) - only the
-            // "Instability"/"SCC size" labels around them are translated.
+            // own label is. Presentation-only cleanup (Graph UX pass): this
+            // panel no longer prints the Ca/Ce/Instability line - that's a
+            // separate stability concept out of place on a screen about
+            // exploring cycles/SCCs (see the #hud-help comment above for
+            // the same reasoning). data.ca/data.ce/data.instability are
+            // still present on every node's data() and untouched; only the
+            // rendering here was trimmed, for a future dedicated stability
+            // feature to pick back up. Only the "SCC size" label is
+            // translated (it stays here - SCC membership is a cycles
+            // concept, not a stability one).
             function updateSelectedModulePanel(node) {
                 if (!hudSelectedBody) {
                     return;
@@ -2650,8 +2661,6 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 hudSelectedBody.innerHTML = \`
                     <strong>\${escapeHtml(title)}</strong><br />
                     <span class="hud-selected-path">\${escapeHtml(data.id)}</span><br />
-                    Ca: \${data.ca} &nbsp;&nbsp; Ce: \${data.ce} &nbsp;&nbsp;
-                    \${escapeHtml(dict.instabilityLabel)}: \${Number(data.instability).toFixed(2)} &nbsp;&nbsp;
                     \${escapeHtml(dict.sccSizeLabel)}: \${data.sccSize ?? 0}
                     \${buildCycleContextHtml(node)}
                 \`;

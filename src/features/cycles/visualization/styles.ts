@@ -102,60 +102,124 @@ export const styles = `
         position: absolute;
         top: 16px;
         right: 16px;
+        /* Pre-existing condition (present before this readability pass
+           too): #toolbar and #hint are two independently right/left
+           anchored boxes with no shared layout container, so a toolbar
+           wide enough to need more horizontal room than the viewport has
+           free will grow left past #hint's own space (16px + #hint's own
+           300px width + a margin of safety). Bigger controls make that
+           math easier to hit at common laptop widths - box-sizing plus
+           this max-width cap (in terms of the toolbar's own true
+           rendered width, border and padding included) plus flex-wrap
+           together mean the toolbar wraps onto a second line, still
+           right-anchored, before it would ever need to reach as far
+           left as #hint's own space. */
+        box-sizing: border-box;
+        max-width: calc(100vw - 356px);
+        flex-wrap: wrap;
+        justify-content: flex-end;
 
         z-index: 999;
 
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 14px;
 
         background: white;
 
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 
-        padding: 10px;
+        padding: 12px 16px;
+
+        font-family: sans-serif;
+        font-size: 14.5px;
+        color: #374151;
+    }
+
+    #toolbar label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    #toolbar button,
+    #toolbar select {
+        font-family: sans-serif;
+        font-size: 14.5px;
+        color: #374151;
     }
 
     #toolbar button {
         cursor: pointer;
 
         border: 1px solid #d1d5db;
-        border-radius: 6px;
+        border-radius: 7px;
 
         background: #f9fafb;
 
-        padding: 6px 10px;
+        padding: 9px 16px;
+
+        transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out;
+    }
+
+    #toolbar button:hover {
+        background: #f3f4f6;
+        border-color: #9ca3af;
     }
 
     #toolbar select {
-        padding: 6px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 7px;
+
+        background: white;
+
+        padding: 9px 12px;
+    }
+
+    #toolbar button:focus-visible,
+    #toolbar select:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
     }
 
     #zoom-controls {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
     }
 
     #zoom-controls button {
         cursor: pointer;
 
         border: 1px solid #d1d5db;
-        border-radius: 6px;
+        border-radius: 7px;
 
         background: #f9fafb;
 
-        width: 28px;
-        height: 28px;
+        width: 34px;
+        height: 34px;
         line-height: 1;
-        font-size: 16px;
+        font-size: 18px;
+
+        transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out;
+    }
+
+    #zoom-controls button:hover {
+        background: #f3f4f6;
+        border-color: #9ca3af;
+    }
+
+    #zoom-controls button:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
     }
 
     #zoom-level {
-        min-width: 44px;
+        min-width: 52px;
         text-align: center;
-        font-size: 13px;
+        font-size: 14.5px;
         color: #374151;
     }
 
@@ -163,16 +227,17 @@ export const styles = `
         position: absolute;
         top: 16px;
         left: 16px;
-        width: 260px;
+        width: 300px;
+        box-sizing: border-box;
 
-        padding: 12px 14px;
+        padding: 16px 18px;
 
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 10px;
 
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 14.5px;
+        line-height: 1.6;
         color: #374151;
 
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
@@ -185,8 +250,8 @@ export const styles = `
        top-adjacent border, not a loud panel of its own, since a detected
        SCC is an observation to investigate, not a warning. */
     #scc-summary {
-        margin-bottom: 10px;
-        padding-bottom: 10px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
         border-bottom: 1px dashed #d1d5db;
     }
 
@@ -220,16 +285,16 @@ export const styles = `
            band now that the minimap moved out of this corner. */
         bottom: calc(var(--bottom-hud-height) + 16px);
         left: 16px;
-        max-width: 280px;
+        max-width: 300px;
 
-        padding: 8px 12px;
+        padding: 10px 14px;
 
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 9px;
 
-        font-size: 12px;
-        line-height: 1.4;
+        font-size: 13.5px;
+        line-height: 1.5;
         color: #374151;
 
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
@@ -254,9 +319,15 @@ export const styles = `
 
         display: flex;
         align-items: stretch;
-        gap: 12px;
+        gap: 16px;
 
-        padding: 4px 16px;
+        /* Vertical padding stays 4px - it's part of the exact
+           --bottom-hud-height math documented above (minimap-container's
+           own fixed 170px = canvas 160px + its 4px padding*2 + 1px
+           border*2), so it can't grow without either shrinking the
+           minimap's clearance or requiring --bottom-hud-height to grow
+           with it. Horizontal padding has no such constraint. */
+        padding: 4px 20px;
 
         background: #f3f4f6;
         border-top: 1px solid #d1d5db;
@@ -283,20 +354,20 @@ export const styles = `
 
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 9px;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 
-        padding: 10px 14px;
+        padding: 14px 18px;
 
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 14.5px;
+        line-height: 1.6;
         color: #374151;
 
         overflow-y: auto;
     }
 
     #hud-help {
-        flex: 0 0 220px;
+        flex: 0 0 240px;
     }
 
     #hud-selected {
@@ -311,7 +382,7 @@ export const styles = `
     .hud-selected-path {
         display: inline-block;
         margin: 2px 0 4px;
-        font-size: 12px;
+        font-size: 13.5px;
         color: #6b7280;
         word-break: break-all;
     }
@@ -320,16 +391,15 @@ export const styles = `
        Only ever present for a node that's actually part of a detected SCC
        (a group of mutually reachable modules, guaranteed to contain at
        least one cycle) - kept visually distinct (a top border, muted
-       color) from the always-present Ca/Ce/Instability line above it,
-       without using any warning/danger color - a detected SCC/cycle is an
-       observation to investigate, not something this report itself flags
-       as wrong. */
+       color) from the module title/path lines above it, without using any
+       warning/danger color - a detected SCC/cycle is an observation to
+       investigate, not something this report itself flags as wrong. */
     .hud-cycle-context {
         display: inline-block;
-        margin-top: 6px;
-        padding-top: 6px;
+        margin-top: 8px;
+        padding-top: 8px;
         border-top: 1px dashed #d1d5db;
-        font-size: 12px;
+        font-size: 13px;
         color: #6b7280;
     }
 
@@ -366,22 +436,30 @@ export const styles = `
        compact HUD panel rather than the toolbar itself. */
     .hud-focus-scc-btn {
         display: inline-block;
-        margin-top: 4px;
+        margin-top: 6px;
 
         cursor: pointer;
 
         border: 1px solid #d1d5db;
-        border-radius: 6px;
+        border-radius: 7px;
 
         background: #f9fafb;
         color: #374151;
 
-        padding: 3px 8px;
-        font-size: 11px;
+        padding: 6px 12px;
+        font-size: 13px;
+
+        transition: background-color 0.1s ease-in-out;
     }
 
     .hud-focus-scc-btn:hover {
         background: #f3f4f6;
+    }
+
+    .hud-focus-scc-btn:focus-visible,
+    .hud-cycle-detail-btn:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
     }
 
     /* Experimental (branch: experiment/cycle-map-v2, concrete dependency
@@ -394,18 +472,20 @@ export const styles = `
        heavier "primary button" look nothing else in this report uses. */
     .hud-cycle-detail-btn {
         display: inline-block;
-        margin-top: 4px;
+        margin-top: 6px;
 
         cursor: pointer;
 
         border: 1px solid #2563eb;
-        border-radius: 6px;
+        border-radius: 7px;
 
         background: white;
         color: #2563eb;
 
-        padding: 3px 8px;
-        font-size: 11px;
+        padding: 6px 12px;
+        font-size: 13px;
+
+        transition: background-color 0.1s ease-in-out;
     }
 
     .hud-cycle-detail-btn:hover {
@@ -422,21 +502,21 @@ export const styles = `
        here. Slightly wider than #cycle-info-modal - the flow diagram
        below reads better with a bit more room before its rows wrap. */
     #cycle-detail-modal {
-        max-width: 640px;
+        max-width: 680px;
         width: calc(100% - 64px);
         max-height: calc(100vh - 96px);
         overflow-y: auto;
         box-sizing: border-box;
 
-        padding: 20px 24px;
+        padding: 26px 30px;
 
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 12px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 
-        font-size: 13px;
-        line-height: 1.6;
+        font-size: 14.5px;
+        line-height: 1.65;
         color: #374151;
     }
 
@@ -452,14 +532,14 @@ export const styles = `
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: 12px;
 
-        margin: 0 0 10px;
+        margin: 0 0 14px;
     }
 
     #cycle-detail-modal h2 {
         margin: 0;
-        font-size: 17px;
+        font-size: 20px;
         color: #111827;
     }
 
@@ -472,15 +552,15 @@ export const styles = `
         background: #eff6ff;
         color: #1d4ed8;
 
-        padding: 3px 10px;
-        font-size: 12px;
+        padding: 4px 12px;
+        font-size: 13px;
         font-weight: 600;
         white-space: nowrap;
     }
 
     #cycle-detail-body h3 {
-        margin: 18px 0 6px;
-        font-size: 14px;
+        margin: 20px 0 8px;
+        font-size: 16px;
         color: #111827;
     }
 
@@ -490,47 +570,54 @@ export const styles = `
        as "the cycle" moves to its own quiet .cycle-detail-note line
        instead of being folded into the same sentence. */
     .cycle-detail-subtitle {
-        margin: 0 0 2px;
-        font-size: 13.5px;
+        margin: 0 0 3px;
+        font-size: 15px;
         color: #1f2937;
     }
 
     .cycle-detail-note {
-        margin: 0 0 12px;
-        font-size: 12px;
+        margin: 0 0 14px;
+        font-size: 13px;
         color: #9ca3af;
     }
 
     /* Findings-first navigation. The same conceptual action as the HUD's
        own .hud-focus-scc-btn (both call the unchanged focusScc()), styled
        to match it - a plain bordered "real action" button, not a heavier
-       primary-CTA look - just sized for this modal's own 13px type scale
-       rather than the compact HUD row's 11px. */
+       primary-CTA look - just sized for this modal's own larger type scale
+       rather than the compact HUD row's. */
     .cycle-detail-focus-btn {
         display: inline-block;
-        margin: 2px 0 14px;
+        margin: 4px 0 16px;
 
         cursor: pointer;
 
         border: 1px solid #d1d5db;
-        border-radius: 6px;
+        border-radius: 7px;
 
         background: #f9fafb;
         color: #374151;
 
-        padding: 5px 10px;
-        font-size: 12.5px;
+        padding: 8px 16px;
+        font-size: 14px;
+
+        transition: background-color 0.1s ease-in-out;
     }
 
     .cycle-detail-focus-btn:hover {
         background: #f3f4f6;
     }
 
+    .cycle-detail-focus-btn:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+    }
+
     .cycle-detail-metadata {
         display: flex;
-        gap: 6px;
+        gap: 8px;
 
-        margin: 0 0 14px;
+        margin: 0 0 16px;
     }
 
     .cycle-meta-chip {
@@ -540,8 +627,8 @@ export const styles = `
         background: #f9fafb;
         color: #6b7280;
 
-        padding: 3px 9px;
-        font-size: 11.5px;
+        padding: 4px 11px;
+        font-size: 12.5px;
     }
 
     /* Experimental (branch: experiment/cycle-map-v2, concrete dependency
@@ -596,9 +683,9 @@ export const styles = `
        cycle length, and reuses .cycle-node-start's own accent color so it
        visually ties back to the highlighted chip at the top of the flow. */
     .cycle-flow-closing {
-        margin: 2px 0 10px;
+        margin: 4px 0 12px;
 
-        font-size: 12px;
+        font-size: 13px;
         color: #6b7280;
     }
 
@@ -613,8 +700,8 @@ export const styles = `
         color: #111827;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 
-        padding: 6px 11px;
-        font-size: 12.5px;
+        padding: 8px 13px;
+        font-size: 14px;
         font-weight: 500;
         white-space: nowrap;
     }
@@ -643,13 +730,13 @@ export const styles = `
 
     .cycle-arrow {
         color: #9ca3af;
-        font-size: 15px;
+        font-size: 17px;
         line-height: 1;
     }
 
     .cycle-ellipsis {
         color: #6b7280;
-        font-size: 12px;
+        font-size: 13px;
         font-style: italic;
         padding: 0 4px;
     }
@@ -660,14 +747,14 @@ export const styles = `
        the same blue as .cycle-count-badge/.cycle-node-start rather than
        any red/amber "alert" color. */
     .cycle-detail-hidden-note {
-        margin: 0 0 10px;
-        padding: 8px 10px;
+        margin: 0 0 12px;
+        padding: 10px 12px;
 
         background: #eff6ff;
         border: 1px solid #bfdbfe;
-        border-radius: 6px;
+        border-radius: 7px;
 
-        font-size: 12px;
+        font-size: 13px;
         color: #1e40af;
     }
 
@@ -688,12 +775,12 @@ export const styles = `
     .cycle-detail-item {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
 
-        padding: 8px 4px;
+        padding: 10px 6px;
         border-bottom: 1px solid #f3f4f6;
 
-        font-size: 13px;
+        font-size: 14.5px;
     }
 
     .cycle-detail-item:not(.cycle-detail-item-hidden) {
@@ -724,14 +811,14 @@ export const styles = `
         justify-content: center;
         flex: 0 0 auto;
 
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
 
         border-radius: 50%;
         background: #f3f4f6;
 
         color: #6b7280;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 600;
     }
 
@@ -742,7 +829,7 @@ export const styles = `
     }
 
     .cycle-detail-item-main strong {
-        font-size: 13.5px;
+        font-size: 15px;
         color: #111827;
     }
 
@@ -791,21 +878,21 @@ export const styles = `
        #hint/#edge-clarity-note already use) instead of the UA default
        dialog chrome. */
     #cycle-info-modal {
-        max-width: 520px;
+        max-width: 560px;
         width: calc(100% - 64px);
         max-height: calc(100vh - 96px);
         overflow-y: auto;
         box-sizing: border-box;
 
-        padding: 20px 24px;
+        padding: 26px 30px;
 
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 8px;
+        border-radius: 12px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 
-        font-size: 13px;
-        line-height: 1.6;
+        font-size: 14.5px;
+        line-height: 1.65;
         color: #374151;
     }
 
@@ -814,14 +901,14 @@ export const styles = `
     }
 
     #cycle-info-modal h2 {
-        margin: 0 0 12px;
-        font-size: 17px;
+        margin: 0 0 14px;
+        font-size: 20px;
         color: #111827;
     }
 
     #cycle-info-modal h3 {
-        margin: 18px 0 6px;
-        font-size: 14px;
+        margin: 20px 0 8px;
+        font-size: 16px;
         color: #111827;
     }
 
@@ -843,11 +930,11 @@ export const styles = `
 
     .cycle-info-example {
         font-family: monospace;
-        font-size: 14px;
+        font-size: 16px;
         background: #f9fafb;
         border: 1px solid #d1d5db;
-        border-radius: 6px;
-        padding: 8px 12px;
+        border-radius: 7px;
+        padding: 10px 14px;
         display: inline-block;
     }
 
@@ -861,17 +948,32 @@ export const styles = `
 
     #cycle-info-close-btn,
     #cycle-detail-close-btn {
-        margin-top: 16px;
+        margin-top: 18px;
 
         cursor: pointer;
 
         border: 1px solid #d1d5db;
-        border-radius: 6px;
+        border-radius: 7px;
 
         background: #f9fafb;
+        color: #374151;
 
-        padding: 6px 14px;
-        font-size: 13px;
+        padding: 9px 20px;
+        font-size: 14.5px;
+
+        transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out;
+    }
+
+    #cycle-info-close-btn:hover,
+    #cycle-detail-close-btn:hover {
+        background: #f3f4f6;
+        border-color: #9ca3af;
+    }
+
+    #cycle-info-close-btn:focus-visible,
+    #cycle-detail-close-btn:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
     }
 
     /* The report's actual first screen - "what is this, how big is the
@@ -1071,7 +1173,7 @@ export const styles = `
 
     #app-header-title {
         font-family: sans-serif;
-        font-size: 15px;
+        font-size: 16px;
         font-weight: 700;
         color: #111827;
 
@@ -1080,7 +1182,7 @@ export const styles = `
 
     #view-tabs {
         display: flex;
-        gap: 4px;
+        gap: 6px;
 
         /* Logical, not physical - a plain margin-left would stay
            anchored to the physical left edge even under #app-header's
@@ -1103,9 +1205,9 @@ export const styles = `
         background: transparent;
         color: #6b7280;
 
-        padding: 7px 16px;
+        padding: 8px 18px;
         font-family: sans-serif;
-        font-size: 13.5px;
+        font-size: 14.5px;
         font-weight: 600;
 
         transition: background-color 0.1s ease-in-out, color 0.1s ease-in-out;
@@ -1125,10 +1227,10 @@ export const styles = `
     #language-switcher {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
 
         font-family: sans-serif;
-        font-size: 12.5px;
+        font-size: 13.5px;
         color: #6b7280;
     }
 
@@ -1139,7 +1241,12 @@ export const styles = `
         background: white;
         color: #374151;
 
-        padding: 4px 8px;
-        font-size: 12.5px;
+        padding: 6px 10px;
+        font-size: 13.5px;
+    }
+
+    #language-select:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
     }
 `;
