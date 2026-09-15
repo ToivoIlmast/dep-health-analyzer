@@ -38,6 +38,7 @@ architecture.md
 audit-report-v0.8.1.md
 docs/BACKLOG.md
 docs/release-notes/
+docs/notes/
 
 # External validation corpus - generated fixture projects, regenerated
 # locally via scripts/gen-*.mjs. Not part of the npm package or
@@ -46,3 +47,10 @@ docs/release-notes/
 # regenerated alongside them) are not.
 test-projects/*
 !test-projects/README.md
+
+# Large-scale corpus (scalability/cycles/regression/history at hundreds to
+# ~10000 modules) - a separate root from test-projects/ on purpose, see
+# test-projects-scale/README.md. Same rule: only the explanatory README is
+# tracked, generated fixtures are regenerated locally via scripts/gen-scale-*.mjs.
+test-projects-scale/*
+!test-projects-scale/README.md
