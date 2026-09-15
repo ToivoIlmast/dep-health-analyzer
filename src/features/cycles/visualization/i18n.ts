@@ -106,7 +106,7 @@ export interface Dictionary {
     zoomOutLabel: string;
     zoomInLabel: string;
     cycleInfoButton: string;
-    edgeClarityNote: string;
+    focusRepresentativeNote: string; // 'Showing one representative cycle and its direct neighbours - this SCC has %n modules in total.'
 
     // --- Left info panel (#hint) -------------------------------------
     detectedSccsHeading: string;
@@ -224,7 +224,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Zoom out',
         zoomInLabel: 'Zoom in',
         cycleInfoButton: 'What are dependency cycles?',
-        edgeClarityNote: 'Edges route as right-angle connectors, spread out to stay clear of other modules.',
+        focusRepresentativeNote: 'Showing one representative cycle and its direct neighbours - this SCC has %n modules in total.',
 
         detectedSccsHeading: 'Detected SCCs',
         detectedSccsCaption: '(entire analyzed graph, not the current filtered view)',
@@ -355,7 +355,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Loitonna',
         zoomInLabel: 'Lähennä',
         cycleInfoButton: 'Mitä riippuvuussyklit ovat?',
-        edgeClarityNote: 'Reunat kulkevat suorakulmaisina linjoina, levitettyinä pois muiden moduulien tieltä.',
+        focusRepresentativeNote: 'Näkymässä on yksi esimerkkisykli ja sen suorat naapurit - tässä SCC:ssä on yhteensä %n moduulia.',
 
         detectedSccsHeading: 'Havaitut SCC:t',
         detectedSccsCaption: '(koko analysoitu kaavio, ei nykyinen suodatettu näkymä)',
@@ -477,7 +477,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Zooma ut',
         zoomInLabel: 'Zooma in',
         cycleInfoButton: 'Vad är beroendecykler?',
-        edgeClarityNote: 'Kanter dras som räta vinklar och sprids ut för att hålla sig borta från andra moduler.',
+        focusRepresentativeNote: 'Vyn visar en exempelcykel och dess direkta grannar - denna SCC har totalt %n moduler.',
 
         detectedSccsHeading: 'Upptäckta SCC:er',
         detectedSccsCaption: '(hela den analyserade grafen, inte den aktuella filtrerade vyn)',
@@ -598,7 +598,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Zoom ut',
         zoomInLabel: 'Zoom inn',
         cycleInfoButton: 'Hva er avhengighetssykluser?',
-        edgeClarityNote: 'Kanter tegnes som rettvinklede forbindelser, spredt ut for å holde avstand til andre moduler.',
+        focusRepresentativeNote: 'Visningen viser én eksempelsyklus og dens direkte naboer - denne SCC-en har totalt %n moduler.',
 
         detectedSccsHeading: 'Oppdagede SCC-er',
         detectedSccsCaption: '(hele den analyserte grafen, ikke den nåværende filtrerte visningen)',
@@ -720,7 +720,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Zoom ud',
         zoomInLabel: 'Zoom ind',
         cycleInfoButton: 'Hvad er afhængighedscyklusser?',
-        edgeClarityNote: 'Kanter tegnes som retvinklede forbindelser, spredt ud for at holde afstand til andre moduler.',
+        focusRepresentativeNote: 'Visningen viser én eksempelcyklus og dens direkte naboer - denne SCC har i alt %n moduler.',
 
         detectedSccsHeading: 'Fundne SCC\'er',
         detectedSccsCaption: '(hele den analyserede graf, ikke den aktuelle filtrerede visning)',
@@ -851,7 +851,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Rýma út',
         zoomInLabel: 'Rýma inn',
         cycleInfoButton: 'Hvað eru hringrásir ósjálfstæða?',
-        edgeClarityNote: 'Tengingar eru teiknaðar sem rétthyrndar línur, dreifðar til að forðast aðrar einingar.',
+        focusRepresentativeNote: 'Sýnin sýnir eina dæmahringrás og næstu nágranna hennar - þessi SCC hefur samtals %n einingar.',
 
         detectedSccsHeading: 'Fundnir SCC-hlutar',
         detectedSccsCaption: '(allt greint graf, ekki núverandi síuð sýn)',
@@ -972,7 +972,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Verkleinern',
         zoomInLabel: 'Vergrößern',
         cycleInfoButton: 'Was sind Abhängigkeitszyklen?',
-        edgeClarityNote: 'Kanten verlaufen als rechtwinklige Verbindungen und werden gespreizt, um andere Module nicht zu überlappen.',
+        focusRepresentativeNote: 'Angezeigt werden ein Beispielzyklus und seine direkten Nachbarn - diese SCC hat insgesamt %n Module.',
 
         detectedSccsHeading: 'Erkannte SCCs',
         detectedSccsCaption: '(gesamter analysierter Graph, nicht die aktuell gefilterte Ansicht)',
@@ -1094,7 +1094,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Zoom arrière',
         zoomInLabel: 'Zoom avant',
         cycleInfoButton: 'Que sont les cycles de dépendances ?',
-        edgeClarityNote: "Les arêtes suivent des connecteurs à angle droit, écartés pour rester à l'écart des autres modules.",
+        focusRepresentativeNote: 'Affiche un cycle représentatif et ses voisins directs - ce SCC compte %n modules au total.',
 
         detectedSccsHeading: 'SCC détectés',
         detectedSccsCaption: "(l'ensemble du graphe analysé, pas la vue filtrée actuelle)",
@@ -1217,7 +1217,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Alejar',
         zoomInLabel: 'Acercar',
         cycleInfoButton: '¿Qué son los ciclos de dependencias?',
-        edgeClarityNote: 'Los bordes se trazan como conectores en ángulo recto, separados para evitar otros módulos.',
+        focusRepresentativeNote: 'Se muestra un ciclo representativo y sus vecinos directos - este SCC tiene %n módulos en total.',
 
         detectedSccsHeading: 'SCC detectados',
         detectedSccsCaption: '(todo el grafo analizado, no la vista filtrada actual)',
@@ -1345,7 +1345,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Pomniejsz',
         zoomInLabel: 'Powiększ',
         cycleInfoButton: 'Czym są cykle zależności?',
-        edgeClarityNote: 'Krawędzie prowadzone są jako łączniki pod kątem prostym, rozsunięte, aby omijać inne moduły.',
+        focusRepresentativeNote: 'Widok pokazuje jeden przykładowy cykl i jego bezpośrednich sąsiadów - ten SCC liczy w sumie %n modułów.',
 
         detectedSccsHeading: 'Wykryte SCC',
         detectedSccsCaption: '(cały analizowany graf, nie bieżący filtrowany widok)',
@@ -1467,7 +1467,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Diminuir zoom',
         zoomInLabel: 'Aumentar zoom',
         cycleInfoButton: 'O que são ciclos de dependências?',
-        edgeClarityNote: 'As arestas seguem conectores em ângulo reto, espaçadas para não sobrepor outros módulos.',
+        focusRepresentativeNote: 'A mostrar um ciclo representativo e os seus vizinhos diretos - este SCC tem %n módulos no total.',
 
         detectedSccsHeading: 'SCCs detectados',
         detectedSccsCaption: '(todo o grafo analisado, não a visualização filtrada atual)',
@@ -1594,7 +1594,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'Уменьшить',
         zoomInLabel: 'Увеличить',
         cycleInfoButton: 'Что такое циклы зависимостей?',
-        edgeClarityNote: 'Рёбра прокладываются прямоугольными соединителями, разнесёнными, чтобы не пересекать другие модули.',
+        focusRepresentativeNote: 'Показан один пример цикла и его прямые соседи - всего в этой SCC %n модулей.',
 
         detectedSccsHeading: 'Обнаруженные SCC',
         detectedSccsCaption: '(весь проанализированный граф, а не текущий отфильтрованный вид)',
@@ -1723,7 +1723,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: 'تصغير',
         zoomInLabel: 'تكبير',
         cycleInfoButton: 'ما هي دورات التبعيات؟',
-        edgeClarityNote: 'تُرسم الحواف كموصلات بزوايا قائمة، مُتباعدة لتجنب الوحدات الأخرى.',
+        focusRepresentativeNote: 'يتم عرض دورة تمثيلية واحدة وجيرانها المباشرين - يضم هذا SCC %n وحدة إجمالاً.',
 
         detectedSccsHeading: 'مكوّنات SCC المكتشَفة',
         detectedSccsCaption: '(كامل الرسم البياني المحلَّل، وليس العرض المُصفّى الحالي)',
@@ -1846,7 +1846,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         zoomOutLabel: '縮小',
         zoomInLabel: '拡大',
         cycleInfoButton: '依存関係の循環とは？',
-        edgeClarityNote: 'エッジは直角のコネクタとして配置され、他のモジュールと重ならないように間隔を空けています。',
+        focusRepresentativeNote: '代表的な循環とその直接の隣接モジュールを表示しています - この SCC には合計 %n モジュールあります。',
 
         detectedSccsHeading: '検出されたSCC',
         detectedSccsCaption: '（現在のフィルター表示ではなく、分析されたグラフ全体）',

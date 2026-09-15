@@ -103,7 +103,8 @@ describe('buildHtmlTemplate HTML/script escaping', () => {
 
         expect(html).toContain('function escapeHtml(value)');
         expect(html).toContain('escapeHtml(title)');
-        expect(html).toContain('escapeHtml(data.id)');
+        expect(html).toContain('function renderPathWithDirHighlight(rawPath)');
+        expect(html).toContain('renderPathWithDirHighlight(data.id)');
     });
 });
 
@@ -401,29 +402,34 @@ describe('buildHtmlTemplate SCC member navigation', () => {
     });
 });
 
-describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => {
-    // Focus reuses the same sccId/sccSize/node-id data buildCycleContextHtml
-    // already reads (see the describe block above) - it never re-derives SCC
-    // membership, never changes graph data, never deletes a node. Like that
-    // block, buildCycleContextHtml/focusScc/exitFocus are client-side
-    // functions whose SOURCE is embedded once, unconditionally - Jest can't
-    // spin up a live cytoscape instance to execute them, so these assert
-    // source structure (the right guard/formula/wiring exists) rather than a
-    // rendered result for a specific fixture. The actual live behavior (a
-    // real click producing a real, larger viewport) is verified separately
-    // via headless Chrome against the real large-cycle-app fixture (both its
-    // 7-node ring and its 2-node pair).
+describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade)', () => {
+    // Graph UX pass: Focus SCC/"Show in graph" now build a REAL local
+    // subgraph (everything outside the focused SCC/cycle + its 1-hop
+    // neighbours is hidden via the exact same '.area-hidden' mechanism the
+    // Area/Connections filter already uses - see isNodeInCurrentView()/
+    // isEdgeInCurrentView() being focus-aware) laid out with the existing
+    // Force Directed layout, rather than the old fade-in-place-on-the-
+    // full-graph behavior. buildCycleContextHtml/focusScc/exitFocus are
+    // client-side functions whose SOURCE is embedded once, unconditionally
+    // - Jest can't spin up a live cytoscape instance to execute them, so
+    // these assert source structure (the right guard/formula/wiring
+    // exists) rather than a rendered result for a specific fixture. The
+    // actual live behavior (a real click producing a real, smaller,
+    // recomputed subgraph) is verified separately via headless Chrome
+    // against real fixtures (large-cycle-app's 7-node ring, nightmare-app's
+    // 2-node pair, and synthetic small/medium/huge SCCs).
     const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
-    it('renders a Focus SCC action, gated behind the same real-SCC (2+ members) guard as member navigation', () => {
+    it('renders a Focus SCC action, gated behind the same real-SCC (2+ members) guard as member navigation, carrying the selected node as its start id', () => {
         // focusButtonHtml is computed inside buildCycleContextHtml, after
         // its early `data.sccSize < 2 || data.sccId === undefined -> return
         // ''` guard - so a node outside any SCC gets '' from the whole
         // function, Focus button included, exactly like the member list
-        // above it. Checking the guard precedes the button's own
-        // declaration in source order confirms this isn't a second,
-        // separately-gated code path.
+        // above it. data-focus-start-id carries the SELECTED node's own id
+        // (data.id) - focusScc() needs it to pick a representative cycle
+        // for a huge SCC (see FOCUS_FULL_SCC_MAX below).
         expect(html).toContain('data-focus-scc-id="${data.sccId}"');
+        expect(html).toContain('data-focus-start-id="${escapeAttribute(data.id)}"');
         expect(html).toContain('class="hud-focus-scc-btn"');
         const guardIndex = html.indexOf('data.sccSize < 2 || data.sccId === undefined');
         const buttonIndex = html.indexOf('data-focus-scc-id="${data.sccId}"');
@@ -446,13 +452,14 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
         // `data` from IT via `node.data()` - the button embeds `data.sccId`
         // (the selected node's own field), never e.g. `otherMembers[0]` or
         // a hardcoded/looked-up id. The click handler then passes that same
-        // number straight through to focusScc, with no remapping.
+        // number, plus the selected node's own id, straight through to
+        // focusScc, with no remapping.
         expect(html).toContain('const data = node.data();');
         expect(html).toContain('data-focus-scc-id="${data.sccId}"');
-        expect(html).toContain('focusScc(Number(focusEl.dataset.focusSccId))');
+        expect(html).toContain('focusScc(Number(focusEl.dataset.focusSccId), focusEl.dataset.focusStartId);');
     });
 
-    it('accounts for every AVAILABLE (non-hidden) member when determining focus scope, for an SCC of any size', () => {
+    it('accounts for every AVAILABLE (non-hidden) member when determining the HUD button\'s own "of N" count, for an SCC of any size', () => {
         // visibleMemberCount = the selected node itself + every OTHER
         // member not '.area-hidden' - computed over the FULL otherMembers
         // collection (cy.nodes().filter(sccId match)), not the
@@ -461,7 +468,10 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
         // correctly account for all 7 members of large-cycle-app's ring SCC
         // and all 2 members of its pair SCC alike, without a
         // size-specific branch - confirmed here by asserting it reads from
-        // `otherMembers` (the untruncated collection), not `shown`.
+        // `otherMembers` (the untruncated collection), not `shown`. (This
+        // count feeds the HUD button's own label before Focus is even
+        // entered - focusScc() below independently derives its OWN, actual
+        // core/shown count once focus is live.)
         expect(html).toContain(
             'const visibleMemberCount = 1 + otherMembers.filter((candidate) => !candidate.hasClass(\'area-hidden\')).length;',
         );
@@ -472,71 +482,120 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
         // Belt-and-suspenders, matching this file's existing convention
         // (navigateToSccMember re-checks '.area-hidden' rather than
         // trusting the HUD's own rendering) - focusScc must filter
-        // cy.nodes() by sccId and exclude '.area-hidden' independently,
-        // so a stale button (filters changed between render and click)
-        // can't focus on a member that isn't actually visible. This is the
-        // one formula that must work correctly whether the SCC has 2
-        // members or 7 - it isn't given a count, it derives its own set.
-        expect(html).toContain('function focusScc(sccId)');
+        // cy.nodes() by sccId and exclude '.area-hidden' independently, so
+        // a stale button (filters changed between render and click) can't
+        // focus on a member that isn't actually visible. This is the one
+        // formula that must work correctly whether the SCC has 2 members,
+        // 7, or 500 - it isn't given a count, it derives its own set.
+        expect(html).toContain('function focusScc(sccId, startId)');
         expect(html).toMatch(
             /candidate\.data\('sccId'\) === sccId && !candidate\.hasClass\('area-hidden'\)/,
         );
-        expect(html).toContain('if (members.length < 2) {');
+        expect(html).toContain('if (allMembers.length < 2) {');
     });
 
-    it('exiting focus ("Show full graph") restores the full graph - never leaves elements faded/hidden by data, only by view', () => {
-        // exitFocus() must clear focusedSccId and re-hide the exit button;
-        // it deliberately does NOT touch cy.remove()/'.area-hidden' (those
-        // belong to the Area/Connections filters, untouched by Focus) - so
-        // "the full graph" was never actually altered, only its viewport
-        // and fade/highlight classes were. Fit Graph independently also
-        // calls exitFocus() first, so the two controls can't leave a
-        // half-exited state.
-        expect(html).toContain('function exitFocus()');
-        expect(html).toContain('focusedSccId = null;');
-        expect(html).toContain("showFullGraphButton.hidden = true;");
-        expect(html).toContain("showFullGraphButton?.addEventListener('click', () => {\n                exitFocus();");
-        const fitBtnStart = html.indexOf("fitButton.addEventListener(");
-        const fitBtnEnd = html.indexOf("fitCyAvoidingChrome(cy, 40);", fitBtnStart);
-        expect(fitBtnStart).toBeGreaterThan(-1);
-        expect(html.slice(fitBtnStart, fitBtnEnd)).toContain('exitFocus();');
-        expect(html).toContain('exitFocus();\n\n                const isCleanLayout');
-    });
-
-    it('never touches Area/Connections filter state - no new class, no visibility change, no new filter option', () => {
-        // Focus's own fade/highlight is scoped to the pre-existing
-        // '.faded'/'.highlighted'/'.highlighted-edge' classes already used
-        // by highlightNeighborhood (same visual language, no new CSS
-        // concept). It reads '.area-hidden' (to exclude currently-hidden
-        // members from its own member set - see the two tests above) but
-        // must never WRITE it - never add/remove that exact class, nor
-        // call cy.add()/cy.remove() itself, either of which would change
-        // what the Area/Connections filters themselves consider visible.
-        const focusFnStart = html.indexOf('function focusScc(sccId)');
+    it('above FOCUS_FULL_SCC_MAX members, falls back to a representative cycle (reusing findCycleThroughNode - not a second "pick a cycle" algorithm) plus its direct neighbours', () => {
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
         const focusFnEnd = html.indexOf('function exitFocus()');
         const focusFnSource = html.slice(focusFnStart, focusFnEnd);
 
-        expect(focusFnSource).not.toContain("addClass('area-hidden')");
-        expect(focusFnSource).not.toContain("removeClass('area-hidden')");
-        expect(focusFnSource).not.toContain('cy.add(');
-        expect(focusFnSource).not.toContain('cy.remove(');
-        expect(focusFnSource).toContain("cy.elements().addClass('faded');");
-        expect(focusFnSource).toContain("members.addClass('highlighted');");
+        expect(html).toContain('const FOCUS_FULL_SCC_MAX = 40;');
+        expect(focusFnStart).toBeGreaterThan(-1);
+        expect(focusFnSource).toContain('if (allMembers.length > FOCUS_FULL_SCC_MAX) {');
+        expect(focusFnSource).toContain('findCycleThroughNode(sccId, resolvedStartId)');
+        expect(focusFnSource).toContain('isRepresentativeOnly = true;');
+        // Only one implementation of "find a concrete cycle" exists in the
+        // whole report - the concrete-cycle modal and Focus's huge-SCC
+        // fallback both call the same function.
+        expect(html.match(/function findCycleThroughNode\(sccId, startId\)/g)).toHaveLength(1);
     });
 
-    it('a member hidden by the current filter can never make Focus claim the whole SCC is shown', () => {
-        // focusScc's own member query excludes '.area-hidden' candidates
-        // (same assertion as the independent-re-derivation test above,
-        // re-stated against the specific "false full-SCC claim" risk) - and
-        // the button's own label already says "N of M modules visible"
-        // whenever a filter has hidden part of the SCC (visibleMemberCount
-        // < data.sccSize), rather than presenting a plain "(M modules)"
-        // count that would read as "the whole thing is on screen".
-        // Full localization task: the label text itself now comes from
-        // I18N_DICTIONARIES (dict.focusSccButton + a formatted
-        // moduleCountVisibleParen/moduleCountParen suffix) instead of a
-        // literal English template string, but the same "of M" vs. plain
-        // "(M modules)" distinction still gates on the same condition.
+    it('the focused set is the core (whole SCC, or the representative cycle) UNION its direct (1-hop) neighbours - never a 2nd-hop expansion', () => {
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusFnSource = html.slice(focusFnStart, focusFnEnd);
+
+        expect(focusFnSource).toContain('const neighbours = coreMembers');
+        expect(focusFnSource).toContain(".neighborhood('node')");
+        expect(focusFnSource).toContain('coreMembers.union(neighbours)');
+        // Only ever .neighborhood()'d once - no second hop off the
+        // neighbours collection itself.
+        expect(focusFnSource.match(/\.neighborhood\('node'\)/g)).toHaveLength(1);
+    });
+
+    it('actually hides everything outside the focused set - reuses refreshAreaView()/the real .area-hidden mechanism, not a fade-in-place-on-the-full-graph', () => {
+        // This is the core semantic change from the old "viewport-only"
+        // Focus: isNodeInCurrentView()/isEdgeInCurrentView() now check
+        // currentFocus FIRST (see their own describe block), so calling
+        // the SAME refreshAreaView() the Area/Connections filter already
+        // uses is what actually hides non-focused elements - not a second,
+        // parallel hiding mechanism.
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusFnSource = html.slice(focusFnStart, focusFnEnd);
+
+        expect(focusFnSource).toContain('refreshAreaView();');
+        expect(focusFnSource).toContain("neighbours.addClass('focus-neighbor');");
+        expect(html.match(/function refreshAreaView\(\)/g)).toHaveLength(1);
+    });
+
+    it('runs the existing Force Directed layout (layouts.cose reused as-is) on the focused subgraph, not a new layout algorithm', () => {
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusFnSource = html.slice(focusFnStart, focusFnEnd);
+
+        expect(html).toContain('function runFocusLayout()');
+        expect(html).toContain("Object.assign({}, layouts.cose, { randomize: false })");
+        expect(html).toContain("visibleElements(cy).layout(focusLayoutConfig)");
+        expect(html).toContain("onLayoutFinished(cy, 'cose')");
+        expect(focusFnSource).toContain('runFocusLayout();');
+    });
+
+    it('disables Layout/Area/Connections while focused - they describe the Full Graph, not a narrowed local view', () => {
+        expect(html).toContain('function setFocusToolbarState(isFocused)');
+        expect(html).toContain('layoutSelect.disabled = isFocused;');
+        expect(html).toContain('areaSelect.disabled = isFocused;');
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        expect(html.slice(focusFnStart, focusFnEnd)).toContain('setFocusToolbarState(true);');
+    });
+
+    it('exiting focus ("Show full graph") restores the full graph exactly - same node positions, zoom, and pan as before Focus ran its own layout', () => {
+        // preFocusSnapshot (positions + zoom + pan, captured once on first
+        // entry) is what makes "Back to full graph" a true restore instead
+        // of a fresh re-fit that would silently discard whatever zoom/pan
+        // state the user had before entering Focus.
+        expect(html).toContain('function exitFocus()');
+        expect(html).toContain('currentFocus = null;');
+        expect(html).toContain('showFullGraphButton.hidden = true;');
+        expect(html).toContain('setFocusToolbarState(false);');
+        expect(html).toContain('refreshAreaView();');
+        expect(html).toContain('preFocusSnapshot.positions.forEach((pos, id) => {');
+        expect(html).toContain('cy.zoom(preFocusSnapshot.zoom);');
+        expect(html).toContain('cy.pan(preFocusSnapshot.pan);');
+        expect(html).toContain(
+            "showFullGraphButton?.addEventListener('click', () => {\n                exitFocus();\n            });",
+        );
+        // Fit Graph and the Layout dropdown both still call exitFocus()
+        // first, so neither control can leave a half-exited focus state.
+        // (exitFocus is a hoisted function declaration, defined later in
+        // source order than these two call sites - that's fine at runtime,
+        // so this checks for the CALL at each site, not source position.)
+        const fitBtnStart = html.indexOf('fitButton.addEventListener(');
+        const fitBtnEnd = html.indexOf('fitCyAvoidingChrome(cy, 40);', fitBtnStart);
+        expect(fitBtnStart).toBeGreaterThan(-1);
+        expect(html.slice(fitBtnStart, fitBtnEnd)).toContain('exitFocus();');
+        expect(html).toContain('exitFocus();\n\n                const runningLayout');
+    });
+
+    it('a member hidden by the current filter can never make the HUD\'s own Focus button claim the whole SCC is shown', () => {
+        // The pre-focus HUD button's own label already says "N of M
+        // modules visible" whenever a filter has hidden part of the SCC
+        // (visibleMemberCount < data.sccSize), rather than presenting a
+        // plain "(M modules)" count that would read as "the whole thing is
+        // on screen". The label text comes from I18N_DICTIONARIES
+        // (dict.focusSccButton + a formatted moduleCountVisibleParen/
+        // moduleCountParen suffix).
         expect(html).toContain('visibleMemberCount < data.sccSize');
         expect(html).toContain(
             "dict.focusSccButton + ' ' + focusCountSuffix"
@@ -545,23 +604,53 @@ describe('buildHtmlTemplate SCC focus (viewport-only, no new detection)', () => 
         expect(html).toContain('moduleCountParen');
     });
 
+    it('the exit button\'s own "(X of Y modules)" label and the representative-cycle disclosure are both driven by updateFocusToolbarLabels(), re-run on language switch too', () => {
+        expect(html).toContain('function updateFocusToolbarLabels()');
+        expect(html).toContain('dict.showFullGraphButton + \' \' + countSuffix');
+        expect(html).toContain('dict.focusRepresentativeNote');
+        expect(html).toContain('focusStatusEl.hidden = !currentFocus.isRepresentativeOnly;');
+        // Re-run from applyLanguage()'s own dynamic re-render block.
+        expect(html).toMatch(/if \(currentFocus\) \{\s*updateFocusToolbarLabels\(\);\s*\}/);
+    });
+
     it('the global SCC summary stays a whole-graph count, unaffected by Focus - never becomes a focused-subset summary', () => {
-        // Findings data foundation (Phase 0): the summary is now
-        // server-rendered static markup (#scc-summary/#scc-summary-text,
-        // filled in from the real CycleFindings payload before this
-        // script ever runs) rather than something computeSccSummary(cy)
-        // recomputed client-side - so the property this test protects
-        // ("Focus can't narrow the summary to just the focused SCC") now
-        // holds by construction, not by a client-side guard that could
-        // drift. This re-confirms that construction directly: neither
-        // focusScc() nor exitFocus() ever writes to the summary's markup.
-        const focusFnStart = html.indexOf('function focusScc(sccId)');
+        // Findings data foundation (Phase 0): the summary is server-
+        // rendered static markup (#scc-summary/#scc-summary-text, filled
+        // in from the real CycleFindings payload before this script ever
+        // runs) rather than something recomputed client-side - so the
+        // property this test protects ("Focus can't narrow the summary to
+        // just the focused SCC") holds by construction. This re-confirms
+        // that construction directly: neither focusScc() nor exitFocus()
+        // ever writes to the summary's markup.
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
         const focusFnEnd = html.indexOf('function exitFocus()');
         const focusAndExitSource = html.slice(focusFnStart, focusFnEnd);
 
         expect(focusFnStart).toBeGreaterThan(-1);
         expect(focusAndExitSource).not.toContain('scc-summary');
         expect(html).toContain('entire analyzed graph, not the current filtered view');
+    });
+});
+
+describe('buildHtmlTemplate Focused Graph edge/node visual hierarchy', () => {
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('marks every edge between two same-SCC nodes as .cycle-edge, once, right after construction - not toggled by selection/focus', () => {
+        expect(html).toContain('function markCycleEdges(cy)');
+        expect(html).toContain("sourceSccId !== undefined && sourceSccId === targetSccId");
+        expect(html).toContain("edge.addClass('cycle-edge');");
+        expect(html).toContain('markCycleEdges(cy);');
+    });
+
+    it('.cycle-edge is styled after .highlighted-edge in the stylesheet array, so it always wins the "most prominent" tier', () => {
+        const highlightedIndex = html.indexOf("selector: '.highlighted-edge'");
+        const cycleEdgeIndex = html.indexOf("selector: '.cycle-edge'");
+        expect(highlightedIndex).toBeGreaterThan(-1);
+        expect(cycleEdgeIndex).toBeGreaterThan(highlightedIndex);
+    });
+
+    it('.focus-neighbor (direct-neighbour dimming) exists as its own style tier, distinct from .faded', () => {
+        expect(html).toContain("selector: '.focus-neighbor'");
     });
 });
 
@@ -1124,14 +1213,15 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
         expect(fnSource).toMatch(/\.map\(\(candidate\) => candidate\.id\(\)\)\s*\.sort\(\);/);
     });
 
-    it('"Show in graph" inside the concrete-cycle modal reuses focusScc(sccId) unchanged - not a second focus implementation', () => {
+    it('"Show in graph" inside the concrete-cycle modal reuses focusScc(sccId, startId) unchanged - not a second focus implementation', () => {
         expect(html).toContain('class="cycle-detail-focus-btn"');
         expect(html).toContain('data-focus-scc-id="${sccId}"');
-        expect(html).toContain('focusScc(Number(focusEl.dataset.focusSccId));');
+        expect(html).toContain('data-focus-start-id="${escapeAttribute(node.id())}"');
+        expect(html).toContain('focusScc(Number(focusEl.dataset.focusSccId), focusEl.dataset.focusStartId);');
 
         // The button calling it lives inside openCycleDetailModal's own
         // template literal, not a competing/duplicate focus function.
-        const focusSccOccurrences = html.match(/function focusScc\(sccId\)/g);
+        const focusSccOccurrences = html.match(/function focusScc\(sccId, startId\)/g);
         expect(focusSccOccurrences).toHaveLength(1);
     });
 
@@ -1155,7 +1245,7 @@ describe('buildHtmlTemplate findings-first navigation (Phase 2)', () => {
 
         expect(focusElBlockStart).toBeGreaterThan(-1);
         expect(focusElBlock).toContain('cycleDetailModal?.close();');
-        expect(focusElBlock).toContain('focusScc(Number(focusEl.dataset.focusSccId));');
+        expect(focusElBlock).toContain('focusScc(Number(focusEl.dataset.focusSccId), focusEl.dataset.focusStartId);');
         expect(focusElBlock).toContain("switchToView('graph');");
     });
 
@@ -1330,7 +1420,7 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
 
     it('applyLanguage also toggles dir="rtl" on the localized Graph chrome panels, but never on #graph-explorer/#cy or the minimap - the dependency graph itself must never mirror', () => {
         expect(html).toContain(
-            "['hint', 'toolbar', 'edge-clarity-note', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal'].forEach("
+            "['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal'].forEach("
         );
         expect(html).not.toMatch(/\[('|")hint('|")[\s\S]{0,200}'graph-explorer'/);
     });

@@ -60,9 +60,9 @@ export const styles = `
     }
 
     /* Information architecture rework (previously: normal document flow,
-       reached by scrolling). #cy/#hint/#toolbar/#edge-clarity-note (all
-       position: absolute with no positioned ancestor of their own, see
-       below) resolve relative to THIS wrapper's own box regardless of
+       reached by scrolling). #cy/#hint/#toolbar (all position: absolute
+       with no positioned ancestor of their own, see below) resolve
+       relative to THIS wrapper's own box regardless of
        position: fixed vs. relative - switching it to fixed only changes
        where that box itself sits (a full-viewport overlay, below the
        header) and how it's hidden.
@@ -223,6 +223,21 @@ export const styles = `
         color: #374151;
     }
 
+    /* Focused-graph UX pass. Secondary/caption text, quieter than the
+       toolbar's own controls (matches .cycle-detail-note's muted-gray
+       treatment) - a short disclosure next to "Show full graph", not
+       another action competing with it. Only ever visible together with
+       that button (both toggle on the same currentFocus state - see
+       focusScc()/exitFocus()/updateFocusToolbarLabels() in template.ts),
+       and only shown at all when Focus is displaying a representative
+       cycle rather than a huge SCC's full membership. */
+    .focus-status-note {
+        max-width: 260px;
+        font-size: 13px;
+        line-height: 1.4;
+        color: #6b7280;
+    }
+
     #hint {
         position: absolute;
         top: 16px;
@@ -276,30 +291,6 @@ export const styles = `
     #area-legend [data-area].legend-area-active {
         font-weight: 600;
         color: #111827;
-    }
-
-    #edge-clarity-note {
-        position: absolute;
-        /* Anchored above the fixed bottom HUD (not the raw viewport
-           bottom) so it doesn't end up floating inside/behind the HUD
-           band now that the minimap moved out of this corner. */
-        bottom: calc(var(--bottom-hud-height) + 16px);
-        left: 16px;
-        max-width: 300px;
-
-        padding: 10px 14px;
-
-        background: white;
-        border: 1px solid #d1d5db;
-        border-radius: 9px;
-
-        font-size: 13.5px;
-        line-height: 1.5;
-        color: #374151;
-
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-
-        z-index: 999;
     }
 
     /* Experimental (branch: experiment/cycle-map-v2). Bottom HUD - fixed
@@ -385,6 +376,19 @@ export const styles = `
         font-size: 13.5px;
         color: #6b7280;
         word-break: break-all;
+    }
+
+    /* Presentation-only (Graph UX pass): the directory portion of a full
+       path shown in .hud-selected-path (HUD panel, cycle-detail member
+       list) gets its own quiet background so the eye can jump straight to
+       "which folder" instead of reading the whole - often long - path
+       character by character. Plain background/radius, no border/shadow -
+       this is a reading aid inside an already-secondary gray line, not a
+       new interactive element. */
+    .path-dir {
+        background: #eef0f2;
+        border-radius: 3px;
+        padding: 0 2px;
     }
 
     /* Experimental (branch: experiment/cycle-map-v2, cycle node details).
@@ -875,8 +879,7 @@ export const styles = `
        (::backdrop, ESC-to-close, focus trapping); this only restyles it to
        match the report's own existing visual language (white background,
        subtle border, existing radius/shadow/typography - the same tokens
-       #hint/#edge-clarity-note already use) instead of the UA default
-       dialog chrome. */
+       #hint already uses) instead of the UA default dialog chrome. */
     #cycle-info-modal {
         max-width: 560px;
         width: calc(100% - 64px);
@@ -1222,6 +1225,42 @@ export const styles = `
         background: #eff6ff;
         border-color: #bfdbfe;
         color: #1d4ed8;
+    }
+
+    /* Navbar restructure (Graph UX pass). Moved here from the Graph
+       toolbar - opens general reference material (#cycle-info-modal), does
+       not control the graph itself, so it lives beside the tabs/language
+       switcher rather than among Layout/Area/Connections/Fit Graph.
+       Deliberately quieter than .view-tab: no pill background, no border,
+       a plain muted-to-dark text treatment - a secondary/help action next
+       to the two primary navigation tabs, not a third tab competing with
+       them for attention. */
+    .header-help-btn {
+        cursor: pointer;
+
+        border: 1px solid transparent;
+        border-radius: 7px;
+
+        background: transparent;
+        color: #6b7280;
+
+        padding: 8px 14px;
+        font-family: sans-serif;
+        font-size: 13.5px;
+        font-weight: 500;
+        white-space: nowrap;
+
+        transition: background-color 0.1s ease-in-out, color 0.1s ease-in-out;
+    }
+
+    .header-help-btn:hover {
+        background: #f3f4f6;
+        color: #111827;
+    }
+
+    .header-help-btn:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
     }
 
     #language-switcher {
