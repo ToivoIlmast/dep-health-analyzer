@@ -2167,17 +2167,55 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             // A real bug found while testing: plain cy.fit() sizes the
             // graph to the FULL container, including the corners
-            // permanently covered by opaque UI panels (#hint, #toolbar,
-            // #minimap-container). On a small graph -
-            // exactly the case where this "fits comfortably" path runs -
-            // a node can fit entirely underneath one of those panels and
-            // become completely invisible, even though cy.extent() and the
-            // minimap both correctly show it as "in view". Measuring the
-            // panels' actual rendered rects and fitting into what's left
-            // avoids that; the four corners overlap different pairs of
-            // panels, so each side's inset is independently the max of
-            // only the panels that actually reach that side, not every
-            // panel at once.
+            // permanently covered by opaque UI panels (#hint, #toolbar).
+            // On a small graph - exactly the case where this "fits
+            // comfortably" path runs - a node can fit entirely underneath
+            // one of those panels and become completely invisible, even
+            // though cy.extent() and the minimap both correctly show it as
+            // "in view". Measuring the panels' actual rendered rects and
+            // fitting into what's left avoids that.
+            //
+            // Viewport/fit bug fix (Graph UX pass): hint (top-left) and
+            // toolbar (top-right) are both short horizontal bars anchored
+            // to the canvas's TOP edge, never tall sidebars reaching deep
+            // into its vertical middle. fitCyAvoidingChrome below works
+            // with ONE rectangular "safe zone" for the whole fit, not a
+            // separate reservation per corner - so the moment a panel's
+            // BOTTOM edge sets topInset, that inset already excludes its
+            // entire row (every x position within the fit rectangle's
+            // width, not just the x range the panel itself occupies), for
+            // free. A panel-specific left/right contribution on top of
+            // that used to be redundant at best - and, once a panel is
+            // allowed to grow wide, actively wrong: toolbar wrapping
+            // across nearly the full top strip (see its own max-width
+            // comment elsewhere in this file, added so it never overlaps
+            // #hint) used to ALSO count its own width as a "right inset"
+            // here, which could consume almost the entire canvas width,
+            // drive availableWidth below in fitCyAvoidingChrome negative,
+            // and force the crude cy.fit() fallback there - which knows
+            // nothing about hint/toolbar and centers on the RAW container
+            // instead. That's the exact, confirmed cause of the Full
+            // Graph rendering skewed left with a large empty gap on the
+            // right: not a CSS/centering issue, a viewport-math one.
+            // Confirmed in headless Chrome (large-cycle-app, several
+            // window sizes): removing hint's/toolbar's left/right
+            // contributions - keeping each one's own top contribution,
+            // which already fully protects against overlap regardless of
+            // x - fixes the skew without moving a single graph node; this
+            // is viewport/fit math only, dagre's own hierarchical layout
+            // is completely untouched.
+            //
+            // #minimap-container is no longer measured here at all: it
+            // lives inside #bottom-hud, a separate fixed bar BELOW
+            // #graph-explorer/#cy (see styles.ts - #graph-explorer's own
+            // height already excludes --bottom-hud-height), so it can
+            // never visually overlap anything rendered inside this
+            // container. Its previous "right"/"bottom" contributions were
+            // already dead code in practice - bottom always came out
+            // negative (and so got clamped to 0) because minimap.top
+            // already sits past containerRect.bottom - removed as
+            // misleading no-op code now that this function is being
+            // corrected anyway, rather than left in place.
             function measureChromeInsets(container) {
                 const containerRect = container.getBoundingClientRect();
 
@@ -2195,24 +2233,24 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 const hint = rectOf('hint');
                 const toolbar = rectOf('toolbar');
-                const minimap = rectOf('minimap-container');
 
+                // left/right stay 0 - neither current top panel
+                // contributes to them (see the comment above). Kept as
+                // explicit fields, not hardcoded directly in the return
+                // statement, so a FUTURE panel that really is a tall
+                // vertical sidebar (unlike anything here today) has an
+                // obvious place to add its own contribution, the same way
+                // top already does for hint/toolbar.
                 let left = 0;
                 let right = 0;
                 let top = 0;
-                let bottom = 0;
+                const bottom = 0;
 
                 if (hint) {
-                    left = Math.max(left, hint.right - containerRect.left);
                     top = Math.max(top, hint.bottom - containerRect.top);
                 }
                 if (toolbar) {
-                    right = Math.max(right, containerRect.right - toolbar.left);
                     top = Math.max(top, toolbar.bottom - containerRect.top);
-                }
-                if (minimap) {
-                    right = Math.max(right, containerRect.right - minimap.left);
-                    bottom = Math.max(bottom, containerRect.bottom - minimap.top);
                 }
 
                 return { left, right, top, bottom };
@@ -2412,6 +2450,54 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 redrawMinimapViewport(cy);
             }
 
+            // Minimap viewport-rectangle bug fix (Graph UX pass). cy.extent()
+            // (the model-space region the main canvas currently shows) is
+            // computed purely from container size + zoom/pan - it has no
+            // idea how big the graph's own content is. computeMinimapTransform()
+            // above scales to fit the GRAPH's bounding box into the minimap,
+            // which is a different, usually much smaller, box: a tall/narrow
+            // hierarchical layout fit into a wide/short canvas (see
+            // fitCyAvoidingChrome) is zoomed out far enough to satisfy its
+            // HEIGHT, leaving its width nowhere near using the canvas's own
+            // width - so cy.extent() ends up several times wider than the
+            // graph's own content. Mapped through the minimap's transform
+            // unclamped, that made the "you are here" rectangle extend well
+            // past the minimap canvas's own physical edges: visually
+            // meaningless when drawn (a box bigger than the map it's on),
+            // and worse for isInsideViewportRect()'s hit-testing - once the
+            // TRUE (unclamped) rectangle exceeded the 220x160 canvas, EVERY
+            // click anywhere on the minimap fell "inside" it, silently
+            // breaking "click empty minimap space to pan there" (drag-only
+            // could still work, since it's relative-delta-based and never
+            // consulted this rectangle's edges).
+            //
+            // Clamping to the minimap's own bounds is the correct fix, not
+            // a cosmetic one: it's what makes the drawn rectangle and the
+            // hit-test agree with what a 220x160 canvas can physically
+            // show, degrades gracefully (a thin sliver at the relevant edge)
+            // once the real viewport extends beyond the graph on one side,
+            // and is the identity transform - no behavior change at all -
+            // whenever the real viewport already fits inside the minimap,
+            // which is most of the time on a graph with a more balanced
+            // aspect ratio. Shared by both callers below so what's drawn and
+            // what's clickable can never drift apart.
+            function getMinimapViewportRect(cy) {
+                if (!minimapTransform) {
+                    return null;
+                }
+
+                const extent = cy.extent();
+                const a = toMinimapPoint(extent.x1, extent.y1, minimapTransform);
+                const b = toMinimapPoint(extent.x2, extent.y2, minimapTransform);
+
+                return {
+                    x1: Math.max(0, Math.min(MINIMAP_WIDTH, a.x)),
+                    y1: Math.max(0, Math.min(MINIMAP_HEIGHT, a.y)),
+                    x2: Math.max(0, Math.min(MINIMAP_WIDTH, b.x)),
+                    y2: Math.max(0, Math.min(MINIMAP_HEIGHT, b.y)),
+                };
+            }
+
             function redrawMinimapViewport(cy) {
                 if (!minimapCtx || !minimapTransform) {
                     return;
@@ -2420,17 +2506,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 minimapCtx.clearRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
                 minimapCtx.drawImage(minimapStatic, 0, 0);
 
-                const extent = cy.extent();
-                const transform = minimapTransform;
-                const a = toMinimapPoint(extent.x1, extent.y1, transform);
-                const b = toMinimapPoint(extent.x2, extent.y2, transform);
+                const rect = getMinimapViewportRect(cy);
+                if (!rect) {
+                    return;
+                }
 
                 minimapCtx.strokeStyle = '#2563eb';
                 minimapCtx.lineWidth = 2;
-                minimapCtx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+                minimapCtx.strokeRect(rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1);
 
                 minimapCtx.fillStyle = 'rgba(37, 99, 235, 0.10)';
-                minimapCtx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+                minimapCtx.fillRect(rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1);
             }
 
             function panCyToGraphPoint(cy, graphX, graphY) {
@@ -2444,15 +2530,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             }
 
             function isInsideViewportRect(cy, mx, my) {
-                if (!minimapTransform) {
+                const rect = getMinimapViewportRect(cy);
+                if (!rect) {
                     return false;
                 }
 
-                const extent = cy.extent();
-                const a = toMinimapPoint(extent.x1, extent.y1, minimapTransform);
-                const b = toMinimapPoint(extent.x2, extent.y2, minimapTransform);
-
-                return mx >= a.x && mx <= b.x && my >= a.y && my <= b.y;
+                return mx >= rect.x1 && mx <= rect.x2 && my >= rect.y1 && my <= rect.y2;
             }
 
             if (minimapCanvas) {
@@ -3362,10 +3445,29 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // while already focused (e.g. clicking a neighbour's own
                 // Focus SCC button) must still restore the ORIGINAL Full
                 // Graph state on exit, not an intermediate focused one.
+                //
+                // Bug fix (viewport pass): cy.pan() returns cytoscape's
+                // OWN internal pan object by reference, not a defensive
+                // copy - confirmed directly (two calls return the exact
+                // same object; mutating via cy.pan({...}) changes what an
+                // earlier-captured reference reads too). Without
+                // Object.assign({}, ...) here, this "snapshot" was really
+                // just an alias to cytoscape's live pan state, so the very
+                // next fitCyAvoidingChrome() call inside runFocusLayout()
+                // (which repositions the view for the focused subgraph)
+                // silently overwrote the snapshot in place - exitFocus()
+                // was then "restoring" pan to wherever focus itself had
+                // just panned to, not to the real pre-focus position.
+                // zoom didn't need this: cy.zoom() returns a primitive
+                // number, which is copied by value automatically. node.
+                // position() has the identical live-reference risk, which
+                // is why the positions map below already wraps each one
+                // in Object.assign({}, ...) - pan just hadn't gotten the
+                // same treatment.
                 if (!currentFocus) {
                     preFocusSnapshot = {
                         zoom: cy.zoom(),
-                        pan: cy.pan(),
+                        pan: Object.assign({}, cy.pan()),
                         positions: new Map(cy.nodes().map((node) => [node.id(), Object.assign({}, node.position())])),
                     };
                 }

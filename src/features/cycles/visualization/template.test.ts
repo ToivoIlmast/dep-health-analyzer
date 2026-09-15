@@ -1502,3 +1502,126 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
         expect(html.slice(hudListenerIndex, hudListenerBlockEnd)).not.toContain('switchToView');
     });
 });
+
+describe('buildHtmlTemplate Full Graph centering / minimap viewport-rect (viewport bug fixes)', () => {
+    // Both bugs, and their fixes, are viewport/fit MATH issues that only
+    // show up with real rendered element sizes and a real cytoscape
+    // instance - Jest can't execute this client-side script against a
+    // live DOM/cytoscape, so these assert source structure (the specific
+    // formula/guard/sharing exists, the specific broken one doesn't)
+    // rather than a rendered/measured result. The actual numeric
+    // behavior (graph horizontally centered, minimap rect always within
+    // its own canvas bounds, exact pan/zoom restore on "Back to full
+    // graph") is verified separately via headless Chrome against several
+    // real fixtures and window sizes.
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('measureChromeInsets no longer lets #hint or #toolbar contribute to the left/right insets - only to top', () => {
+        // The bug: toolbar can legitimately span nearly the full canvas
+        // width (see its own max-width comment, added so it never
+        // overlaps #hint) - "right inset = containerRect.right -
+        // toolbar.left" then counted almost the ENTIRE toolbar width as
+        // unusable horizontal space, driving fitCyAvoidingChrome's
+        // availableWidth negative and forcing its crude cy.fit()
+        // fallback, which ignores #hint entirely and centers on the raw
+        // container - visibly skewing the whole graph away from #hint's
+        // own, now-unaccounted-for space. Neither contribution is needed
+        // for overlap-avoidance either: both panels are short top-anchored
+        // bars, so whichever one's bottom edge is lower already excludes
+        // its entire row (every x position within the fit rectangle, not
+        // just the panel's own x range) via the shared top inset alone.
+        const fnStart = html.indexOf('function measureChromeInsets(container)');
+        const fnEnd = html.indexOf('function fitCyAvoidingChrome(');
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnStart).toBeGreaterThan(-1);
+        expect(fnSource).not.toContain('hint.right');
+        expect(fnSource).not.toContain('toolbar.left');
+        expect(fnSource).toContain('hint.bottom - containerRect.top');
+        expect(fnSource).toContain('toolbar.bottom - containerRect.top');
+    });
+
+    it('measureChromeInsets no longer measures #minimap-container at all - it structurally cannot overlap the canvas', () => {
+        // #minimap-container lives inside #bottom-hud, a separate fixed
+        // bar BELOW #graph-explorer/#cy (#graph-explorer's own height
+        // already excludes --bottom-hud-height in styles.ts) - its old
+        // "right"/"bottom" contributions here were already dead code
+        // (bottom always came out negative, clamped to 0, since
+        // minimap.top already sits past containerRect.bottom).
+        const fnStart = html.indexOf('function measureChromeInsets(container)');
+        const fnEnd = html.indexOf('function fitCyAvoidingChrome(');
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnSource).not.toContain("rectOf('minimap-container')");
+        expect(fnSource).not.toContain('minimap.left');
+        expect(fnSource).not.toContain('minimap.top');
+    });
+
+    it('fitCyAvoidingChrome and applyInitialView are otherwise unchanged - the fix is entirely inside measureChromeInsets', () => {
+        // Scope guard: the bug was in what counts as "chrome", not in how
+        // the fit rectangle/zoom/pan are computed from those insets, and
+        // not in the hierarchical layout - dagre itself, wrapWideRanks,
+        // and resolveEdgeNodeOverlaps are untouched by this fix.
+        expect(html).toContain('const zoom = Math.min(availableWidth / bb.w, availableHeight / bb.h);');
+        expect(html).toContain('const safeCenterX = leftInset + availableWidth / 2;');
+        expect(html).toContain('function applyInitialView(cy) {');
+    });
+
+    it('getMinimapViewportRect clamps the mapped cy.extent() rectangle to the minimap canvas bounds', () => {
+        // The bug: cy.extent() (the model-space region the main canvas
+        // shows) can be - and routinely is, once a tall/narrow
+        // hierarchical layout is zoomed out to fit a wide/short canvas -
+        // much larger than the graph's own content bounding box that
+        // computeMinimapTransform() scaled to fit the minimap. Mapped
+        // unclamped, the "you are here" rectangle extended past the
+        // minimap canvas's own physical edges: meaningless when drawn,
+        // and worse for hit-testing, since an unclamped rectangle
+        // exceeding the 220x160 canvas made EVERY click on the minimap
+        // register as "inside the viewport", silently breaking "click
+        // empty minimap space to pan there".
+        expect(html).toContain('function getMinimapViewportRect(cy)');
+        expect(html).toMatch(/x1:\s*Math\.max\(0, Math\.min\(MINIMAP_WIDTH, a\.x\)\)/);
+        expect(html).toMatch(/y1:\s*Math\.max\(0, Math\.min\(MINIMAP_HEIGHT, a\.y\)\)/);
+        expect(html).toMatch(/x2:\s*Math\.max\(0, Math\.min\(MINIMAP_WIDTH, b\.x\)\)/);
+        expect(html).toMatch(/y2:\s*Math\.max\(0, Math\.min\(MINIMAP_HEIGHT, b\.y\)\)/);
+    });
+
+    it('redrawMinimapViewport and isInsideViewportRect both use getMinimapViewportRect - drawing and hit-testing can never drift apart', () => {
+        const drawFnStart = html.indexOf('function redrawMinimapViewport(cy)');
+        const drawFnEnd = html.indexOf('function panCyToGraphPoint(');
+        const hitTestFnStart = html.indexOf('function isInsideViewportRect(cy, mx, my)');
+        const hitTestFnEnd = html.indexOf('if (minimapCanvas)', hitTestFnStart);
+
+        expect(drawFnStart).toBeGreaterThan(-1);
+        expect(hitTestFnStart).toBeGreaterThan(-1);
+        expect(html.slice(drawFnStart, drawFnEnd)).toContain('getMinimapViewportRect(cy)');
+        expect(html.slice(hitTestFnStart, hitTestFnEnd)).toContain('getMinimapViewportRect(cy)');
+
+        // Neither function re-derives cy.extent()/toMinimapPoint() math of
+        // its own anymore - there is exactly one place that does.
+        expect(html.match(/const extent = cy\.extent\(\);/g)).toHaveLength(1);
+    });
+
+    it('focusScc\'s pre-focus snapshot defensively copies cy.pan() - it is a live reference, not a value, in this cytoscape version', () => {
+        // Bug fix: cy.pan() (no args) returns cytoscape's OWN internal
+        // pan object BY REFERENCE, not a defensive copy (confirmed
+        // directly against the real library: two calls return the exact
+        // same object, and mutating via cy.pan({...}) changes what an
+        // earlier-captured reference reads too). Without Object.assign
+        // here, the "snapshot" was really just an alias to cytoscape's
+        // live pan state, so runFocusLayout()'s own fitCyAvoidingChrome()
+        // call (repositioning the view for the focused subgraph)
+        // silently overwrote the snapshot in place - exitFocus() then
+        // "restored" pan to wherever focus itself had just panned to,
+        // not to the real pre-focus position. zoom never needed this -
+        // cy.zoom() returns a primitive number, copied by value
+        // automatically - which is exactly why only zoom, not pan,
+        // silently kept working before this fix.
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusFnSource = html.slice(focusFnStart, focusFnEnd);
+
+        expect(focusFnSource).toContain('pan: Object.assign({}, cy.pan())');
+        expect(focusFnSource).not.toMatch(/pan:\s*cy\.pan\(\),/);
+    });
+});
