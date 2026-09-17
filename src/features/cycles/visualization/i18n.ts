@@ -134,6 +134,7 @@ export interface Dictionary {
     sccContextContainsCycles: string;
     sccContextOtherMembers: string; // 'Other modules in this SCC:'
     hiddenByFilterNote: string; // '(hidden by filter)'
+    hiddenByFocusNote: string; // '(hidden by Focus)' - Focus-only hiding, distinct from the Area/Connections filter above
     moreCountSuffix: string; // ', +%n more'
     focusSccButton: string;
     showDependencyCycleButton: string;
@@ -145,6 +146,11 @@ export interface Dictionary {
     externalAreaAggregatedView: string; // 'Aggregated view of connections between the selected area and %name.'
     externalAreaConnectionsShown: string; // 'Connections shown: %n'
 
+    // --- Focus overflow proxy (P0-1: bounded 1-hop neighbours) -----------
+    focusOverflowProxyLabel: string; // '+%n more' (also this proxy's own on-canvas node label)
+    focusOverflowPanelBody: string; // 'Showing %visible of %n modules directly connected to this cycle; %hidden more are grouped here to keep the view readable.'
+    focusNeighborsTruncatedNote: string; // 'Showing the %visible most connected of %n direct neighbours - the rest are grouped into a summary node.'
+
     // --- Concrete dependency cycle modal ---------------------------------
     cycleModalTitle: string;
     cycleModalSubtitle: string; // 'One concrete cycle through %module within SCC #%id.'
@@ -152,6 +158,8 @@ export interface Dictionary {
     showInGraphButton: string;
     cycleHiddenNoteSingular: string; // '%n module hidden by the current filter.'
     cycleHiddenNotePlural: string; // '%n modules hidden by the current filter.'
+    cycleHiddenNoteSingularFocus: string; // '%n module hidden by the current Focus.'
+    cycleHiddenNotePluralFocus: string; // '%n modules hidden by the current Focus.'
     cycleFlowBackTo: string; // 'back to'
     cycleModulesHeading: string;
     closeButton: string; // shared by both dialogs
@@ -250,6 +258,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'This SCC contains one or more dependency cycles.',
         sccContextOtherMembers: 'Other modules in this SCC:',
         hiddenByFilterNote: '(hidden by filter)',
+        hiddenByFocusNote: '(hidden by Focus)',
         moreCountSuffix: ', +%n more',
         focusSccButton: 'Focus SCC',
         showDependencyCycleButton: 'Show a dependency cycle',
@@ -260,6 +269,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Aggregated view of connections between the selected area and %name.',
         externalAreaConnectionsShown: 'Connections shown: %n',
+        focusOverflowProxyLabel: '+%n more',
+        focusOverflowPanelBody:
+            'Showing %visible of %n modules directly connected to this cycle; %hidden more are grouped here to keep the view readable.',
+        focusNeighborsTruncatedNote:
+            'Showing the %visible most connected of %n direct neighbours - the rest are grouped into a summary node.',
 
         cycleModalTitle: 'Dependency cycle',
         cycleModalSubtitle: 'One concrete cycle through %module within SCC #%id.',
@@ -267,6 +281,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Show in graph',
         cycleHiddenNoteSingular: '%n module hidden by the current filter.',
         cycleHiddenNotePlural: '%n modules hidden by the current filter.',
+        cycleHiddenNoteSingularFocus: '%n module hidden by the current Focus.',
+        cycleHiddenNotePluralFocus: '%n modules hidden by the current Focus.',
         cycleFlowBackTo: 'back to',
         cycleModulesHeading: 'Cycle modules',
         closeButton: 'Close',
@@ -381,6 +397,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Tämä SCC sisältää yhden tai useamman riippuvuussyklin.',
         sccContextOtherMembers: 'Muut tämän SCC:n moduulit:',
         hiddenByFilterNote: '(piilotettu suodattimella)',
+        hiddenByFocusNote: '(piilotettu kohdistuksella)',
         moreCountSuffix: ', +%n lisää',
         focusSccButton: 'Kohdista SCC:hen',
         showDependencyCycleButton: 'Näytä riippuvuussykli',
@@ -391,6 +408,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Koostettu näkymä valitun alueen ja alueen %name välisistä yhteyksistä.',
         externalAreaConnectionsShown: 'Näytetyt yhteydet: %n',
+        focusOverflowProxyLabel: '+%n lisää',
+        focusOverflowPanelBody:
+            'Näytetään %visible / %n tähän sykliin suoraan liittyvää moduulia; %hidden muuta on koottu tähän näkymän luettavuuden vuoksi.',
+        focusNeighborsTruncatedNote:
+            'Näytetään %n suorasta naapurista %visible yhteydeltään vahvinta - loput on koottu yhteenvetosolmuun.',
 
         cycleModalTitle: 'Riippuvuussykli',
         cycleModalSubtitle: 'Yksi konkreettinen sykli moduulin %module kautta, SCC #%id sisällä.',
@@ -398,6 +420,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Näytä kaaviossa',
         cycleHiddenNoteSingular: '%n moduuli on piilotettu nykyisellä suodattimella.',
         cycleHiddenNotePlural: '%n moduulia on piilotettu nykyisellä suodattimella.',
+        cycleHiddenNoteSingularFocus: '%n moduuli on piilotettu nykyisellä kohdistuksella.',
+        cycleHiddenNotePluralFocus: '%n moduulia on piilotettu nykyisellä kohdistuksella.',
         cycleFlowBackTo: 'takaisin moduuliin',
         cycleModulesHeading: 'Syklin moduulit',
         closeButton: 'Sulje',
@@ -503,6 +527,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Denna SCC innehåller en eller flera beroendecykler.',
         sccContextOtherMembers: 'Andra moduler i denna SCC:',
         hiddenByFilterNote: '(dold av filter)',
+        hiddenByFocusNote: '(dold av fokus)',
         moreCountSuffix: ', +%n till',
         focusSccButton: 'Fokusera SCC',
         showDependencyCycleButton: 'Visa en beroendecykel',
@@ -513,6 +538,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Aggregerad vy över anslutningar mellan det valda området och %name.',
         externalAreaConnectionsShown: 'Visade anslutningar: %n',
+        focusOverflowProxyLabel: '+%n till',
+        focusOverflowPanelBody:
+            'Visar %visible av %n moduler som är direkt anslutna till denna cykel; %hidden till är grupperade här för att hålla vyn läsbar.',
+        focusNeighborsTruncatedNote:
+            'Visar de %visible mest anslutna av %n direkta grannar - resten är grupperade i en sammanfattningsnod.',
 
         cycleModalTitle: 'Beroendecykel',
         cycleModalSubtitle: 'En konkret cykel genom %module inom SCC #%id.',
@@ -520,6 +550,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Visa i grafen',
         cycleHiddenNoteSingular: '%n modul är dold av det aktuella filtret.',
         cycleHiddenNotePlural: '%n moduler är dolda av det aktuella filtret.',
+        cycleHiddenNoteSingularFocus: '%n modul är dold av det aktuella fokuset.',
+        cycleHiddenNotePluralFocus: '%n moduler är dolda av det aktuella fokuset.',
         cycleFlowBackTo: 'tillbaka till',
         cycleModulesHeading: 'Cykelns moduler',
         closeButton: 'Stäng',
@@ -624,6 +656,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Denne SCC-en inneholder én eller flere avhengighetssykluser.',
         sccContextOtherMembers: 'Andre moduler i denne SCC-en:',
         hiddenByFilterNote: '(skjult av filter)',
+        hiddenByFocusNote: '(skjult av fokus)',
         moreCountSuffix: ', +%n til',
         focusSccButton: 'Fokuser SCC',
         showDependencyCycleButton: 'Vis en avhengighetssyklus',
@@ -634,6 +667,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Samlet visning av forbindelser mellom det valgte området og %name.',
         externalAreaConnectionsShown: 'Viste forbindelser: %n',
+        focusOverflowProxyLabel: '+%n til',
+        focusOverflowPanelBody:
+            'Viser %visible av %n moduler som er direkte koblet til denne syklusen; %hidden til er gruppert her for å holde visningen lesbar.',
+        focusNeighborsTruncatedNote:
+            'Viser de %visible mest tilkoblede av %n direkte naboer - resten er gruppert i en oppsummeringsnode.',
 
         cycleModalTitle: 'Avhengighetssyklus',
         cycleModalSubtitle: 'Én konkret syklus gjennom %module innenfor SCC #%id.',
@@ -641,6 +679,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Vis i grafen',
         cycleHiddenNoteSingular: '%n modul er skjult av det gjeldende filteret.',
         cycleHiddenNotePlural: '%n moduler er skjult av det gjeldende filteret.',
+        cycleHiddenNoteSingularFocus: '%n modul er skjult av gjeldende fokus.',
+        cycleHiddenNotePluralFocus: '%n moduler er skjult av gjeldende fokus.',
         cycleFlowBackTo: 'tilbake til',
         cycleModulesHeading: 'Syklusens moduler',
         closeButton: 'Lukk',
@@ -746,6 +786,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Denne SCC indeholder én eller flere afhængighedscyklusser.',
         sccContextOtherMembers: 'Andre moduler i denne SCC:',
         hiddenByFilterNote: '(skjult af filter)',
+        hiddenByFocusNote: '(skjult af fokus)',
         moreCountSuffix: ', +%n mere',
         focusSccButton: 'Fokusér SCC',
         showDependencyCycleButton: 'Vis en afhængighedscyklus',
@@ -756,6 +797,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Samlet visning af forbindelser mellem det valgte område og %name.',
         externalAreaConnectionsShown: 'Viste forbindelser: %n',
+        focusOverflowProxyLabel: '+%n mere',
+        focusOverflowPanelBody:
+            'Viser %visible af %n moduler, der er direkte forbundet med denne cyklus; %hidden mere er grupperet her for at holde visningen læsbar.',
+        focusNeighborsTruncatedNote:
+            'Viser de %visible mest forbundne af %n direkte naboer - resten er grupperet i en opsummeringsknude.',
 
         cycleModalTitle: 'Afhængighedscyklus',
         cycleModalSubtitle: 'Én konkret cyklus gennem %module inden for SCC #%id.',
@@ -763,6 +809,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Vis i grafen',
         cycleHiddenNoteSingular: '%n modul er skjult af det aktuelle filter.',
         cycleHiddenNotePlural: '%n moduler er skjult af det aktuelle filter.',
+        cycleHiddenNoteSingularFocus: '%n modul er skjult af det aktuelle fokus.',
+        cycleHiddenNotePluralFocus: '%n moduler er skjult af det aktuelle fokus.',
         cycleFlowBackTo: 'tilbage til',
         cycleModulesHeading: 'Cyklussens moduler',
         closeButton: 'Luk',
@@ -877,6 +925,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Þessi SCC inniheldur eina eða fleiri hringrásir ósjálfstæða.',
         sccContextOtherMembers: 'Aðrar einingar í þessum SCC:',
         hiddenByFilterNote: '(falið vegna síu)',
+        hiddenByFocusNote: '(falið vegna fókus)',
         moreCountSuffix: ', +%n í viðbót',
         focusSccButton: 'Fókusa SCC',
         showDependencyCycleButton: 'Sýna hringrás ósjálfstæða',
@@ -886,6 +935,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaLabel: 'Ytra svæði: %name',
         externalAreaAggregatedView: 'Samantekin sýn tenginga milli valda svæðisins og %name.',
         externalAreaConnectionsShown: 'Sýndar tengingar: %n',
+        focusOverflowProxyLabel: '+%n til viðbótar',
+        focusOverflowPanelBody:
+            'Sýnir %visible af %n einingum sem eru beintengdar þessari hringrás; %hidden til viðbótar eru flokkaðar hér til að halda sýninni læsilegri.',
+        focusNeighborsTruncatedNote:
+            'Sýnir %visible mest tengdu af %n beinum nágrönnum - restin er flokkuð í samantektarhnút.',
 
         cycleModalTitle: 'Hringrás ósjálfstæða',
         cycleModalSubtitle: 'Ein áþreifanleg hringrás í gegnum %module innan SCC #%id.',
@@ -893,6 +947,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Sýna í grafi',
         cycleHiddenNoteSingular: '%n eining er falin vegna núverandi síu.',
         cycleHiddenNotePlural: '%n einingar eru faldar vegna núverandi síu.',
+        cycleHiddenNoteSingularFocus: '%n eining er falin vegna núverandi fókus.',
+        cycleHiddenNotePluralFocus: '%n einingar eru faldar vegna núverandi fókus.',
         cycleFlowBackTo: 'til baka í',
         cycleModulesHeading: 'Einingar hringrásarinnar',
         closeButton: 'Loka',
@@ -998,6 +1054,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Diese SCC enthält einen oder mehrere Abhängigkeitszyklen.',
         sccContextOtherMembers: 'Andere Module in dieser SCC:',
         hiddenByFilterNote: '(durch Filter ausgeblendet)',
+        hiddenByFocusNote: '(durch Fokus ausgeblendet)',
         moreCountSuffix: ', +%n weitere',
         focusSccButton: 'SCC fokussieren',
         showDependencyCycleButton: 'Abhängigkeitszyklus anzeigen',
@@ -1008,6 +1065,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Zusammengefasste Ansicht der Verbindungen zwischen dem ausgewählten Bereich und %name.',
         externalAreaConnectionsShown: 'Angezeigte Verbindungen: %n',
+        focusOverflowProxyLabel: '+%n weitere',
+        focusOverflowPanelBody:
+            'Zeigt %visible von %n Modulen, die direkt mit diesem Zyklus verbunden sind; %hidden weitere sind hier zusammengefasst, damit die Ansicht lesbar bleibt.',
+        focusNeighborsTruncatedNote:
+            'Zeigt die %visible am stärksten verbundenen von %n direkten Nachbarn - der Rest ist in einem Sammelknoten zusammengefasst.',
 
         cycleModalTitle: 'Abhängigkeitszyklus',
         cycleModalSubtitle: 'Ein konkreter Zyklus durch %module innerhalb von SCC #%id.',
@@ -1015,6 +1077,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Im Graph anzeigen',
         cycleHiddenNoteSingular: '%n Modul ist durch den aktuellen Filter ausgeblendet.',
         cycleHiddenNotePlural: '%n Module sind durch den aktuellen Filter ausgeblendet.',
+        cycleHiddenNoteSingularFocus: '%n Modul ist durch den aktuellen Fokus ausgeblendet.',
+        cycleHiddenNotePluralFocus: '%n Module sind durch den aktuellen Fokus ausgeblendet.',
         cycleFlowBackTo: 'zurück zu',
         cycleModulesHeading: 'Module des Zyklus',
         closeButton: 'Schließen',
@@ -1121,6 +1185,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Ce SCC contient un ou plusieurs cycles de dépendances.',
         sccContextOtherMembers: 'Autres modules de ce SCC :',
         hiddenByFilterNote: '(masqué par le filtre)',
+        hiddenByFocusNote: '(masqué par le Focus)',
         moreCountSuffix: ', +%n de plus',
         focusSccButton: 'Focaliser le SCC',
         showDependencyCycleButton: 'Afficher un cycle de dépendances',
@@ -1131,6 +1196,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Vue agrégée des connexions entre la zone sélectionnée et %name.',
         externalAreaConnectionsShown: 'Connexions affichées : %n',
+        focusOverflowProxyLabel: '+%n de plus',
+        focusOverflowPanelBody:
+            'Affiche %visible modules sur %n directement connectés à ce cycle ; %hidden de plus sont regroupés ici pour garder la vue lisible.',
+        focusNeighborsTruncatedNote:
+            'Affiche les %visible voisins directs les plus connectés sur %n ; le reste est regroupé dans un nœud récapitulatif.',
 
         cycleModalTitle: 'Cycle de dépendances',
         cycleModalSubtitle: 'Un cycle concret à travers %module au sein du SCC n&deg;%id.',
@@ -1138,6 +1208,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Afficher dans le graphe',
         cycleHiddenNoteSingular: '%n module est masqué par le filtre actuel.',
         cycleHiddenNotePlural: '%n modules sont masqués par le filtre actuel.',
+        cycleHiddenNoteSingularFocus: '%n module est masqué par le Focus actuel.',
+        cycleHiddenNotePluralFocus: '%n modules sont masqués par le Focus actuel.',
         cycleFlowBackTo: 'retour à',
         cycleModulesHeading: 'Modules du cycle',
         closeButton: 'Fermer',
@@ -1244,6 +1316,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Este SCC contiene uno o más ciclos de dependencias.',
         sccContextOtherMembers: 'Otros módulos de este SCC:',
         hiddenByFilterNote: '(oculto por el filtro)',
+        hiddenByFocusNote: '(oculto por el enfoque)',
         moreCountSuffix: ', +%n más',
         focusSccButton: 'Enfocar SCC',
         showDependencyCycleButton: 'Mostrar un ciclo de dependencias',
@@ -1254,6 +1327,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Vista agregada de las conexiones entre el área seleccionada y %name.',
         externalAreaConnectionsShown: 'Conexiones mostradas: %n',
+        focusOverflowProxyLabel: '+%n más',
+        focusOverflowPanelBody:
+            'Se muestran %visible de %n módulos conectados directamente a este ciclo; %hidden más se agrupan aquí para mantener la vista legible.',
+        focusNeighborsTruncatedNote:
+            'Se muestran los %visible vecinos directos más conectados de %n; el resto se agrupa en un nodo resumen.',
 
         cycleModalTitle: 'Ciclo de dependencias',
         cycleModalSubtitle: 'Un ciclo concreto a través de %module dentro del SCC n.&ordm;%id.',
@@ -1261,6 +1339,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Mostrar en el grafo',
         cycleHiddenNoteSingular: '%n módulo está oculto por el filtro actual.',
         cycleHiddenNotePlural: '%n módulos están ocultos por el filtro actual.',
+        cycleHiddenNoteSingularFocus: '%n módulo está oculto por el enfoque actual.',
+        cycleHiddenNotePluralFocus: '%n módulos están ocultos por el enfoque actual.',
         cycleFlowBackTo: 'volver a',
         cycleModulesHeading: 'Módulos del ciclo',
         closeButton: 'Cerrar',
@@ -1371,6 +1451,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Ten SCC zawiera jeden lub więcej cykli zależności.',
         sccContextOtherMembers: 'Inne moduły w tym SCC:',
         hiddenByFilterNote: '(ukryty przez filtr)',
+        hiddenByFocusNote: '(ukryty przez fokus)',
         moreCountSuffix: ', +%n więcej',
         focusSccButton: 'Skoncentruj na SCC',
         showDependencyCycleButton: 'Pokaż cykl zależności',
@@ -1381,6 +1462,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Zbiorczy widok połączeń między wybranym obszarem a %name.',
         externalAreaConnectionsShown: 'Wyświetlone połączenia: %n',
+        focusOverflowProxyLabel: '+%n więcej',
+        focusOverflowPanelBody:
+            'Pokazano %visible z %n modułów bezpośrednio połączonych z tym cyklem; %hidden kolejnych zgrupowano tutaj, aby widok pozostał czytelny.',
+        focusNeighborsTruncatedNote:
+            'Pokazano %visible najbardziej powiązanych z %n bezpośrednich sąsiadów - reszta jest zgrupowana w węźle podsumowującym.',
 
         cycleModalTitle: 'Cykl zależności',
         cycleModalSubtitle: 'Jeden konkretny cykl przez %module w obrębie SCC #%id.',
@@ -1388,6 +1474,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Pokaż w grafie',
         cycleHiddenNoteSingular: '%n moduł jest ukryty przez bieżący filtr.',
         cycleHiddenNotePlural: '%n modułów jest ukrytych przez bieżący filtr.',
+        cycleHiddenNoteSingularFocus: '%n moduł jest ukryty przez bieżący fokus.',
+        cycleHiddenNotePluralFocus: '%n modułów jest ukrytych przez bieżący fokus.',
         cycleFlowBackTo: 'z powrotem do',
         cycleModulesHeading: 'Moduły cyklu',
         closeButton: 'Zamknij',
@@ -1494,6 +1582,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Este SCC contém um ou mais ciclos de dependências.',
         sccContextOtherMembers: 'Outros módulos neste SCC:',
         hiddenByFilterNote: '(oculto pelo filtro)',
+        hiddenByFocusNote: '(oculto pelo foco)',
         moreCountSuffix: ', +%n mais',
         focusSccButton: 'Focar SCC',
         showDependencyCycleButton: 'Mostrar um ciclo de dependências',
@@ -1504,6 +1593,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Visualização agregada das conexões entre a área selecionada e %name.',
         externalAreaConnectionsShown: 'Conexões exibidas: %n',
+        focusOverflowProxyLabel: '+%n mais',
+        focusOverflowPanelBody:
+            'A mostrar %visible de %n módulos ligados diretamente a este ciclo; mais %hidden estão agrupados aqui para manter a vista legível.',
+        focusNeighborsTruncatedNote:
+            'A mostrar os %visible vizinhos diretos mais conectados de %n; o resto está agrupado num nó de resumo.',
 
         cycleModalTitle: 'Ciclo de dependências',
         cycleModalSubtitle: 'Um ciclo concreto através de %module dentro do SCC n&ordm;%id.',
@@ -1511,6 +1605,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Mostrar no grafo',
         cycleHiddenNoteSingular: '%n módulo está oculto pelo filtro atual.',
         cycleHiddenNotePlural: '%n módulos estão ocultos pelo filtro atual.',
+        cycleHiddenNoteSingularFocus: '%n módulo está oculto pelo foco atual.',
+        cycleHiddenNotePluralFocus: '%n módulos estão ocultos pelo foco atual.',
         cycleFlowBackTo: 'de volta a',
         cycleModulesHeading: 'Módulos do ciclo',
         closeButton: 'Fechar',
@@ -1620,6 +1716,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'Этот SCC содержит один или несколько циклов зависимостей.',
         sccContextOtherMembers: 'Другие модули в этом SCC:',
         hiddenByFilterNote: '(скрыт фильтром)',
+        hiddenByFocusNote: '(скрыт фокусом)',
         moreCountSuffix: ', ещё %n',
         focusSccButton: 'Сфокусировать SCC',
         showDependencyCycleButton: 'Показать цикл зависимостей',
@@ -1630,6 +1727,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaAggregatedView:
             'Сводное представление связей между выбранной областью и %name.',
         externalAreaConnectionsShown: 'Показано связей: %n',
+        focusOverflowProxyLabel: 'ещё %n',
+        focusOverflowPanelBody:
+            'Показано %visible из %n модулей, напрямую связанных с этим циклом; ещё %hidden сгруппированы здесь, чтобы вид оставался читаемым.',
+        focusNeighborsTruncatedNote:
+            'Показаны %visible наиболее связанных из %n прямых соседей - остальные сгруппированы в узел-сводку.',
 
         cycleModalTitle: 'Цикл зависимостей',
         cycleModalSubtitle: 'Один конкретный цикл через %module внутри SCC #%id.',
@@ -1637,6 +1739,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'Показать в графе',
         cycleHiddenNoteSingular: '%n модуль скрыт текущим фильтром.',
         cycleHiddenNotePlural: '%n модулей скрыто текущим фильтром.',
+        cycleHiddenNoteSingularFocus: '%n модуль скрыт текущим фокусом.',
+        cycleHiddenNotePluralFocus: '%n модулей скрыто текущим фокусом.',
         cycleFlowBackTo: 'назад к',
         cycleModulesHeading: 'Модули цикла',
         closeButton: 'Закрыть',
@@ -1749,6 +1853,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'يحتوي هذا SCC على دورة تبعية واحدة أو أكثر.',
         sccContextOtherMembers: 'وحدات أخرى في هذا SCC:',
         hiddenByFilterNote: '(مخفي بواسطة الفلتر)',
+        hiddenByFocusNote: '(مخفي بواسطة التركيز)',
         moreCountSuffix: '، +%n أخرى',
         focusSccButton: 'التركيز على SCC',
         showDependencyCycleButton: 'عرض دورة تبعية',
@@ -1758,6 +1863,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaLabel: 'منطقة خارجية: %name',
         externalAreaAggregatedView: 'عرض مجمّع للاتصالات بين المنطقة المحددة و%name.',
         externalAreaConnectionsShown: 'الاتصالات المعروضة: %n',
+        focusOverflowProxyLabel: '+%n أخرى',
+        focusOverflowPanelBody:
+            'يتم عرض %visible من %n وحدة متصلة مباشرة بهذه الدورة؛ تم تجميع %hidden وحدة إضافية هنا للحفاظ على وضوح العرض.',
+        focusNeighborsTruncatedNote:
+            'يتم عرض %visible الأكثر ارتباطًا من أصل %n من الجيران المباشرين - وتم تجميع الباقي في عقدة ملخصة.',
 
         cycleModalTitle: 'دورة تبعية',
         cycleModalSubtitle: 'دورة محددة واحدة عبر %module ضمن SCC #%id.',
@@ -1765,6 +1875,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'عرض في الرسم البياني',
         cycleHiddenNoteSingular: 'وحدة واحدة مخفية بواسطة الفلتر الحالي.',
         cycleHiddenNotePlural: '%n وحدة مخفية بواسطة الفلتر الحالي.',
+        cycleHiddenNoteSingularFocus: 'وحدة واحدة مخفية بواسطة التركيز الحالي.',
+        cycleHiddenNotePluralFocus: '%n وحدة مخفية بواسطة التركيز الحالي.',
         cycleFlowBackTo: 'العودة إلى',
         cycleModulesHeading: 'وحدات الدورة',
         closeButton: 'إغلاق',
@@ -1872,6 +1984,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         sccContextContainsCycles: 'このSCCには1つ以上の依存関係の循環が含まれています。',
         sccContextOtherMembers: 'このSCC内の他のモジュール:',
         hiddenByFilterNote: '（フィルターにより非表示）',
+        hiddenByFocusNote: '（フォーカスにより非表示）',
         moreCountSuffix: '、他%n件',
         focusSccButton: 'SCCにフォーカス',
         showDependencyCycleButton: '依存関係の循環を表示',
@@ -1881,6 +1994,11 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         externalAreaLabel: '外部エリア: %name',
         externalAreaAggregatedView: '選択したエリアと%nameとの間の接続の集計ビュー。',
         externalAreaConnectionsShown: '表示中の接続数: %n',
+        focusOverflowProxyLabel: '他%n件',
+        focusOverflowPanelBody:
+            'このサイクルに直接接続されている%nモジュール中%visible件を表示しています。残りの%hidden件はここにまとめられ、見やすさを保っています。',
+        focusNeighborsTruncatedNote:
+            '直接の隣接モジュール%n件中、最も関連の強い%visible件を表示しています。残りは要約ノードにまとめられています。',
 
         cycleModalTitle: '依存関係の循環',
         cycleModalSubtitle: 'SCC #%id内の%moduleを通る具体的な循環。',
@@ -1888,6 +2006,8 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         showInGraphButton: 'グラフで表示',
         cycleHiddenNoteSingular: '%n件のモジュールが現在のフィルターにより非表示です。',
         cycleHiddenNotePlural: '%n件のモジュールが現在のフィルターにより非表示です。',
+        cycleHiddenNoteSingularFocus: '%n件のモジュールが現在のフォーカスにより非表示です。',
+        cycleHiddenNotePluralFocus: '%n件のモジュールが現在のフォーカスにより非表示です。',
         cycleFlowBackTo: '戻る先:',
         cycleModulesHeading: '循環のモジュール',
         closeButton: '閉じる',

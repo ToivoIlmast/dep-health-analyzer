@@ -4,6 +4,16 @@ import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
 import { Dictionary, I18N, LanguageCode, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
 import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
+import { selectFocusNeighbours } from './focusNeighbourSelection';
+import {
+    closestPointOnSegment,
+    computeEdgePathSegments,
+    edgeNodeOverlapIterationsFor,
+    nodeOverlapIterationsFor,
+    resolveEdgeNodeOverlaps as resolveEdgeNodeOverlapsPure,
+    resolveNodeOverlaps as resolveNodeOverlapsPure,
+    segmentIntersectsRect,
+} from './graphOverlapResolution';
 import { styles } from './styles';
 
 type BuildHtmlTemplate = {
@@ -156,7 +166,20 @@ function renderFindingsOverview(findings: CycleFindings, lang: LanguageCode): st
         findings.sccs.length === 1
             ? dict.findingsCaveatSingular
             : formatI18n(dict.findingsCaveatPlural, { n: findings.sccs.length });
-    const rowsHtml = findings.sccs.map((finding) => renderSccFindingRow(finding, dict)).join('');
+    // P1-3 fix: display order only - findings are shown biggest-first (the
+    // most architecturally significant cycle first), never in
+    // findSCCs()/buildCycleFindings' own insertion order, which is just
+    // whatever order Kosaraju's DFS happened to visit components in and
+    // carries no meaning for a reader. Sorted on a COPY: finding.id (a
+    // real node's data.sccId - see buildCycleFindings.ts's own comment on
+    // why that must never be reassigned) always stays the original
+    // findSCCs() index, completely unaffected by this presentation order.
+    // Tie-break by id ascending keeps equal-size findings in a fixed,
+    // deterministic order across runs/renders instead of depending on
+    // Array.prototype.sort's stability guarantees alone being obvious to a
+    // future reader.
+    const sortedForDisplay = [...findings.sccs].sort((a, b) => b.size - a.size || a.id - b.id);
+    const rowsHtml = sortedForDisplay.map((finding) => renderSccFindingRow(finding, dict)).join('');
 
     return `
             <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}${dirAttr}>
@@ -389,13 +412,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 Show full graph
             </button>
 
-            <!-- Local/Focused-graph UX pass. A short, quiet disclosure that
-                 only appears when Focus is showing a representative cycle
-                 rather than a huge SCC's full membership (see
-                 FOCUS_FULL_SCC_MAX/focusScc below) - the one thing this
-                 view needs to state explicitly so a representative cycle is
-                 never mistaken for "the whole structural problem". Never
-                 shown for a small/medium SCC that focus already displays in
+            <!-- Local/Focused-graph UX pass. A short, quiet disclosure of
+                 whatever the core "(X of Y modules)" count on the exit
+                 button above doesn't already say: a representative cycle
+                 shown instead of a huge SCC's full membership
+                 (FOCUS_FULL_SCC_MAX/focusScc below), and/or a truncated
+                 neighbour set (P0-1 fix, FOCUS_NEIGHBOR_LIMIT/focusScc) -
+                 so neither case is ever mistaken for "this is the whole
+                 focused view". Never shown for an ordinary small/medium
+                 SCC with few neighbours, which focus already displays in
                  full - there is nothing to disclose in that case. -->
             <span id="focus-status" class="focus-status-note" hidden></span>
 
@@ -880,6 +905,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                     if (currentFocus) {
                         updateFocusToolbarLabels();
+
+                        // P0-1 fix: the overflow summary proxy's own
+                        // on-canvas label (unlike a real area proxy's,
+                        // which is just the raw untranslated area name) is
+                        // translated text - re-render it here the same way
+                        // every other dynamic Graph label already is.
+                        const overflowProxy = cy.getElementById(FOCUS_OVERFLOW_PROXY_ID);
+                        if (!overflowProxy.empty()) {
+                            overflowProxy.data(
+                                'label',
+                                formatI18nClient(dict.focusOverflowProxyLabel, {
+                                    n: overflowProxy.data('focusOverflowCount'),
+                                }),
+                            );
+                        }
                     }
                 }
 
@@ -1274,11 +1314,29 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     // visibleEdges()/visibleElements() near the cy
                     // constructor for why - that lags a frame behind this
                     // class actually being set). This is how the area
-                    // filter is implemented: a presentation-level
-                    // toggle on top of the one full graph, not a second
-                    // "filtered graph" data structure.
+                    // filter (and Focus - see '.not-in-view' below) is
+                    // implemented: a presentation-level toggle on top of
+                    // the one full graph, not a second "filtered graph"
+                    // data structure.
+                    //
+                    // P1-5 fix: '.not-in-view' - not '.area-hidden' - is
+                    // the actual display driver. '.area-hidden' is now the
+                    // narrower "hidden by the Area/Connections filter
+                    // specifically, independent of Focus" signal (see
+                    // isNodeAreaFiltered()/isEdgeAreaFiltered() above) -
+                    // it no longer has any CSS effect of its own, on
+                    // purpose, so an element that's outside the frozen Area
+                    // filter but INSIDE the current Focus set (Focus always
+                    // takes precedence - see isNodeInCurrentView()) stays
+                    // visible instead of being hidden by a stale filter
+                    // flag. '.not-in-view' is exactly the old combined
+                    // '.area-hidden' toggle (isNodeInCurrentView()'s own
+                    // negation), renamed so its one remaining job - "is
+                    // this actually rendered right now, for whichever
+                    // reason" - can't be confused with the narrower
+                    // Area-only question again.
                     {
-                        selector: '.area-hidden',
+                        selector: '.not-in-view',
                         style: {
                             display: 'none',
                         },
@@ -1591,6 +1649,54 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 );
             }
 
+            // P1-5 fix (Focus/Area state no longer conflated). Before this,
+            // '.area-hidden' was toggled straight off isNodeInCurrentView()/
+            // isEdgeInCurrentView() above - i.e. it meant "not in the
+            // CURRENT view", Focus included. That's the right question for
+            // display (see the CSS-facing '.not-in-view' class below), but
+            // several places need the narrower, Focus-INDEPENDENT question
+            // "would the Area/Connections filter alone hide this" instead:
+            // focusScc()'s own candidate-membership computation, the
+            // concrete-cycle modal's hidden-member disclosure/"Show in
+            // graph" gating, and the HUD's own Focus-button visible count.
+            // Reusing '.area-hidden' for BOTH questions meant switching
+            // Focus from one SCC to a completely different one (Findings ->
+            // "View cycle" -> "Show in graph" while already focused
+            // elsewhere) saw every member of the NEW target SCC as
+            // '.area-hidden' - they were outside the OLD focus, nothing to
+            // do with the Area filter - so focusScc()'s own allMembers
+            // check came back empty and the switch silently did nothing,
+            // and the modal's "Show in graph" button could disappear
+            // entirely. These two functions are '.area-hidden's real,
+            // narrower definition now: always just the (frozen while
+            // focused - the Area dropdown is disabled during Focus, see
+            // setFocusToolbarState()) currentAreaFilter value, regardless
+            // of whatever currentFocus currently is. A proxy is never
+            // "area-hidden" - it's a presentation-only artifact of a
+            // different filter, not a real module with a real area.
+            function isNodeAreaFiltered(node) {
+                if (node.data('isExternalProxy')) {
+                    return false;
+                }
+
+                return Boolean(currentAreaFilter) && node.data('area') !== currentAreaFilter;
+            }
+
+            function isEdgeAreaFiltered(edge) {
+                if (edge.data('isExternalProxy')) {
+                    return false;
+                }
+
+                if (!currentAreaFilter) {
+                    return false;
+                }
+
+                return (
+                    edge.source().data('area') !== currentAreaFilter ||
+                    edge.target().data('area') !== currentAreaFilter
+                );
+            }
+
             function visibleNodes(cy) {
                 return cy.nodes().filter(isNodeInCurrentView);
             }
@@ -1735,94 +1841,34 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             renderAreaLegend(cy);
             populateAreaSelect(cy);
 
+            // P0-2 fix (pre-v0.10.2 audit, scalability): computeEdgePathSegments/
+            // segmentIntersectsRect are pure geometry helpers - moved into
+            // graphOverlapResolution.ts so they, and the overlap resolvers
+            // that depend on them, can be unit-tested and benchmarked
+            // directly in Node (real behavior, not a string-matching
+            // assertion against this generated HTML - see that module's
+            // own top comment and scripts/benchmark-graph-overlap.mjs).
+            // Embedded verbatim below via .toString() so the exact,
+            // tested/benchmarked code is what runs in the browser - no
+            // separate client reimplementation to drift out of sync.
             // Shared with redrawMinimapStatic below, so the minimap's edge
             // drawing matches the same geometry collision-avoidance checks
-            // against - one straight segment normally, or the matching
-            // 3-segment taxi path (vertical/horizontal/vertical, or
-            // horizontal/vertical/horizontal) for whichever axis
-            // ORTHOGONAL_LAYOUT_AXES maps the active layout to, mirroring
-            // the '.orthogonal-edge-vertical'/'-horizontal' styles below
-            // (taxi-turn: 50% either way).
-            function computeEdgePathSegments(p1, p2, orthogonalAxis) {
-                if (orthogonalAxis === 'vertical') {
-                    const turnY = p1.y + (p2.y - p1.y) * 0.5;
+            // resolveEdgeNodeOverlaps (below) uses.
+            ${computeEdgePathSegments.toString()}
 
-                    return [
-                        { x1: p1.x, y1: p1.y, x2: p1.x, y2: turnY },
-                        { x1: p1.x, y1: turnY, x2: p2.x, y2: turnY },
-                        { x1: p2.x, y1: turnY, x2: p2.x, y2: p2.y },
-                    ];
-                }
+            ${segmentIntersectsRect.toString()}
 
-                if (orthogonalAxis === 'horizontal') {
-                    const turnX = p1.x + (p2.x - p1.x) * 0.5;
+            ${closestPointOnSegment.toString()}
 
-                    return [
-                        { x1: p1.x, y1: p1.y, x2: turnX, y2: p1.y },
-                        { x1: turnX, y1: p1.y, x2: turnX, y2: p2.y },
-                        { x1: turnX, y1: p2.y, x2: p2.x, y2: p2.y },
-                    ];
-                }
+            // P0-2 fix. Node-count thresholds (see graphOverlapResolution.ts's
+            // own top comment for the full benchmark-backed reasoning) that
+            // keep resolveEdgeNodeOverlaps/resolveNodeOverlaps below from
+            // running an unbounded amount of work on a genuinely huge Full
+            // Graph - never applies to Focused Graph, which P0-1 already
+            // bounds independently of project size.
+            ${edgeNodeOverlapIterationsFor.toString()}
 
-                return [{ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }];
-            }
-
-            // Liang-Barsky line-clipping: true if any part of the segment
-            // lies inside the axis-aligned rectangle centered at
-            // (rectX, rectY). Nodes became rounded rectangles sized to fit
-            // a (now two-line) label instead of small degree-sized circles -
-            // a wide, short box is a poor fit for the "distance to a circle
-            // of radius = width/2" test this used to use, which was
-            // measured to make almost every long-labeled node on the real
-            // project register as "overlapping" any edge merely passing
-            // within half its (now often 100px+) text width, regardless of
-            // whether that edge was anywhere near the box vertically.
-            function segmentIntersectsRect(x1, y1, x2, y2, rectX, rectY, halfWidth, halfHeight) {
-                const left = rectX - halfWidth;
-                const right = rectX + halfWidth;
-                const top = rectY - halfHeight;
-                const bottom = rectY + halfHeight;
-
-                let t0 = 0;
-                let t1 = 1;
-                const dx = x2 - x1;
-                const dy = y2 - y1;
-                const edges = [
-                    [-dx, x1 - left],
-                    [dx, right - x1],
-                    [-dy, y1 - top],
-                    [dy, bottom - y1],
-                ];
-
-                for (const [p, q] of edges) {
-                    if (p === 0) {
-                        if (q < 0) {
-                            return false;
-                        }
-                        continue;
-                    }
-
-                    const r = q / p;
-
-                    if (p < 0) {
-                        if (r > t1) {
-                            return false;
-                        }
-                        if (r > t0) {
-                            t0 = r;
-                        }
-                    } else {
-                        if (r < t0) {
-                            return false;
-                        }
-                        if (r < t1) {
-                            t1 = r;
-                        }
-                    }
-                }
-
-                return t0 <= t1;
-            }
+            ${nodeOverlapIterationsFor.toString()}
 
             // Experimental (branch: experiment/cycle-map-v2, vertical
             // hierarchy). dagre's rank assignment is fundamentally bounded
@@ -1946,143 +1992,52 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 });
             }
 
-            // Experimental (branch: experiment/cycle-map-v2): pushes any node
-            // that a straight A->B edge would otherwise pass through out of
-            // that edge's way, perpendicular to the edge line. Only ever
-            // increases spacing - it never tries to shrink the layout back
-            // down, per the explicit preference for a roomier-but-clear
-            // result over a compact one. Straight-line edges crossing OTHER
-            // EDGES are left alone entirely; only edge-vs-node overlap is
-            // resolved.
+            // P0-2 fix (pre-v0.10.2 audit, scalability). The actual
+            // push-nodes-out-of-an-edge's-way algorithm now lives in
+            // resolveEdgeNodeOverlapsPure below (embedded verbatim via
+            // .toString() from graphOverlapResolution.ts's exported
+            // resolveEdgeNodeOverlaps - assigned to a differently-named
+            // const here purely to avoid colliding with this file's own
+            // cytoscape-facing resolveEdgeNodeOverlaps(cy, options) wrapper
+            // below; a function EXPRESSION's own internal name is never
+            // visible outside its body, so this is safe, not a rename of
+            // the real function). Real behavior of this exact code is
+            // unit-tested (graphOverlapResolution.test.ts) and benchmarked
+            // (scripts/benchmark-graph-overlap.mjs) directly in Node - see
+            // that module's own top comment for the full audit/benchmark
+            // writeup, including why this used to cost O(iterations x E x
+            // N) with real measured minutes-long hangs on a large project's
+            // Full Graph, and what changed.
+            const resolveEdgeNodeOverlapsPure = ${resolveEdgeNodeOverlapsPure.toString()};
+
+            // Thin cytoscape glue: snapshot visible nodes/edges into plain
+            // records ONCE (this is the P0-2 fix's core change - the
+            // pre-fix version called visibleNodes(cy)/visibleEdges(cy)
+            // freshly for every edge inside the algorithm's own iteration
+            // loop, an O(N) filter repeated E x iterations times for no
+            // reason, since which nodes/edges are visible cannot change
+            // during this synchronous call), run the pure algorithm above,
+            // then write the converged positions back in a single
+            // cy.batch() (also cheaper than one cytoscape .position() call
+            // per push, as the pre-fix version made throughout the whole
+            // iterative process).
             function resolveEdgeNodeOverlaps(cy, options) {
-                const margin = (options && options.margin) || 14;
-                const maxIterations = (options && options.maxIterations) || 8;
-                const orthogonalAxis = (options && options.orthogonalAxis) || null;
+                const plainNodes = visibleNodes(cy).map((node) => {
+                    const pos = node.position();
+                    return { id: node.id(), x: pos.x, y: pos.y, width: node.width(), height: node.height() };
+                });
+                const plainEdges = visibleEdges(cy).map((edge) => ({
+                    sourceId: edge.source().id(),
+                    targetId: edge.target().id(),
+                }));
 
-                function closestPointOnSegment(px, py, x1, y1, x2, y2) {
-                    const dx = x2 - x1;
-                    const dy = y2 - y1;
-                    const lengthSquared = dx * dx + dy * dy;
+                resolveEdgeNodeOverlapsPure(plainNodes, plainEdges, options);
 
-                    if (lengthSquared === 0) {
-                        return { x: x1, y: y1 };
-                    }
-
-                    let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared;
-                    t = Math.max(0, Math.min(1, t));
-
-                    return { x: x1 + t * dx, y: y1 + t * dy };
-                }
-
-                for (let iteration = 0; iteration < maxIterations; iteration++) {
-                    let movedAny = false;
-
-                    // visibleEdges(cy)/visibleNodes(cy) throughout -
-                    // area-hidden edges/nodes have nothing worth pushing out
-                    // of anyone's way, and mixing their stale positions in
-                    // would only waste iterations.
-                    visibleEdges(cy).forEach((edge) => {
-                        const source = edge.source();
-                        const target = edge.target();
-                        const p1 = source.position();
-                        const p2 = target.position();
-                        const segments = computeEdgePathSegments(p1, p2, orthogonalAxis);
-
-                        visibleNodes(cy).forEach((node) => {
-                            if (node.id() === source.id() || node.id() === target.id()) {
-                                return;
-                            }
-
-                            const pos = node.position();
-                            const halfWidth = node.width() / 2;
-                            const halfHeight = node.height() / 2;
-
-                            // Whether the node's actual rectangle (not a
-                            // width/2-radius circle around it) is crossed by
-                            // any of the edge's segments - see
-                            // segmentIntersectsRect() above for why this
-                            // replaced the old circle-distance check.
-                            let intersectsAny = false;
-                            let closest = null;
-                            let bestSegment = null;
-                            let distance = Infinity;
-
-                            segments.forEach((seg) => {
-                                if (
-                                    segmentIntersectsRect(
-                                        seg.x1, seg.y1, seg.x2, seg.y2,
-                                        pos.x, pos.y,
-                                        halfWidth + margin, halfHeight + margin,
-                                    )
-                                ) {
-                                    intersectsAny = true;
-                                }
-
-                                const c = closestPointOnSegment(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2);
-                                const dx = pos.x - c.x;
-                                const dy = pos.y - c.y;
-                                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                                if (dist < distance) {
-                                    distance = dist;
-                                    closest = c;
-                                    bestSegment = seg;
-                                }
-                            });
-
-                            if (!intersectsAny) {
-                                return;
-                            }
-
-                            // The intersection test above is exact; this
-                            // "how far to push" distance is still the same
-                            // reasonable approximation as before (based on
-                            // the closest point on whichever segment is
-                            // nearest), just using the larger of the
-                            // rectangle's two half-dimensions as the
-                            // clearance radius instead of a fixed circle.
-                            const clearance = Math.max(halfWidth, halfHeight) + margin;
-
-                            const awayX = pos.x - closest.x;
-                            const awayY = pos.y - closest.y;
-
-                            // The node sits (near-)exactly on the line - push it
-                            // perpendicular to the edge direction instead of
-                            // along a near-zero-length "away" vector, using the
-                            // node's own id to pick a consistent side so it
-                            // doesn't jitter between iterations.
-                            let normalX = awayX;
-                            let normalY = awayY;
-                            const currentLength = distance || 0.0001;
-
-                            if (distance < 0.5) {
-                                const edgeDx = bestSegment.x2 - bestSegment.x1;
-                                const edgeDy = bestSegment.y2 - bestSegment.y1;
-                                const edgeLength = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1;
-                                const side = node.id().length % 2 === 0 ? 1 : -1;
-
-                                normalX = (-edgeDy / edgeLength) * side;
-                                normalY = (edgeDx / edgeLength) * side;
-                            } else {
-                                normalX = awayX / currentLength;
-                                normalY = awayY / currentLength;
-                            }
-
-                            const pushBy = clearance - distance + 1;
-
-                            node.position({
-                                x: pos.x + normalX * pushBy,
-                                y: pos.y + normalY * pushBy,
-                            });
-
-                            movedAny = true;
-                        });
+                cy.batch(() => {
+                    plainNodes.forEach((node) => {
+                        cy.getElementById(node.id).position({ x: node.x, y: node.y });
                     });
-
-                    if (!movedAny) {
-                        break;
-                    }
-                }
+                });
             }
 
             // Focused-graph UX pass. resolveEdgeNodeOverlaps above only
@@ -2106,57 +2061,27 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // axis needs the SMALLER push to clear - minimal disturbance
             // to cose's own otherwise-good layout, not a repositioning
             // from scratch.
+            //
+            // P0-2 fix: same extraction/embedding treatment as
+            // resolveEdgeNodeOverlaps above - see that function's own
+            // comment for why (real Node-testable/benchmarkable behavior,
+            // one implementation embedded verbatim, cytoscape API calls
+            // moved out of the O(iterations x N^2) inner loop).
+            const resolveNodeOverlapsPure = ${resolveNodeOverlapsPure.toString()};
+
             function resolveNodeOverlaps(cy, options) {
-                const margin = (options && options.margin) || 10;
-                const maxIterations = (options && options.maxIterations) || 30;
+                const plainNodes = visibleNodes(cy).map((node) => {
+                    const pos = node.position();
+                    return { id: node.id(), x: pos.x, y: pos.y, width: node.width(), height: node.height() };
+                });
 
-                const nodes = visibleNodes(cy).toArray();
+                resolveNodeOverlapsPure(plainNodes, options);
 
-                for (let iteration = 0; iteration < maxIterations; iteration++) {
-                    let movedAny = false;
-
-                    for (let i = 0; i < nodes.length; i++) {
-                        for (let j = i + 1; j < nodes.length; j++) {
-                            const a = nodes[i];
-                            const b = nodes[j];
-                            const posA = a.position();
-                            const posB = b.position();
-                            const dx = posB.x - posA.x;
-                            const dy = posB.y - posA.y;
-                            const minDx = (a.width() + b.width()) / 2 + margin;
-                            const minDy = (a.height() + b.height()) / 2 + margin;
-                            const overlapX = minDx - Math.abs(dx);
-                            const overlapY = minDy - Math.abs(dy);
-
-                            if (overlapX <= 0 || overlapY <= 0) {
-                                continue;
-                            }
-
-                            // Two nodes landing on the exact same point
-                            // (dx/dy both 0) has no real "away" direction to
-                            // push along - fall back to a stable, id-based
-                            // choice so they separate deterministically
-                            // instead of both trying to move the same way.
-                            if (overlapX < overlapY) {
-                                const shift = overlapX / 2 + 0.5;
-                                const dir = dx !== 0 ? Math.sign(dx) : (a.id() < b.id() ? -1 : 1);
-                                a.position({ x: posA.x - dir * shift, y: posA.y });
-                                b.position({ x: posB.x + dir * shift, y: posB.y });
-                            } else {
-                                const shift = overlapY / 2 + 0.5;
-                                const dir = dy !== 0 ? Math.sign(dy) : (a.id() < b.id() ? -1 : 1);
-                                a.position({ x: posA.x, y: posA.y - dir * shift });
-                                b.position({ x: posB.x, y: posB.y + dir * shift });
-                            }
-
-                            movedAny = true;
-                        }
-                    }
-
-                    if (!movedAny) {
-                        break;
-                    }
-                }
+                cy.batch(() => {
+                    plainNodes.forEach((node) => {
+                        cy.getElementById(node.id).position({ x: node.x, y: node.y });
+                    });
+                });
             }
 
             // Experimental (branch: experiment/cycle-map-v2, navigation layer).
@@ -2216,6 +2141,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // already sits past containerRect.bottom - removed as
             // misleading no-op code now that this function is being
             // corrected anyway, rather than left in place.
+            //
+            // UPDATE (final pre-release audit, P0 fix): the "hint/toolbar
+            // are both short horizontal bars, never tall sidebars" premise
+            // above no longer holds for #hint - it now carries the Module
+            // area legend, which can make it far taller than #toolbar ever
+            // gets. See measureChromeInsets' own comment on the hint
+            // branch below for why #hint's contribution moved from top to
+            // left; #toolbar's own top contribution is unaffected and the
+            // reasoning above for it still applies as written.
             function measureChromeInsets(container) {
                 const containerRect = container.getBoundingClientRect();
 
@@ -2234,20 +2168,37 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const hint = rectOf('hint');
                 const toolbar = rectOf('toolbar');
 
-                // left/right stay 0 - neither current top panel
-                // contributes to them (see the comment above). Kept as
-                // explicit fields, not hardcoded directly in the return
-                // statement, so a FUTURE panel that really is a tall
-                // vertical sidebar (unlike anything here today) has an
-                // obvious place to add its own contribution, the same way
-                // top already does for hint/toolbar.
+                // right stays 0 - #toolbar (the one right-anchored panel)
+                // wraps horizontally instead of growing past its own
+                // max-width (see styles.ts), so it never needs a right
+                // inset. Kept as an explicit field, not hardcoded directly
+                // in the return statement, so a FUTURE right-anchored
+                // sidebar has an obvious place to add its own contribution.
                 let left = 0;
                 let right = 0;
                 let top = 0;
                 const bottom = 0;
 
+                // P0 fix (final pre-release audit): #hint now carries the
+                // "Module area" legend (area-legend, see template.ts/
+                // styles.ts), which grows one row per area the scanned
+                // project has - a project with a dozen areas can push
+                // #hint's rendered height to several hundred px, taller
+                // than many real viewports. #hint's WIDTH, unlike its
+                // height, stays fixed (styles.ts: width: 300px) regardless
+                // of legend length, so treating it as a LEFT inset (never
+                // place graph content under #hint's own column, whatever
+                // its height happens to be) protects the exact rectangle
+                // #hint occupies without topInset below degenerating
+                // toward - or past - the container's own height the
+                // moment the legend grows tall. This replaces the old
+                // "#hint is a short top bar" assumption (see the large
+                // comment above this function) for #hint specifically;
+                // #toolbar keeps contributing to topInset exactly as
+                // before, since it's still true of #toolbar (anchored
+                // top-right, wraps rather than growing tall).
                 if (hint) {
-                    top = Math.max(top, hint.bottom - containerRect.top);
+                    left = Math.max(left, hint.right - containerRect.left);
                 }
                 if (toolbar) {
                     top = Math.max(top, toolbar.bottom - containerRect.top);
@@ -2272,16 +2223,34 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const topInset = Math.max(basePadding, insets.top + 16);
                 const bottomInset = Math.max(basePadding, insets.bottom + 16);
 
-                const availableWidth = container.clientWidth - leftInset - rightInset;
-                const availableHeight = container.clientHeight - topInset - bottomInset;
-
                 const currentView = targetCollection || visibleElements(cy);
                 const bb = currentView.boundingBox();
 
-                if (bb.w === 0 || bb.h === 0 || availableWidth <= 0 || availableHeight <= 0) {
+                if (bb.w === 0 || bb.h === 0) {
                     cy.fit(currentView, basePadding);
                     return;
                 }
+
+                // P0 fix (final pre-release audit): availableWidth/Height
+                // used to be able to go negative or zero (chrome insets -
+                // in practice a tall #hint - adding up to more than the
+                // container itself), which fell through to a raw
+                // cy.fit(currentView, basePadding) below: that call knows
+                // nothing about #hint/#toolbar and centers on the WHOLE
+                // container, putting the graph right back underneath the
+                // chrome it's the entire point of this function to avoid
+                // (the exact "graph ends up under the toolbar" failure the
+                // audit reported). Clamping each dimension to a small
+                // positive minimum instead means the safe-fit rectangle
+                // can shrink but never collapses into that no-chrome
+                // fallback - basePadding itself is already always >= 40 at
+                // every real call site here, so this only ever bites in
+                // pathological cases (e.g. a viewport narrower than #hint
+                // itself), never in the tall-legend scenario the left-inset
+                // fix above already handles directly.
+                const minAvailable = Math.max(basePadding, 1);
+                const availableWidth = Math.max(minAvailable, container.clientWidth - leftInset - rightInset);
+                const availableHeight = Math.max(minAvailable, container.clientHeight - topInset - bottomInset);
 
                 const zoom = Math.min(availableWidth / bb.w, availableHeight / bb.h);
                 const safeCenterX = leftInset + availableWidth / 2;
@@ -2794,6 +2763,102 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 cy.remove('.external-area-proxy, .external-proxy-edge');
             }
 
+            const FOCUS_OVERFLOW_PROXY_ID = 'focus-overflow-proxy';
+
+            // P0-1 fix. Focused Graph's own overflow-aggregation proxy -
+            // the neighbour-selection counterpart to
+            // addExternalConnectionProxies() above (same proxy node/edge
+            // mechanism, same '.external-area-proxy'/'.external-proxy-edge'
+            // classes and isExternalProxy data flag, so the existing
+            // click-to-inspect panel, hiding/removal, and CSS all apply for
+            // free), but grouped differently: a single shared bucket for
+            // "every direct neighbour the FOCUS_NEIGHBOR_LIMIT cut left
+            // out", not one bucket per area. Area-based grouping (like the
+            // Area filter's own external connections) doesn't fit here -
+            // Focus's whole point is "this cycle and its immediate
+            // context", not "this cycle's relationship to other areas"
+            // (that's an orthogonal, unrelated feature), and the excluded
+            // neighbours can span many unrelated areas anyway. One proxy
+            // NODE total keeps this from ever contributing to the node
+            // explosion this fix exists to prevent; proxy EDGES are
+            // deduplicated per (core member, direction) pair rather than
+            // per real edge (unlike addExternalConnectionProxies, which
+            // preserves one proxy edge per real crossing edge) - with
+            // potentially hundreds of overflowing neighbours, only the
+            // dedicated per-edge preservation would itself reintroduce the
+            // exact node-count-adjacent blowup (hundreds of edge objects
+            // into one node) this fix is meant to avoid, and the resulting
+            // picture ("core member X has overflow neighbours feeding in/
+            // out") is unchanged by collapsing duplicates.
+            function addFocusOverflowProxies(cy, focus) {
+                if (!focus.overflowNeighbourIds || focus.overflowNeighbourIds.size === 0) {
+                    return;
+                }
+
+                const seenDirections = new Set();
+                const proxyEdges = [];
+
+                cy.edges().forEach((edge) => {
+                    if (edge.data('isExternalProxy')) {
+                        return;
+                    }
+
+                    const sourceId = edge.source().id();
+                    const targetId = edge.target().id();
+                    const sourceIsCore = focus.coreIds.has(sourceId);
+                    const targetIsCore = focus.coreIds.has(targetId);
+
+                    if (sourceIsCore === targetIsCore) {
+                        return;
+                    }
+
+                    const outsideId = sourceIsCore ? targetId : sourceId;
+
+                    if (!focus.overflowNeighbourIds.has(outsideId)) {
+                        return;
+                    }
+
+                    const coreId = sourceIsCore ? sourceId : targetId;
+                    const direction = sourceIsCore ? 'out' : 'in';
+                    const dedupKey = coreId + '::' + direction;
+
+                    if (seenDirections.has(dedupKey)) {
+                        return;
+                    }
+                    seenDirections.add(dedupKey);
+
+                    proxyEdges.push({
+                        group: 'edges',
+                        data: {
+                            id: 'focus-overflow-edge::' + dedupKey,
+                            source: direction === 'out' ? coreId : FOCUS_OVERFLOW_PROXY_ID,
+                            target: direction === 'out' ? FOCUS_OVERFLOW_PROXY_ID : coreId,
+                            isExternalProxy: true,
+                            isFocusOverflowProxy: true,
+                        },
+                        classes: 'external-proxy-edge',
+                    });
+                });
+
+                const dict = I18N_DICTIONARIES[currentLanguage];
+                const overflowCount = focus.overflowNeighbourIds.size;
+
+                cy.add({
+                    group: 'nodes',
+                    data: {
+                        id: FOCUS_OVERFLOW_PROXY_ID,
+                        label: formatI18nClient(dict.focusOverflowProxyLabel, { n: overflowCount }),
+                        areaColor: '#9ca3af',
+                        isExternalProxy: true,
+                        isFocusOverflowProxy: true,
+                        focusOverflowCount: overflowCount,
+                    },
+                    classes: 'external-area-proxy',
+                });
+
+                cy.add(proxyEdges);
+            }
+
             // Experimental (branch: experiment/cycle-map-v2, area filter
             // external connections). Single entry point for both the Area
             // and Connections dropdowns - either one changing means "redo
@@ -2812,21 +2877,30 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 cy.batch(() => {
                     cy.nodes().forEach((node) => {
-                        node.toggleClass('area-hidden', !isNodeInCurrentView(node));
+                        node.toggleClass('not-in-view', !isNodeInCurrentView(node));
+                        node.toggleClass('area-hidden', isNodeAreaFiltered(node));
                     });
 
                     cy.edges().forEach((edge) => {
-                        edge.toggleClass('area-hidden', !isEdgeInCurrentView(edge));
+                        edge.toggleClass('not-in-view', !isEdgeInCurrentView(edge));
+                        edge.toggleClass('area-hidden', isEdgeAreaFiltered(edge));
                     });
                 });
 
                 // Focused Graph has no "external connections" concept of
                 // its own (its node set is an explicit whitelist, not an
-                // area) - skip adding proxies neither Focus's own
-                // isNodeInCurrentView() nor a reader would expect to see,
-                // rather than adding them only to immediately hide them
-                // again as '.area-hidden'.
-                if (currentAreaFilter && currentConnectionMode === 'external' && !currentFocus) {
+                // area) - the Area/Connections proxy mechanism below is
+                // skipped while focused. It has its own aggregation need
+                // instead (P0-1 fix): whatever direct neighbours didn't
+                // make it into the FOCUS_NEIGHBOR_LIMIT cut get a single
+                // shared summary proxy node here, reusing the exact same
+                // proxy node/edge mechanism (and its
+                // removeExternalConnectionProxies() cleanup, shared classes,
+                // click-to-inspect panel) rather than a second, parallel
+                // aggregation implementation.
+                if (currentFocus) {
+                    addFocusOverflowProxies(cy, currentFocus);
+                } else if (currentAreaFilter && currentConnectionMode === 'external') {
                     addExternalConnectionProxies(cy, currentAreaFilter);
                 }
 
@@ -2862,7 +2936,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 if (selectedNodeId) {
                     const selectedNode = cy.getElementById(selectedNodeId);
 
-                    if (selectedNode.empty() || selectedNode.hasClass('area-hidden')) {
+                    if (selectedNode.empty() || selectedNode.hasClass('not-in-view')) {
                         selectedNodeId = null;
                         clearHighlights();
                         updateSelectedModulePanel(null);
@@ -3085,22 +3159,33 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // never the display label) in a data attribute -
                 // navigateToSccMember() below looks the node up by that id
                 // via cy.getElementById(), never by matching label/path
-                // text. A member currently hidden by the Area/Connections
-                // filter (checked via the same '.area-hidden' class those
-                // filters already toggle - not re-deriving visibility) is
-                // deliberately left non-clickable with an explicit "(hidden
-                // by filter)" note instead: clicking it would either do
-                // nothing (confusing - looks broken) or select a node the
-                // user can't actually see on screen (worse) - this task
-                // doesn't change what the Area/Connections filters do, only
-                // how a currently-invisible member is presented here.
+                // text. Clicking a name here directly centers+selects it -
+                // it never switches Focus - so this specifically needs
+                // '.not-in-view' (is this member ACTUALLY on screen right
+                // now, Focus included), not the narrower '.area-hidden' -
+                // a member currently off-screen (hidden by the Area filter,
+                // or excluded by a truncated Focus - see focusScc()'s
+                // isRepresentativeOnly) is deliberately left non-clickable
+                // with an explicit "(hidden by filter)" note instead:
+                // clicking it would either do nothing (confusing - looks
+                // broken) or select a node the user can't actually see on
+                // screen (worse).
                 const otherMembersHtml =
                     shown
                         .map((candidate) => {
                             const label = escapeHtml(candidate.data('label'));
 
-                            if (candidate.hasClass('area-hidden')) {
-                                return \`<span class="hud-scc-member hud-scc-member-hidden">\${label} \${escapeHtml(dict.hiddenByFilterNote)}</span>\`;
+                            if (candidate.hasClass('not-in-view')) {
+                                // P1 fix (final pre-release audit): '.not-in-view' is true
+                                // whenever Focus hides a member too, not just the Area/
+                                // Connections filter - '.area-hidden' (Focus-independent,
+                                // see isNodeAreaFiltered() above) is the one that actually
+                                // tells the two apart, so the note shown must check it
+                                // rather than always blaming "filter".
+                                const hiddenNote = candidate.hasClass('area-hidden')
+                                    ? dict.hiddenByFilterNote
+                                    : dict.hiddenByFocusNote;
+                                return \`<span class="hud-scc-member hud-scc-member-hidden">\${label} \${escapeHtml(hiddenNote)}</span>\`;
                             }
 
                             const id = escapeAttribute(candidate.id());
@@ -3124,6 +3209,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // and the button is omitted entirely (not just disabled)
                 // once fewer than 2 members are actually visible, since
                 // there'd be nothing left to see the SCC's shape through.
+                //
+                // P1-5 fix: deliberately '.area-hidden' (Area-filter-only),
+                // NOT '.not-in-view' - this count feeds the "Focus SCC"
+                // button below, which calls focusScc() directly. focusScc()
+                // itself now computes its own candidate membership via
+                // '.area-hidden' too (Focus-independent), so this count
+                // must use the exact same predicate or the button could
+                // claim a different visible-member count than focusScc()
+                // actually finds once clicked - e.g. while already focused
+                // on some OTHER, unrelated SCC, this selected node's own
+                // SCC members are outside that unrelated focus but not
+                // Area-hidden at all, and clicking the button correctly
+                // switches Focus to them.
                 const visibleMemberCount = 1 + otherMembers.filter((candidate) => !candidate.hasClass('area-hidden')).length;
                 const focusCountSuffix =
                     visibleMemberCount < data.sccSize
@@ -3191,11 +3289,34 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const data = node.data();
                 const connectionCount = node.connectedEdges().length;
 
+                hudSelectedBody.className = '';
+
+                // P0-1 fix. Focus's own overflow-summary proxy (see
+                // addFocusOverflowProxies() above) reuses this same panel
+                // function/mechanism, but needs different wording - "External
+                // area: %name" doesn't apply to it - so it branches here
+                // instead of getting a second, parallel panel-rendering
+                // function. currentFocus is guaranteed non-null while this
+                // proxy exists (it's only ever added/removed alongside
+                // focus itself), so its own neighboursShown/Total counts
+                // are always available for the "%visible of %n" wording.
+                if (data.isFocusOverflowProxy) {
+                    hudSelectedBody.innerHTML = \`
+                        <strong>\${escapeHtml(formatI18nClient(dict.focusOverflowProxyLabel, { n: data.focusOverflowCount }))}</strong><br />
+                        <span class="hud-selected-path">\${escapeHtml(formatI18nClient(dict.focusOverflowPanelBody, {
+                            visible: currentFocus.neighborsShownCount,
+                            n: currentFocus.neighborsTotalCount,
+                            hidden: data.focusOverflowCount,
+                        }))}</span><br />
+                        \${escapeHtml(formatI18nClient(dict.externalAreaConnectionsShown, { n: connectionCount }))}
+                    \`;
+                    return;
+                }
+
                 // Format with the RAW area name, then escape the whole
                 // composed sentence once - escaping data.label first and
                 // then escaping the composed string again would
                 // double-escape it (e.g. an "&" in a folder name).
-                hudSelectedBody.className = '';
                 hudSelectedBody.innerHTML = \`
                     <strong>\${escapeHtml(formatI18nClient(dict.externalAreaLabel, { name: data.label }))}</strong><br />
                     <span class="hud-selected-path">\${escapeHtml(formatI18nClient(dict.externalAreaAggregatedView, { name: data.label }))}</span><br />
@@ -3289,15 +3410,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // cy.getElementById() - the same lookup mechanism
             // buildCycleContextHtml above already uses to find SCC
             // members, not a new id/name-matching scheme. Re-checks
-            // '.area-hidden' defensively (buildCycleContextHtml already
-            // only renders a visible member as clickable, so this should
-            // be unreachable in practice) rather than trusting the HTML
-            // that was rendered at some earlier point hasn't gone stale if
-            // a filter changed in between.
+            // '.not-in-view' defensively (buildCycleContextHtml already
+            // only renders an on-screen member as clickable, matching this
+            // exact check, so this should be unreachable in practice)
+            // rather than trusting the HTML that was rendered at some
+            // earlier point hasn't gone stale if a filter/Focus changed in
+            // between - cy.center()+selectNode() below need a node that's
+            // genuinely on screen, not just one the Area filter alone
+            // wouldn't hide.
             function navigateToSccMember(nodeId) {
                 const node = cy.getElementById(nodeId);
 
-                if (node.empty() || node.hasClass('area-hidden')) {
+                if (node.empty() || node.hasClass('not-in-view')) {
                     return;
                 }
 
@@ -3318,6 +3442,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const focusStatusEl = document.getElementById('focus-status');
             let preFocusSnapshot = null;
 
+            // P2 fix: runFocusLayout()'s cose layout runs with animate:
+            // true (~1.7-2.6s), so exitFocus() can be triggered (Show full
+            // graph, Fit Graph, or a layout/area change re-entering
+            // runLayoutForCurrentView()) while it's still mid-animation.
+            // Tracks whichever focus layout run is currently "live" so
+            // exitFocus() can tell it apart from one that's already
+            // finished, and so its own 'layoutstop' handler (below, in
+            // runFocusLayout()) can recognise a run that exitFocus() has
+            // since abandoned and skip acting on it entirely.
+            let activeFocusLayout = null;
+
             // Above this many real SCC members, Focused Graph shows a
             // representative concrete cycle (via findCycleThroughNode() -
             // the exact same deterministic per-click search the
@@ -3328,6 +3463,42 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // all if the layout stays readable; 1000: don't) - a margin
             // above "40 is still fine", comfortably below "1000 is not".
             const FOCUS_FULL_SCC_MAX = 40;
+
+            // P0-1 fix (pre-v0.10.2 audit): the SCC/cycle's own 1-hop
+            // neighbourhood (computed below in focusScc()) used to be shown
+            // in full, with no limit - a widely-imported module (a shared
+            // logger/config pair hundreds of other modules import) can have
+            // hundreds of direct neighbours, silently ballooning "focus on
+            // this one cycle" into nearly the whole project graph. Chosen
+            // on the same order of magnitude as FOCUS_FULL_SCC_MAX just
+            // above (40 core members was already judged "still fine" for
+            // this view's compact force-directed layout), but a little
+            // lower - neighbours are supplementary context around the
+            // cycle, not the structural subject of the view, so they get a
+            // smaller share of the node budget. Even in the worst case
+            // (a huge SCC falling back to its FOCUS_FULL_SCC_MAX-sized
+            // representative cycle), 40 core + 30 neighbours = 70 nodes
+            // stays comfortably inside the range 'cose' already handles
+            // well. For the overwhelming common case - a 2-5 member cycle
+            // with a handful of neighbours - this limit is never
+            // approached, so ordinary small-cycle Focused Graph UX is
+            // completely unaffected.
+            const FOCUS_NEIGHBOR_LIMIT = 30;
+
+            // selectFocusNeighbours() (ranks candidate neighbours - first by
+            // how many distinct core members they connect to, then by raw
+            // edge count, then by a fixed deterministic id tie-break, never
+            // by cytoscape's own collection iteration order) is defined and
+            // unit-tested in its own real, framework-free module
+            // (focusNeighbourSelection.ts) rather than written inline here,
+            // so it can be executed directly with plain data in Jest - real
+            // behavioral coverage of the actual algorithm, not an assertion
+            // that some substring appears in this generated HTML. Its
+            // source is embedded verbatim below (via .toString()) so the
+            // exact function those tests exercise is the exact function
+            // that runs in the browser - no separate, potentially
+            // drifting, client-side reimplementation.
+            ${selectFocusNeighbours.toString()}
 
             // Layout/Area/Connections all describe the FULL graph's own
             // structure/filtering - none of them apply to a deliberately
@@ -3354,12 +3525,20 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // this part). X is how many of the SCC's real members the
             // focused view's core actually is (the whole SCC, or just the
             // representative cycle - see focusScc() below); Y is the SCC's
-            // total size. #focus-status only ever appears for the
-            // representative-cycle case (FOCUS_FULL_SCC_MAX above) - a
-            // normal small/medium SCC shown in full has nothing further to
-            // disclose. Re-run verbatim from applyLanguage()'s own
-            // dynamic-content re-render block so switching language while
-            // focused keeps both in sync too.
+            // total size. This count is deliberately about the CORE only,
+            // not the whole focused view - #focus-status (below) is the
+            // honest disclosure of everything the core count alone doesn't
+            // say: a representative-cycle truncation (FOCUS_FULL_SCC_MAX)
+            // and/or a neighbour-count truncation (P0-1 fix,
+            // FOCUS_NEIGHBOR_LIMIT). Before the P0-1 fix, neighbours were
+            // unbounded and totally undisclosed here - a huge fan-in/fan-out
+            // module's cycle could show "(2 of 2 modules)" while actually
+            // rendering hundreds of neighbour nodes, which read as "this is
+            // the entire focused view" even though it very much wasn't.
+            // Both notes appear together, space-joined, when both apply.
+            // Re-run verbatim from applyLanguage()'s own dynamic-content
+            // re-render block so switching language while focused keeps
+            // all of this in sync too.
             function updateFocusToolbarLabels() {
                 if (!currentFocus) {
                     return;
@@ -3379,12 +3558,23 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
 
                 if (focusStatusEl) {
-                    focusStatusEl.hidden = !currentFocus.isRepresentativeOnly;
+                    const notes = [];
+
                     if (currentFocus.isRepresentativeOnly) {
-                        focusStatusEl.textContent = formatI18nClient(dict.focusRepresentativeNote, {
-                            n: currentFocus.totalSize,
-                        });
+                        notes.push(formatI18nClient(dict.focusRepresentativeNote, { n: currentFocus.totalSize }));
                     }
+
+                    if (currentFocus.overflowNeighbourIds.size > 0) {
+                        notes.push(
+                            formatI18nClient(dict.focusNeighborsTruncatedNote, {
+                                visible: currentFocus.neighborsShownCount,
+                                n: currentFocus.neighborsTotalCount,
+                            }),
+                        );
+                    }
+
+                    focusStatusEl.hidden = notes.length === 0;
+                    focusStatusEl.textContent = notes.join(' ');
                 }
             }
 
@@ -3410,8 +3600,23 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             function runFocusLayout() {
                 const focusLayoutConfig = Object.assign({}, layouts.cose, { randomize: false });
                 const runningLayout = visibleElements(cy).layout(focusLayoutConfig);
+                activeFocusLayout = runningLayout;
 
                 runningLayout.one('layoutstop', () => {
+                    // exitFocus() clears activeFocusLayout (and calls
+                    // .stop() on this exact layout object) the moment
+                    // Focus is exited mid-animation - if that already
+                    // happened, this is either that same .stop() call's
+                    // own synchronous 'layoutstop' emission, or cose's
+                    // late natural one; either way, onLayoutFinished(cy,
+                    // 'cose') must not run against whatever view is
+                    // showing by then (Full Graph, a different layout,
+                    // possibly a different SCC's Focus).
+                    if (activeFocusLayout !== runningLayout) {
+                        return;
+                    }
+
+                    activeFocusLayout = null;
                     onLayoutFinished(cy, 'cose');
                 });
 
@@ -3421,7 +3626,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // "Purpose over algorithm name" (per the task's own framing):
             // Focused Graph's job is "show me this structural finding, not
             // the whole project" - a REAL subgraph (nodes/edges outside it
-            // hidden via the exact same '.area-hidden' mechanism the
+            // hidden via '.not-in-view', the same display mechanism the
             // Area/Connections filter already uses, not a fade-in-place
             // over the full graph the way this function used to work),
             // laid out with the existing compact Force Directed layout
@@ -3431,6 +3636,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // modal's own node) - both call sites now pass it explicitly;
             // see their own comments for why it's needed here (choosing
             // which representative cycle to show for a huge SCC).
+            //
+            // P1-5 fix: allMembers is filtered by '.area-hidden' - the
+            // Area/Connections filter alone, deliberately ignoring whatever
+            // currentFocus currently is (isNodeAreaFiltered() above).
+            // Before this fix it used the combined "not in current view"
+            // state instead, so calling focusScc() for a DIFFERENT SCC
+            // while already focused on some other one saw every member of
+            // the NEW target as hidden (they were outside the OLD focus,
+            // nothing to do with Area) - allMembers.length came back 0 and
+            // this returned early, silently doing nothing. Switching Focus
+            // directly from one SCC to another (e.g. Findings -> "View
+            // cycle" -> "Show in graph" for a different finding) now works
+            // exactly like starting Focus fresh from the Full Graph.
             function focusScc(sccId, startId) {
                 const allMembers = cy.nodes().filter(
                     (candidate) => candidate.data('sccId') === sccId && !candidate.hasClass('area-hidden'),
@@ -3491,9 +3709,47 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
 
                 const coreIds = new Set(coreMembers.map((node) => node.id()));
-                const neighbours = coreMembers
-                    .neighborhood('node')
-                    .filter((candidate) => !candidate.hasClass('area-hidden') && !coreIds.has(candidate.id()));
+
+                // P0-1 fix: the SCC/cycle's own 1-hop neighbourhood used to
+                // be taken in full (coreMembers.neighborhood('node')) with
+                // no limit - see FOCUS_NEIGHBOR_LIMIT's own comment above
+                // for why that's a real problem, not a hypothetical one.
+                // Candidates are derived directly from the edges touching
+                // coreMembers (never cytoscape's own .neighborhood()
+                // iteration order - selectFocusNeighbours() re-derives its
+                // own ranking from these {source, target} pairs instead),
+                // excluding anything hidden by the Area filter specifically
+                // (the ':area-hidden' check - Focus-independent, same
+                // reasoning as allMembers above) or itself a proxy (a proxy
+                // is a presentation-only artifact of a DIFFERENT filter,
+                // never a real neighbour candidate).
+                const neighbourEdgeRefs = cy
+                    .edges()
+                    .filter((edge) => {
+                        if (edge.hasClass('area-hidden') || edge.data('isExternalProxy')) {
+                            return false;
+                        }
+
+                        const sourceIsCore = coreIds.has(edge.source().id());
+                        const targetIsCore = coreIds.has(edge.target().id());
+
+                        if (sourceIsCore === targetIsCore) {
+                            return false;
+                        }
+
+                        const outsideNode = sourceIsCore ? edge.target() : edge.source();
+                        return !outsideNode.hasClass('area-hidden');
+                    })
+                    .map((edge) => ({ source: edge.source().id(), target: edge.target().id() }));
+
+                const neighbourSelection = selectFocusNeighbours(
+                    Array.from(coreIds),
+                    neighbourEdgeRefs,
+                    FOCUS_NEIGHBOR_LIMIT,
+                );
+                const shownNeighbourIds = new Set(neighbourSelection.shown);
+                const overflowNeighbourIds = new Set(neighbourSelection.overflow);
+                const neighbours = cy.nodes().filter((node) => shownNeighbourIds.has(node.id()));
 
                 const focusNodeIds = new Set(coreMembers.union(neighbours).map((node) => node.id()));
 
@@ -3503,6 +3759,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     totalSize: allMembers.length,
                     shownCoreCount: coreMembers.length,
                     isRepresentativeOnly,
+                    // P0-1 fix: coreIds/overflowNeighbourIds are read back
+                    // by addFocusOverflowProxies() (refreshAreaView() below
+                    // calls it while currentFocus is set) to build the
+                    // overflow summary proxy; neighborsShownCount/
+                    // neighborsTotalCount feed updateFocusToolbarLabels()'s
+                    // honest disclosure of the truncation, if any.
+                    coreIds,
+                    overflowNeighbourIds,
+                    neighborsShownCount: shownNeighbourIds.size,
+                    neighborsTotalCount: shownNeighbourIds.size + overflowNeighbourIds.size,
                 };
 
                 clearHighlights();
@@ -3511,10 +3777,32 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 cy.nodes().removeClass('focus-neighbor');
                 neighbours.addClass('focus-neighbor');
 
+                // P1-4 fix: this used to just addClass('selected') and set
+                // selectedNodeId directly - a partial, hand-rolled copy of
+                // what selectNode() already does, missing the one part
+                // that actually matters here: it never called
+                // updateSelectedModulePanel(), so the HUD's own Selected
+                // module panel stayed empty (or stale, showing whatever was
+                // selected before Focus started) even though a node
+                // visibly got the '.selected' border. Reusing selectNode()
+                // outright - never a second, partial selection
+                // implementation - fixes that and comes with
+                // highlightNeighborhood()/clearHighlights() for free, the
+                // same as any other selection change. Falls back to
+                // coreMembers[0] not just when startId is missing/removed
+                // but also when it resolved to a node OUTSIDE the focus set
+                // just computed (focusNodeIds) - startId can be stale (e.g.
+                // the concrete-cycle modal's own start id from before this
+                // exact SCC's allMembers got Area-filtered down) and
+                // selecting a node this view doesn't actually contain would
+                // reintroduce the same "selected something you can't see"
+                // problem this fix exists to prevent.
                 const startNode = startId ? cy.getElementById(startId) : null;
-                const resolvedSelected = startNode && !startNode.empty() ? startNode : coreMembers[0];
-                resolvedSelected.addClass('selected');
-                selectedNodeId = resolvedSelected.id();
+                const resolvedSelected =
+                    startNode && !startNode.empty() && focusNodeIds.has(startNode.id())
+                        ? startNode
+                        : coreMembers[0];
+                selectNode(resolvedSelected);
 
                 setFocusToolbarState(true);
 
@@ -3542,6 +3830,38 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
 
                 currentFocus = null;
+
+                // P2 fix: runFocusLayout()'s cose layout runs with
+                // animate: true (~1.7-2.6s) and exitFocus() can run
+                // (Show full graph, Fit Graph, or a programmatic call)
+                // while it's still mid-animation - left running, it kept
+                // repositioning its own frozen node set every remaining
+                // animation frame, then its late 'layoutstop' fired
+                // onLayoutFinished(cy, 'cose') against whatever view is
+                // showing by then (Full Graph here), wiping every edge's
+                // taxi-routing class graph-wide and re-fitting to the
+                // wrong thing. Nulling activeFocusLayout first marks this
+                // run stale for its own 'layoutstop' handler in
+                // runFocusLayout() (above), so that handler's
+                // onLayoutFinished(cy, 'cose') call never fires for it,
+                // whether triggered by the .stop() call below or by the
+                // layout's own later natural finish.
+                const abortedFocusLayout = activeFocusLayout;
+                activeFocusLayout = null;
+
+                if (abortedFocusLayout) {
+                    // Cytoscape's CoseLayout.stop() always lets one more
+                    // already-queued animation frame run the layout's
+                    // normal end-of-run pass (repositioning its own
+                    // frozen node set - layouts.cose already sets
+                    // fit: false, so no extra cy.fit() call rides along)
+                    // - true whether the layout stopped early or
+                    // converged naturally, and not something .stop()
+                    // itself can skip. The requestAnimationFrame callback
+                    // near the end of this function corrects that
+                    // trailing reposition.
+                    abortedFocusLayout.stop();
+                }
 
                 if (showFullGraphButton) {
                     showFullGraphButton.hidden = true;
@@ -3571,6 +3891,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 refreshAreaView();
 
+                // Captured before preFocusSnapshot is nulled below, purely
+                // so the requestAnimationFrame callback further down (which
+                // fires after this function has already returned) still has
+                // it to reapply.
+                const snapshotForDeferredReapply = preFocusSnapshot;
+
                 if (preFocusSnapshot) {
                     cy.batch(() => {
                         preFocusSnapshot.positions.forEach((pos, id) => {
@@ -3587,20 +3913,61 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 redrawMinimapStatic(cy, axis);
 
+                // P2 fix (continued): queued strictly after the aborted
+                // layout's own guaranteed trailing reposition pass (see
+                // the .stop() comment above) - browsers run
+                // requestAnimationFrame callbacks in request order, and
+                // that trailing pass was already queued, by the layout's
+                // own still-pending animation frame, before this one is
+                // requested here, so this always runs after it and undoes
+                // whatever it just overwrote. Reapplies node positions
+                // only, never pan/zoom, so it can't fight a synchronous
+                // fit a caller performs right after exitFocus() returns
+                // (e.g. the Fit Graph button's own fitCyAvoidingChrome()
+                // call). Guarded by currentFocus still being null in case
+                // a new Focus was entered again before this frame runs -
+                // that new Focus's own nodes/positions must win, not this
+                // stale snapshot.
+                if (abortedFocusLayout && snapshotForDeferredReapply) {
+                    requestAnimationFrame(() => {
+                        if (currentFocus !== null) {
+                            return;
+                        }
+
+                        cy.batch(() => {
+                            snapshotForDeferredReapply.positions.forEach((pos, id) => {
+                                const node = cy.getElementById(id);
+                                if (!node.empty()) {
+                                    node.position(pos);
+                                }
+                            });
+                        });
+                        redrawMinimapStatic(cy, axis);
+                    });
+                }
+
                 const selectedNode = selectedNodeId ? cy.getElementById(selectedNodeId) : null;
 
-                if (selectedNode && !selectedNode.empty() && !selectedNode.hasClass('area-hidden')) {
-                    // Mirrors selectNode()'s own highlight+'.selected'
-                    // sequence (not just the highlight half of it) - focus
-                    // only ever runs after a node is already selected, so
-                    // exiting it must restore that node's selected marker
-                    // too, not just its neighborhood fade.
-                    if (highlightEnabled) {
-                        highlightNeighborhood(selectedNode);
-                    } else {
-                        clearHighlights();
-                    }
-                    selectedNode.addClass('selected');
+                // refreshAreaView() just ran above, so '.not-in-view' here
+                // already reflects the restored (currentFocus === null)
+                // Full Graph/Area-filtered state - the "is this node still
+                // genuinely on screen" question, not the narrower
+                // Area-only one.
+                if (selectedNode && !selectedNode.empty() && !selectedNode.hasClass('not-in-view')) {
+                    // P1-4 fix (same root cause/fix as focusScc() above):
+                    // this used to only restore the highlight+'.selected'
+                    // marker by hand, never calling
+                    // updateSelectedModulePanel() - so the HUD panel could
+                    // keep showing stale Focus-button visible-counts/hidden
+                    // notes computed while Focus was still active, even
+                    // though refreshAreaView() just above already changed
+                    // what '.area-hidden' means for every other member of
+                    // this node's own SCC. selectNode() recomputes that
+                    // panel fresh against the just-restored Full Graph/Area
+                    // state, for free, the same as any other selection
+                    // change - never a second, partial selection
+                    // implementation.
+                    selectNode(selectedNode);
                 } else {
                     selectedNodeId = null;
                     clearHighlights();
@@ -3762,7 +4129,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             function renderCycleChip(node, isStart) {
                 const classes = ['cycle-chip'];
-                if (node.hasClass('area-hidden')) {
+                // '.not-in-view', not '.area-hidden' - see buildCycleListHtml's
+                // own comment below (this diagram and that list describe the
+                // exact same member set and must agree on which ones are
+                // dimmed/hidden).
+                if (node.hasClass('not-in-view')) {
                     classes.push('cycle-chip-hidden');
                 }
                 if (isStart) {
@@ -3842,10 +4213,17 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // the flow diagram above may collapse a huge cycle to
             // first/last chips, but this list is the "not just a picture"
             // fallback that must stay complete (CSS makes it scrollable
-            // instead of ever truncating it). A hidden-by-filter member
-            // (same '.area-hidden' check used throughout this file) is
-            // rendered plain and non-navigable, exactly like the SCC
-            // member list above, and never gets a data-cycle-nav-id.
+            // instead of ever truncating it). A member not currently on
+            // screen ('.not-in-view' - the same combined check used
+            // throughout this file for "is this genuinely visible right
+            // now", NOT the narrower Area-only '.area-hidden' the "Show in
+            // graph" button's own gating uses just below - clicking a row
+            // here directly navigates via navigateToSccMember(), it never
+            // switches Focus the way that button does, so it needs the
+            // same "really on screen" guarantee navigateToSccMember()
+            // itself re-checks) is rendered plain and non-navigable,
+            // exactly like the SCC member list above, and never gets a
+            // data-cycle-nav-id.
             function buildCycleListHtml(memberNodes, dict) {
                 return memberNodes
                     .map((node, index) => {
@@ -3854,8 +4232,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         const position = \`<span class="cycle-detail-index">\${index + 1}</span>\`;
                         const startCls = index === 0 ? ' cycle-detail-item-start' : '';
 
-                        if (node.hasClass('area-hidden')) {
-                            return \`<li class="cycle-detail-item cycle-detail-item-hidden\${startCls}">\${position}<span class="cycle-detail-item-main"><strong>\${label}</strong><span class="hud-selected-path" dir="ltr">\${filePath}</span></span><span class="hud-scc-member-hidden">\${escapeHtml(dict.hiddenByFilterNote)}</span></li>\`;
+                        if (node.hasClass('not-in-view')) {
+                            // P1 fix (final pre-release audit): same distinction as
+                            // buildCycleContextHtml above - '.not-in-view' alone doesn't
+                            // say WHY a member is hidden, only '.area-hidden' does.
+                            const hiddenNote = node.hasClass('area-hidden')
+                                ? dict.hiddenByFilterNote
+                                : dict.hiddenByFocusNote;
+                            return \`<li class="cycle-detail-item cycle-detail-item-hidden\${startCls}">\${position}<span class="cycle-detail-item-main"><strong>\${label}</strong><span class="hud-selected-path" dir="ltr">\${filePath}</span></span><span class="hud-scc-member-hidden">\${escapeHtml(hiddenNote)}</span></li>\`;
                         }
 
                         const navId = escapeAttribute(node.id());
@@ -3910,7 +4294,24 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // repeated at both ends) - memberNodes drops that repeat,
                 // one entry per distinct module, in cycle order.
                 const memberNodes = path.slice(0, -1).map((id) => cy.getElementById(id));
-                const hiddenCount = memberNodes.filter((member) => member.hasClass('area-hidden')).length;
+                // '.not-in-view' (genuinely on-screen right now), matching
+                // renderCycleChip/buildCycleListHtml above - this note
+                // describes the SAME list/diagram they render, not the
+                // separate Area-only question the "Show in graph" button
+                // below asks.
+                //
+                // P1 fix (final pre-release audit): '.not-in-view' alone
+                // doesn't say WHY - split by '.area-hidden' (Focus-independent)
+                // so switching Focus from one SCC to another, then opening this
+                // modal for a DIFFERENT cycle, doesn't blame "the current
+                // filter" for members that are actually only outside the
+                // still-active Focus. See buildCycleListHtml/buildCycleContextHtml
+                // above for the same distinction applied to their own per-member
+                // notes.
+                const areaHiddenCount = memberNodes.filter((member) => member.hasClass('area-hidden')).length;
+                const focusHiddenCount = memberNodes.filter(
+                    (member) => member.hasClass('not-in-view') && !member.hasClass('area-hidden')
+                ).length;
                 const startLabel = escapeHtml(memberNodes[0].data('label'));
 
                 // Wording kept exactly as short as the task asked for: the
@@ -3927,13 +4328,20 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
 
                 const hiddenNoteHtml =
-                    hiddenCount > 0
+                    (areaHiddenCount > 0
                         ? \`<p class="cycle-detail-hidden-note">&#8505; \${escapeHtml(
-                              formatI18nClient(hiddenCount === 1 ? dict.cycleHiddenNoteSingular : dict.cycleHiddenNotePlural, {
-                                  n: hiddenCount,
+                              formatI18nClient(areaHiddenCount === 1 ? dict.cycleHiddenNoteSingular : dict.cycleHiddenNotePlural, {
+                                  n: areaHiddenCount,
                               })
                           )}</p>\`
-                        : '';
+                        : '') +
+                    (focusHiddenCount > 0
+                        ? \`<p class="cycle-detail-hidden-note">&#8505; \${escapeHtml(
+                              formatI18nClient(focusHiddenCount === 1 ? dict.cycleHiddenNoteSingularFocus : dict.cycleHiddenNotePluralFocus, {
+                                  n: focusHiddenCount,
+                              })
+                          )}</p>\`
+                        : '');
 
                 // Findings-first navigation (connecting the overview to
                 // the existing graph workflow). "Show in graph" reuses
@@ -3949,6 +4357,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // than 2 members are currently visible, matching the
                 // exact same rule the HUD's own Focus SCC button already
                 // uses - focusScc() would otherwise be a silent no-op.
+                //
+                // P1-5 fix: '.area-hidden' here is deliberately the
+                // Area-only check (Focus-independent - isNodeAreaFiltered()
+                // above), matching focusScc()'s own allMembers computation
+                // exactly, so this count/button always agrees with what
+                // clicking it actually does - including switching Focus
+                // straight from some OTHER, currently-focused SCC to this
+                // one (this button, and hiddenCount/the list above it, can
+                // therefore legitimately disagree while a different Focus
+                // is active: hiddenCount describes what's on screen RIGHT
+                // NOW, this button describes what focusing HERE would
+                // show).
                 const sccSize = node.data('sccSize');
                 const visibleSccMemberCount = cy
                     .nodes()

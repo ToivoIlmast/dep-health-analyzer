@@ -1,4 +1,11 @@
 import { buildHtmlTemplate } from './template';
+import { selectFocusNeighbours } from './focusNeighbourSelection';
+import {
+    edgeNodeOverlapIterationsFor,
+    nodeOverlapIterationsFor,
+    resolveEdgeNodeOverlaps,
+    resolveNodeOverlaps,
+} from './graphOverlapResolution';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import type { CycleFindings } from '../findings/buildCycleFindings';
 
@@ -510,17 +517,63 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html.match(/function findCycleThroughNode\(sccId, startId\)/g)).toHaveLength(1);
     });
 
-    it('the focused set is the core (whole SCC, or the representative cycle) UNION its direct (1-hop) neighbours - never a 2nd-hop expansion', () => {
+    it('the focused set is the core (whole SCC, or the representative cycle) UNION its direct (1-hop) neighbours, bounded by FOCUS_NEIGHBOR_LIMIT - never a 2nd-hop expansion or an unbounded fan-in/fan-out (P0-1 fix)', () => {
         const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
         const focusFnEnd = html.indexOf('function exitFocus()');
         const focusFnSource = html.slice(focusFnStart, focusFnEnd);
 
-        expect(focusFnSource).toContain('const neighbours = coreMembers');
-        expect(focusFnSource).toContain(".neighborhood('node')");
+        // Candidates are derived directly from edges touching coreIds
+        // (structurally 1-hop only - there is no second traversal off the
+        // neighbour set itself, unlike the old .neighborhood('node') call
+        // this replaces), then ranked/capped by the real, unit-tested
+        // selectFocusNeighbours() rather than shown in full.
+        expect(focusFnSource).toContain('const neighbourEdgeRefs = cy');
+        expect(focusFnSource).toContain('const sourceIsCore = coreIds.has(edge.source().id());');
+        expect(focusFnSource).toContain('const targetIsCore = coreIds.has(edge.target().id());');
+        expect(focusFnSource).toContain(
+            'selectFocusNeighbours(\n                    Array.from(coreIds),\n                    neighbourEdgeRefs,\n                    FOCUS_NEIGHBOR_LIMIT,\n                )',
+        );
+        expect(focusFnSource).toContain('const neighbours = cy.nodes().filter((node) => shownNeighbourIds.has(node.id()));');
         expect(focusFnSource).toContain('coreMembers.union(neighbours)');
-        // Only ever .neighborhood()'d once - no second hop off the
-        // neighbours collection itself.
-        expect(focusFnSource.match(/\.neighborhood\('node'\)/g)).toHaveLength(1);
+        // The old unbounded traversal (coreMembers.neighborhood('node'),
+        // taken in full with no ranking or cap) is gone, not just capped
+        // after the fact.
+        expect(focusFnSource).not.toContain("coreMembers\n                    .neighborhood('node')");
+    });
+
+    it('FOCUS_NEIGHBOR_LIMIT is a named, documented constant (not a magic number buried inside focusScc), independent of FOCUS_FULL_SCC_MAX', () => {
+        expect(html).toContain('const FOCUS_NEIGHBOR_LIMIT = 30;');
+        // Declared once, outside focusScc's own body, exactly like
+        // FOCUS_FULL_SCC_MAX already is.
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        expect(html.indexOf('const FOCUS_NEIGHBOR_LIMIT = 30;')).toBeLessThan(focusFnStart);
+    });
+
+    it('selectFocusNeighbours - the exact function unit-tested in focusNeighbourSelection.test.ts - is embedded verbatim into the client script, not reimplemented inline', () => {
+        expect(html).toContain(selectFocusNeighbours.toString());
+    });
+
+    it('the hub-cycle regression scenario (a 2-node cycle with 600 external importers, e.g. logger/config) never balloons Focused Graph: the neighbour cap keeps the shown set at FOCUS_NEIGHBOR_LIMIT regardless of real fan-in size', () => {
+        // template.ts's client script is glue over cytoscape - it can't be
+        // executed here (no live cytoscape/DOM in Jest, see this describe
+        // block's own top comment) - but the algorithm it delegates to
+        // (asserted embedded verbatim in the previous test) is executed for
+        // real, with exactly this shape, in
+        // focusNeighbourSelection.test.ts's own "600 neighbours" case. This
+        // test documents the link: the invariant that test enforces
+        // (shown.length stays at the limit, never at 600) is the same
+        // invariant this Focused Graph view depends on for real projects.
+        const neighbourIds = Array.from({ length: 600 }, (_, i) => `module${i}`);
+        const edges = [
+            { source: 'logger', target: 'config' },
+            { source: 'config', target: 'logger' },
+            ...neighbourIds.map((id) => ({ source: id, target: 'logger' })),
+        ];
+
+        const result = selectFocusNeighbours(['logger', 'config'], edges, 30);
+
+        expect(result.shown).toHaveLength(30);
+        expect(result.shown.length + 2).toBeLessThan(40);
     });
 
     it('actually hides everything outside the focused set - reuses refreshAreaView()/the real .area-hidden mechanism, not a fade-in-place-on-the-full-graph', () => {
@@ -604,13 +657,57 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html).toContain('moduleCountParen');
     });
 
-    it('the exit button\'s own "(X of Y modules)" label and the representative-cycle disclosure are both driven by updateFocusToolbarLabels(), re-run on language switch too', () => {
+    it('the exit button\'s own "(X of Y modules)" label and the representative-cycle/neighbour-truncation disclosures are both driven by updateFocusToolbarLabels(), re-run on language switch too', () => {
         expect(html).toContain('function updateFocusToolbarLabels()');
         expect(html).toContain('dict.showFullGraphButton + \' \' + countSuffix');
         expect(html).toContain('dict.focusRepresentativeNote');
-        expect(html).toContain('focusStatusEl.hidden = !currentFocus.isRepresentativeOnly;');
+        // P0-1 fix: the core-only "(X of Y modules)" count never claims the
+        // whole focused view is shown - #focus-status now discloses BOTH a
+        // representative-cycle truncation AND a neighbour-count truncation,
+        // whichever apply, instead of only the former.
+        expect(html).toContain('dict.focusNeighborsTruncatedNote');
+        expect(html).toContain('currentFocus.overflowNeighbourIds.size > 0');
+        expect(html).toContain('focusStatusEl.hidden = notes.length === 0;');
         // Re-run from applyLanguage()'s own dynamic re-render block.
-        expect(html).toMatch(/if \(currentFocus\) \{\s*updateFocusToolbarLabels\(\);\s*\}/);
+        expect(html).toMatch(/if \(currentFocus\) \{\s*updateFocusToolbarLabels\(\);/);
+    });
+
+    it('P0-1 honesty fix: currentFocus carries real shown/overflow neighbour counts, not just the core SCC count - the exit label can no longer imply the whole graph is 2 nodes while hundreds more are actually rendered', () => {
+        const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
+        const focusFnEnd = html.indexOf('function exitFocus()');
+        const focusFnSource = html.slice(focusFnStart, focusFnEnd);
+
+        expect(focusFnSource).toContain('overflowNeighbourIds,');
+        expect(focusFnSource).toContain('neighborsShownCount: shownNeighbourIds.size,');
+        expect(focusFnSource).toContain('neighborsTotalCount: shownNeighbourIds.size + overflowNeighbourIds.size,');
+    });
+
+    it('overflow neighbours (beyond FOCUS_NEIGHBOR_LIMIT) are aggregated via a single summary proxy node, reusing the exact same proxy mechanism/classes/cleanup as the Area filter\'s external-connections proxies - not a second aggregation implementation', () => {
+        expect(html).toContain('function addFocusOverflowProxies(cy, focus)');
+        // Same removal call, same classes - a single removeExternalConnectionProxies()
+        // clears both an area-proxy and a focus-overflow-proxy alike.
+        expect(html).toContain("cy.remove('.external-area-proxy, .external-proxy-edge');");
+        expect(html).toContain("classes: 'external-area-proxy'");
+        expect(html).toContain('isExternalProxy: true,\n                        isFocusOverflowProxy: true,');
+        // Proxy edges are deduplicated per (core member, direction) pair,
+        // not one per real edge - unlike addExternalConnectionProxies,
+        // which preserves one per real crossing edge (bounded by area
+        // count there, but hundreds of overflow neighbours here would
+        // otherwise recreate exactly the blowup this fix removes).
+        expect(html).toContain("const dedupKey = coreId + '::' + direction;");
+        expect(html).toContain('if (seenDirections.has(dedupKey)) {');
+        // Wired into refreshAreaView() as the focused counterpart to the
+        // area-filter branch - mutually exclusive, since Focus and the Area
+        // filter's external-connections mode are never both active.
+        expect(html).toMatch(
+            /if \(currentFocus\) \{\s*addFocusOverflowProxies\(cy, currentFocus\);\s*\} else if \(currentAreaFilter && currentConnectionMode === 'external'\) \{\s*addExternalConnectionProxies\(cy, currentAreaFilter\);\s*\}/,
+        );
+    });
+
+    it('clicking the focus-overflow proxy shows an honest, distinctly-worded panel (not the "External area: %name" wording, which does not apply to it)', () => {
+        expect(html).toContain('if (data.isFocusOverflowProxy) {');
+        expect(html).toContain('dict.focusOverflowProxyLabel');
+        expect(html).toContain('dict.focusOverflowPanelBody');
     });
 
     it('the global SCC summary stays a whole-graph count, unaffected by Focus - never becomes a focused-subset summary', () => {
@@ -791,16 +888,27 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
     });
 
     it('a member hidden by the current filter is marked, never silently claimed visible', () => {
-        // Same '.area-hidden' convention as the SCC member list and Focus
-        // above - a hidden member renders as plain, non-navigable text
-        // (no data-cycle-nav-id), and whenever at least one member is
-        // hidden, an explicit note states exactly how many of the cycle's
-        // modules are affected, rather than presenting the ordered list as
-        // if the whole cycle were on screen.
-        expect(html).toContain("node.hasClass('area-hidden')");
+        // P1-5 fix: '.not-in-view' (genuinely on-screen right now, Focus
+        // included), not the narrower Area-only '.area-hidden' - a member
+        // hidden either by the Area filter OR by an active Focus renders as
+        // plain, non-navigable text (no data-cycle-nav-id), and whenever at
+        // least one member is hidden, an explicit note states exactly how
+        // many of the cycle's modules are affected, rather than presenting
+        // the ordered list as if the whole cycle were on screen.
+        //
+        // P1 fix (final pre-release audit): '.not-in-view' alone doesn't
+        // say WHY - only '.area-hidden' (Focus-independent) does, so the
+        // aggregate note is now split into an area-caused count and a
+        // Focus-caused count, each with its own wording, rather than one
+        // hiddenCount always blaming "the current filter" even when Focus
+        // alone is the actual cause (see openCycleDetailModal/
+        // buildCycleContextHtml/buildCycleListHtml's own comments).
+        expect(html).toContain("node.hasClass('not-in-view')");
         expect(html).toContain('cycle-detail-item-hidden');
         expect(html).toContain('hidden by the current filter');
-        expect(html).toContain('hiddenCount > 0');
+        expect(html).toContain('hidden by the current Focus');
+        expect(html).toContain('areaHiddenCount > 0');
+        expect(html).toContain('focusHiddenCount > 0');
     });
 
     it('opening/closing the modal never touches selection or Focus state on its own', () => {
@@ -886,7 +994,8 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         // badge/metadata chips) but the guarantee - a filtered-out member
         // is disclosed, never silently dropped from the count - did not.
         expect(html).toContain('hidden by the current filter');
-        expect(html).toContain('hiddenCount > 0');
+        expect(html).toContain('areaHiddenCount > 0');
+        expect(html).toContain('focusHiddenCount > 0');
         expect(html).not.toContain('This cycle contains ${memberNodes.length} modules;');
     });
 });
@@ -983,6 +1092,121 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
         // page for the language switcher.
         const englishBlock = extractEnglishFindingsBlock(html);
         expect(englishBlock.match(/class="finding-row"/g)).toHaveLength(2);
+    });
+
+    it('P1-3: displays findings sorted by SCC size descending, deterministically tie-broken, while preserving each finding\'s original id', () => {
+        // buildCycleFindings() itself assigns id purely by findSCCs()
+        // insertion order (an internal algorithm detail with no size
+        // relationship - a small SCC can easily come back before a large
+        // one, or two equal-size SCCs in an arbitrary order). This is
+        // deliberately NOT presorted by size before ids are assigned: id
+        // must keep tracking the real sccId a click on this row hands to
+        // the graph, so the fix has to reorder ONLY how rows are drawn,
+        // never renumber them.
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 20,
+                dependencyCount: 20,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 2,
+                        memberIds: ['/repo/small-a.ts', '/repo/small-b.ts'],
+                        exampleCycle: ['/repo/small-a.ts', '/repo/small-b.ts', '/repo/small-a.ts'],
+                    },
+                    {
+                        id: 1,
+                        size: 5,
+                        memberIds: Array.from({ length: 5 }, (_, i) => `/repo/mid${i}.ts`),
+                        exampleCycle: [
+                            ...Array.from({ length: 5 }, (_, i) => `/repo/mid${i}.ts`),
+                            '/repo/mid0.ts',
+                        ],
+                    },
+                    {
+                        id: 2,
+                        size: 9,
+                        memberIds: Array.from({ length: 9 }, (_, i) => `/repo/big${i}.ts`),
+                        exampleCycle: [
+                            ...Array.from({ length: 9 }, (_, i) => `/repo/big${i}.ts`),
+                            '/repo/big0.ts',
+                        ],
+                    },
+                    {
+                        id: 3,
+                        size: 2,
+                        memberIds: ['/repo/tie-a.ts', '/repo/tie-b.ts'],
+                        exampleCycle: ['/repo/tie-a.ts', '/repo/tie-b.ts', '/repo/tie-a.ts'],
+                    },
+                ],
+            },
+        });
+
+        const englishBlock = extractEnglishFindingsBlock(html);
+        const sccIdOrder = Array.from(
+            englishBlock.matchAll(/data-finding-scc-id="(\d+)"/g),
+            (match) => Number(match[1])
+        );
+
+        // Displayed biggest-first (size 9, 5, then the two size-2 SCCs);
+        // the two size-2 SCCs (ids 0 and 3) tie-break deterministically by
+        // id ascending, not left in findSCCs()' own insertion order (which
+        // already happened to put id 0 first here, so this alone wouldn't
+        // catch a broken/unstable tie-break - the real assertion is the
+        // overall descending-by-size order below).
+        expect(sccIdOrder).toEqual([2, 1, 0, 3]);
+
+        // ids themselves are never renumbered by display order - each row
+        // still carries its own real, original sccId.
+        expect(englishBlock).toContain('data-finding-scc-id="0"');
+        expect(englishBlock).toContain('data-finding-scc-id="1"');
+        expect(englishBlock).toContain('data-finding-scc-id="2"');
+        expect(englishBlock).toContain('data-finding-scc-id="3"');
+    });
+
+    it('P1-3: tie-break stays deterministic when the larger id would naturally sort first in findSCCs() order', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 10,
+                dependencyCount: 10,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 3,
+                        memberIds: ['/repo/first-a.ts', '/repo/first-b.ts', '/repo/first-c.ts'],
+                        exampleCycle: [
+                            '/repo/first-a.ts',
+                            '/repo/first-b.ts',
+                            '/repo/first-c.ts',
+                            '/repo/first-a.ts',
+                        ],
+                    },
+                    {
+                        id: 1,
+                        size: 3,
+                        memberIds: ['/repo/second-a.ts', '/repo/second-b.ts', '/repo/second-c.ts'],
+                        exampleCycle: [
+                            '/repo/second-a.ts',
+                            '/repo/second-b.ts',
+                            '/repo/second-c.ts',
+                            '/repo/second-a.ts',
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const englishBlock = extractEnglishFindingsBlock(html);
+        const sccIdOrder = Array.from(
+            englishBlock.matchAll(/data-finding-scc-id="(\d+)"/g),
+            (match) => Number(match[1])
+        );
+
+        expect(sccIdOrder).toEqual([0, 1]);
     });
 
     it('abbreviates a large representative cycle to start, one hop, and the closing return - never the full chain', () => {
@@ -1516,29 +1740,31 @@ describe('buildHtmlTemplate Full Graph centering / minimap viewport-rect (viewpo
     // real fixtures and window sizes.
     const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
 
-    it('measureChromeInsets no longer lets #hint or #toolbar contribute to the left/right insets - only to top', () => {
-        // The bug: toolbar can legitimately span nearly the full canvas
-        // width (see its own max-width comment, added so it never
-        // overlaps #hint) - "right inset = containerRect.right -
-        // toolbar.left" then counted almost the ENTIRE toolbar width as
-        // unusable horizontal space, driving fitCyAvoidingChrome's
-        // availableWidth negative and forcing its crude cy.fit()
-        // fallback, which ignores #hint entirely and centers on the raw
-        // container - visibly skewing the whole graph away from #hint's
-        // own, now-unaccounted-for space. Neither contribution is needed
-        // for overlap-avoidance either: both panels are short top-anchored
-        // bars, so whichever one's bottom edge is lower already excludes
-        // its entire row (every x position within the fit rectangle, not
-        // just the panel's own x range) via the shared top inset alone.
+    it('measureChromeInsets treats #hint as a LEFT inset (its fixed width) and #toolbar as a TOP inset (its short height) - not the other way around', () => {
+        // P0 fix (final pre-release audit): #hint now renders the Module
+        // area legend, one row per area actually present on the scanned
+        // project - #hint.bottom - containerRect.top (the old top-inset
+        // formula this test used to require) can reach several hundred px
+        // for a project with a dozen-plus areas, collapsing
+        // fitCyAvoidingChrome's availableHeight to near zero or negative
+        // (the audit's reported "Full Graph zoom ~0.001, graph effectively
+        // gone" failure). #hint's WIDTH stays fixed regardless of legend
+        // length (see styles.ts: width: 300px), so the fit now avoids
+        // #hint's own column via a LEFT inset instead - bounded no matter
+        // how tall the legend grows. #toolbar has no equivalent growth (it
+        // wraps horizontally rather than stacking rows - see its own
+        // max-width comment, sized to always leave #hint's column clear),
+        // so it keeps contributing to topInset exactly as before.
         const fnStart = html.indexOf('function measureChromeInsets(container)');
         const fnEnd = html.indexOf('function fitCyAvoidingChrome(');
         const fnSource = html.slice(fnStart, fnEnd);
 
         expect(fnStart).toBeGreaterThan(-1);
-        expect(fnSource).not.toContain('hint.right');
-        expect(fnSource).not.toContain('toolbar.left');
-        expect(fnSource).toContain('hint.bottom - containerRect.top');
+        expect(fnSource).toContain('hint.right - containerRect.left');
+        expect(fnSource).not.toContain('hint.bottom');
         expect(fnSource).toContain('toolbar.bottom - containerRect.top');
+        expect(fnSource).not.toContain('toolbar.left');
+        expect(fnSource).not.toContain('toolbar.right');
     });
 
     it('measureChromeInsets no longer measures #minimap-container at all - it structurally cannot overlap the canvas', () => {
@@ -1623,5 +1849,52 @@ describe('buildHtmlTemplate Full Graph centering / minimap viewport-rect (viewpo
 
         expect(focusFnSource).toContain('pan: Object.assign({}, cy.pan())');
         expect(focusFnSource).not.toMatch(/pan:\s*cy\.pan\(\),/);
+    });
+});
+
+describe('buildHtmlTemplate overlap-resolution scalability (P0-2 fix)', () => {
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('embeds the exact, unit-tested/benchmarked resolveEdgeNodeOverlaps/resolveNodeOverlaps from graphOverlapResolution.ts verbatim, not a client-side reimplementation', () => {
+        expect(html).toContain(resolveEdgeNodeOverlaps.toString());
+        expect(html).toContain(resolveNodeOverlaps.toString());
+    });
+
+    it('embeds the exact, unit-tested threshold functions verbatim - the same functions graphOverlapResolution.test.ts exercises directly', () => {
+        expect(html).toContain(edgeNodeOverlapIterationsFor.toString());
+        expect(html).toContain(nodeOverlapIterationsFor.toString());
+    });
+
+    it('the cytoscape-facing resolveEdgeNodeOverlaps(cy, options) wrapper snapshots visibleNodes(cy)/visibleEdges(cy) ONCE, not per-edge inside an iteration loop - the actual P0-2 root cause fix', () => {
+        const wrapperStart = html.indexOf('function resolveEdgeNodeOverlaps(cy, options)');
+        const wrapperEnd = html.indexOf('function resolveNodeOverlaps(cy, options)');
+        expect(wrapperStart).toBeGreaterThan(-1);
+        const wrapperSource = html.slice(wrapperStart, wrapperEnd);
+
+        expect(wrapperSource).toContain('const plainNodes = visibleNodes(cy).map(');
+        expect(wrapperSource).toContain('const plainEdges = visibleEdges(cy).map(');
+        // Exactly one call each - not one per edge/iteration.
+        expect(wrapperSource.match(/visibleNodes\(cy\)/g)).toHaveLength(1);
+        expect(wrapperSource.match(/visibleEdges\(cy\)/g)).toHaveLength(1);
+    });
+
+    it('both cytoscape-facing wrappers write converged positions back in a single cy.batch(), not one .position() call per push', () => {
+        const edgeNodeWrapperStart = html.indexOf('function resolveEdgeNodeOverlaps(cy, options)');
+        const nodeOverlapWrapperStart = html.indexOf('function resolveNodeOverlaps(cy, options)');
+        const nextFnStart = html.indexOf('function ', nodeOverlapWrapperStart + 1);
+        const bothWrappersSource = html.slice(edgeNodeWrapperStart, nextFnStart);
+
+        expect(bothWrappersSource.match(/cy\.batch\(\(\) => \{/g)).toHaveLength(2);
+    });
+
+    it('the pure algorithm functions are embedded via a differently-named const, never colliding with the cytoscape-facing wrapper of the same name', () => {
+        expect(html).toContain('const resolveEdgeNodeOverlapsPure = ');
+        expect(html).toContain('const resolveNodeOverlapsPure = ');
+        // Exactly one real function DECLARATION per name in the whole
+        // script - the pure versions are function EXPRESSIONS assigned to
+        // a const, never a second `function resolveEdgeNodeOverlaps(...)`
+        // declaration alongside the cytoscape-facing wrapper.
+        expect(html.match(/function resolveEdgeNodeOverlaps\(cy, options\)/g)).toHaveLength(1);
+        expect(html.match(/function resolveNodeOverlaps\(cy, options\)/g)).toHaveLength(1);
     });
 });
