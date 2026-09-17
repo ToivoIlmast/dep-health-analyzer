@@ -119,6 +119,22 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
     const cyclesCount = findings.sccs.length;
 
     console.log(`Dependencies: ${findings.dependencyCount}`);
+
+    // F1b: distinct from F1's unresolvedImports warning (a specific "THIS
+    // import failed to resolve" diagnosis). This is the general case that
+    // diagnosis doesn't cover - e.g. a CommonJS project using require(),
+    // which extractImports() never even looks at, so nothing is ever
+    // "unresolved"; it just silently finds zero edges. Not an error by
+    // itself (a project can genuinely have zero internal dependencies) -
+    // only worth flagging when there was real source to find them in.
+    // Independent of the unresolvedImports warning above: both can fire
+    // together, each naming its own real diagnostic cause.
+    if (result.scannedFiles > 0 && findings.dependencyCount === 0) {
+        console.warn(
+            `${YELLOW}\nWarning: no dependencies detected in ${result.scannedFiles} scanned file(s) - analysis may be incomplete (e.g. CommonJS require() or another unsupported import pattern is not analyzed).${RESET}`
+        );
+    }
+
     console.log(`Cycles detected: ${cyclesCount}`);
 
     const largestScc = getLargestSccSize(sccs, result.graph);
