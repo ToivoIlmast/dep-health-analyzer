@@ -1,5 +1,5 @@
 import { createGraph, addEdge } from './graph/build';
-import { ScanResult } from './graph/types';
+import { ScanResult, UnresolvedImport } from './graph/types';
 import { discoverFiles } from './scanner/discover';
 import { extractImports } from './scanner/extract';
 import { loadTsConfig } from './scanner/loadTsConfig';
@@ -42,6 +42,7 @@ export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult
 
     const files = await discoverFiles(normalizedRoot, exclude);
     const graph = createGraph();
+    const unresolvedImports: UnresolvedImport[] = [];
 
     const tsconfig = loadTsConfig(projectRoot);
 
@@ -53,7 +54,20 @@ export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult
         for (const specifier of imports) {
             const resolved = resolveImport({ fromFile: file, specifier, tsconfig });
 
-            if (!resolved || isExcludedPath(resolved, normalizedRoot, exclude)) {
+            if (!resolved) {
+                // A bare/external specifier (a real npm package, or an
+                // unmatched tsconfig path alias) is the existing, intentional
+                // "EXTERNAL SKIP" case (resolve.ts) - not a defect, and out
+                // of scope here. Only a relative specifier that fails to
+                // resolve is a genuine analysis gap worth surfacing.
+                if (specifier.startsWith('.')) {
+                    unresolvedImports.push({ file, specifier });
+                }
+
+                continue;
+            }
+
+            if (isExcludedPath(resolved, normalizedRoot, exclude)) {
                 continue;
             }
 
@@ -61,9 +75,14 @@ export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult
         }
     }
 
+    unresolvedImports.sort(
+        (a, b) => a.file.localeCompare(b.file) || a.specifier.localeCompare(b.specifier)
+    );
+
     return {
         graph,
         scannedFiles: files.length,
         root: normalizedRoot,
+        unresolvedImports,
     };
 }

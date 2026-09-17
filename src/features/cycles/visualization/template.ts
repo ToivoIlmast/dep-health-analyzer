@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { UnresolvedImport } from '@core/graph/types';
 import { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
 import { Dictionary, I18N, LanguageCode, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
@@ -20,6 +21,9 @@ type BuildHtmlTemplate = {
     nodes: CytoscapeNode[];
     edges: CytoscapeEdge[];
     findings: CycleFindings;
+    // Optional (F1): a project with no unresolved imports - the common
+    // case, and every pre-existing caller/test - has nothing to show here.
+    unresolvedImports?: UnresolvedImport[];
 };
 
 // Server-rendered for the initial (English, or whatever getInitialLanguage()
@@ -250,12 +254,40 @@ function renderAppHeader(): string {
         </header>`;
 }
 
+// F1: a plain, English-only notice - deliberately not run through the
+// 14-language i18n dictionary system the rest of this report uses. It
+// states a fact about analysis completeness, not a translated UI label,
+// and this task's scope is surfacing that fact, not extending i18n
+// coverage. data-incomplete-analysis is the stable, prose-independent hook
+// a consumer (or a test) can check for instead of matching wording.
+function renderUnresolvedImportsNotice(unresolvedImports: UnresolvedImport[]): string {
+    if (unresolvedImports.length === 0) {
+        return '';
+    }
+
+    const items = unresolvedImports
+        .map((entry) => {
+            const file = escapeHtml(path.basename(entry.file));
+            const specifier = escapeHtml(entry.specifier);
+
+            return `<li><code>${file}</code> &rarr; <code>${specifier}</code></li>`;
+        })
+        .join('');
+
+    return `
+        <div id="unresolved-imports-warning" data-incomplete-analysis="true" role="alert">
+            <p>Analysis incomplete: ${unresolvedImports.length} import(s) could not be resolved.</p>
+            <ul id="unresolved-imports-list">${items}</ul>
+        </div>`;
+}
+
 export function buildHtmlTemplate(args: BuildHtmlTemplate) {
-    const { nodes, edges, findings } = args;
+    const { nodes, edges, findings, unresolvedImports = [] } = args;
     const defaultDict = I18N[SUPPORTED_LANGUAGES[0]];
     const sccSummaryText = renderSccSummaryText(findings, defaultDict);
     const graphScaleText = renderScaleText(defaultDict, findings.moduleCount, findings.dependencyCount);
     const appHeaderHtml = renderAppHeader();
+    const unresolvedImportsHtml = renderUnresolvedImportsNotice(unresolvedImports);
     const findingsViewHtml = renderFindingsView(findings);
 
     // Raw counts behind #scc-summary/#graph-scale-text, embedded so
@@ -291,6 +323,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     
     <body>
         ${appHeaderHtml}
+
+        ${unresolvedImportsHtml}
 
         ${findingsViewHtml}
 

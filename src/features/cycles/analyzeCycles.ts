@@ -1,6 +1,7 @@
 import { buildCytoscapeElements } from '@features/cycles/adapters';
 import { generateHtml } from '@features/cycles/visualization/generateHtml';
 import { scanProject } from '@core/scanProject';
+import path from 'node:path';
 import { buildCycleFindings } from './findings/buildCycleFindings';
 import { calculateArchitectureMetrics } from './metrics/architectureMetrics';
 import { findSCCs } from './metrics/findScc';
@@ -81,6 +82,18 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
     console.log(`Scanned files: ${result.scannedFiles}`);
     console.log(`Modules: ${result.graph.nodes.size}`);
 
+    const unresolvedImports = result.unresolvedImports ?? [];
+
+    if (unresolvedImports.length > 0) {
+        console.warn(
+            `${YELLOW}\nWarning: analysis incomplete - ${unresolvedImports.length} unresolved import(s):${RESET}`
+        );
+
+        for (const entry of unresolvedImports) {
+            console.warn(`${YELLOW}  ${path.relative(process.cwd(), entry.file)} -> ${entry.specifier}${RESET}`);
+        }
+    }
+
     // P1-1 fix: every number below - the CLI's own "Cycles detected" line,
     // exit code/failOn, the HTML summary, and the Findings list - now comes
     // from this SAME findSCCs()+buildCycleFindings() computation, never
@@ -123,7 +136,7 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
             projectRoot: process.cwd(),
         });
 
-        generateHtml({ graph: elements, findings, outputPath: htmlReportOutputPath });
+        generateHtml({ graph: elements, findings, outputPath: htmlReportOutputPath, unresolvedImports });
     }
 
     return failed;

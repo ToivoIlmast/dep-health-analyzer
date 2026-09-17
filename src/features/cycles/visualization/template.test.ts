@@ -1898,3 +1898,45 @@ describe('buildHtmlTemplate overlap-resolution scalability (P0-2 fix)', () => {
         expect(html.match(/function resolveNodeOverlaps\(cy, options\)/g)).toHaveLength(1);
     });
 });
+
+describe('buildHtmlTemplate unresolved imports (F1)', () => {
+    it('shows the unresolved specifier and an incomplete-analysis indicator when unresolvedImports is non-empty', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: EMPTY_FINDINGS,
+            unresolvedImports: [{ file: '/project/src/a.ts', specifier: './missing' }],
+        });
+
+        expect(html).toContain('./missing');
+        expect(html).toMatch(/incomplete/i);
+    });
+
+    it('shows both entries and their own files when there are multiple unresolved imports', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: EMPTY_FINDINGS,
+            unresolvedImports: [
+                { file: '/project/src/a.ts', specifier: './missing-a' },
+                { file: '/project/src/b.ts', specifier: './missing-b' },
+            ],
+        });
+
+        expect(html).toContain('./missing-a');
+        expect(html).toContain('./missing-b');
+    });
+
+    it('shows no incomplete-analysis indicator when unresolvedImports is empty or omitted', () => {
+        const withEmptyArray = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: EMPTY_FINDINGS,
+            unresolvedImports: [],
+        });
+        const withOmittedField = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+        expect(withEmptyArray).not.toMatch(/incomplete/i);
+        expect(withOmittedField).not.toMatch(/incomplete/i);
+    });
+});

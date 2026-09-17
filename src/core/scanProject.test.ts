@@ -120,6 +120,126 @@ describe('scanProject', () => {
         });
     });
 
+    describe('unresolvedImports (F1)', () => {
+        // "Resolved" here means exactly what resolveImport() (resolve.ts)
+        // already means: a relative specifier that maps to a real file on
+        // disk. A relative specifier that does NOT map to a real file is a
+        // genuine defect worth surfacing - unlike a bare/external
+        // specifier (e.g. a real npm package), which resolveImport()
+        // already treats as an intentional "EXTERNAL SKIP", not a failure.
+        // F1 only turns the first case into visible, structured
+        // information; the second case's existing behavior is locked by
+        // its own test below, unchanged.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-scanproject-unresolved-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('records which file and specifier failed to resolve for a single unresolved relative import', async () => {
+            fs.writeFileSync(
+                path.join(root, 'a.ts'),
+                `import { foo } from './does-not-exist';\nexport const x = foo;\n`
+            );
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.unresolvedImports).toEqual([
+                { file: path.join(root, 'a.ts'), specifier: './does-not-exist' },
+            ]);
+        });
+
+        it('keeps a resolved import out of unresolvedImports and still builds its graph edge, while separately recording the missing one', async () => {
+            fs.writeFileSync(
+                path.join(root, 'a.ts'),
+                `import { existing } from './existing';\nimport { bar } from './missing';\nexport const x = existing + bar;\n`
+            );
+            fs.writeFileSync(path.join(root, 'existing.ts'), `export const existing = 1;\n`);
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.unresolvedImports).toEqual([
+                { file: path.join(root, 'a.ts'), specifier: './missing' },
+            ]);
+            expect(result.graph.edges.get(path.join(root, 'a.ts'))).toEqual(
+                new Set([path.join(root, 'existing.ts')])
+            );
+        });
+
+        it('collects multiple unresolved imports in deterministic (file, then specifier) order', async () => {
+            // Written in reverse (b before a) so a pass here can only be
+            // explained by an explicit sort, never by source/insertion
+            // order happening to already match.
+            fs.writeFileSync(path.join(root, 'a.ts'), `import './missing-b';\nimport './missing-a';\n`);
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.unresolvedImports).toEqual([
+                { file: path.join(root, 'a.ts'), specifier: './missing-a' },
+                { file: path.join(root, 'a.ts'), specifier: './missing-b' },
+            ]);
+        });
+
+        it('is an empty array when every import resolves', async () => {
+            fs.writeFileSync(path.join(root, 'a.ts'), `import { b } from './b';\nexport const a = b;\n`);
+            fs.writeFileSync(path.join(root, 'b.ts'), `export const b = 1;\n`);
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.unresolvedImports).toEqual([]);
+        });
+
+        it('does not add the missing specifier as a graph node or a graph edge', async () => {
+            fs.writeFileSync(
+                path.join(root, 'a.ts'),
+                `import { foo } from './missing';\nexport const x = foo;\n`
+            );
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.graph.edges.get(path.join(root, 'a.ts'))).toBeUndefined();
+
+            for (const node of result.graph.nodes) {
+                expect(node).not.toMatch(/missing/);
+            }
+        });
+
+        it('does not treat an unresolved bare/external specifier as an unresolved import (existing EXTERNAL SKIP behavior, unchanged)', async () => {
+            fs.writeFileSync(
+                path.join(root, 'a.ts'),
+                `import x from 'some-external-package';\nexport const y = x;\n`
+            );
+
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect(result.unresolvedImports).toEqual([]);
+        });
+
+        describe('CommonJS require() (documents current behavior only - out of scope for F1)', () => {
+            // extractImports() (extract.ts) only reads ts-morph
+            // ImportDeclaration/ExportDeclaration nodes - a require() call
+            // is a plain CallExpression and is never visited at all, so it
+            // produces neither a graph edge nor an unresolvedImports entry,
+            // resolved or not. This test locks that existing behavior; it
+            // is not new functionality.
+            it('does not see a require() of a missing module at all - no edge, no unresolvedImports entry', async () => {
+                fs.writeFileSync(
+                    path.join(root, 'a.ts'),
+                    `const foo = require('./missing');\nexports.x = foo;\n`
+                );
+
+                const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+                expect(result.unresolvedImports).toEqual([]);
+                expect(result.graph.edges.get(path.join(root, 'a.ts'))).toBeUndefined();
+            });
+        });
+    });
+
     describe('exclude (config: top-level exclude, shared by every command)', () => {
         // A real gap found while dogfooding: dep-health's own repo scanning
         // itself was silently sweeping up the entire test-projects/ external

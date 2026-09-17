@@ -202,7 +202,7 @@ _Reports summarize structural findings and identify areas for review._
 
 # Quick Start
 
-**Requirements:** Node.js 22+ (see `.nvmrc`).
+**Requirements:** Node.js >= 22.12.0 (see `.nvmrc`).
 
 Install the package:
 

@@ -24,7 +24,10 @@ const mockedPrintMetricsSummary = jest.mocked(printMetricsSummary);
 const mockedBuildCytoscapeElements = jest.mocked(buildCytoscapeElements);
 const mockedGenerateHtml = jest.mocked(generateHtml);
 
-function makeScanResult(graph?: Partial<DependencyGraph>): ScanResult {
+function makeScanResult(
+    graph?: Partial<DependencyGraph>,
+    unresolvedImports: ScanResult['unresolvedImports'] = []
+): ScanResult {
     return {
         graph: {
             nodes: new Set(['a.ts', 'b.ts']),
@@ -33,6 +36,7 @@ function makeScanResult(graph?: Partial<DependencyGraph>): ScanResult {
         },
         scannedFiles: 2,
         root: '/project',
+        unresolvedImports,
     };
 }
 
@@ -285,6 +289,7 @@ describe('analyzeCycles', () => {
             graph: elements,
             findings: { moduleCount: 2, dependencyCount: 1, sccs: [] },
             outputPath: './out.html',
+            unresolvedImports: [],
         });
     });
 
@@ -369,5 +374,34 @@ describe('analyzeCycles', () => {
         await analyzeCycles({ ...baseArgs, failOn: 'info' });
 
         expect(logSpy).toHaveBeenCalledWith('Dependencies: 3');
+    });
+
+    describe('unresolved imports warning (F1)', () => {
+        it('warns with the count when scanProject reports unresolved imports', async () => {
+            mockedScanProject.mockResolvedValue(
+                makeScanResult(undefined, [{ file: '/project/a.ts', specifier: './missing' }])
+            );
+            const warnSpy = jest.spyOn(console, 'warn');
+
+            await analyzeCycles({ ...baseArgs, mode: MODES.COMPACT });
+
+            const warnedIncomplete = warnSpy.mock.calls.some(
+                ([message]) =>
+                    typeof message === 'string' && /unresolved/i.test(message) && message.includes('1')
+            );
+            expect(warnedIncomplete).toBe(true);
+        });
+
+        it('does not warn about unresolved imports when scanProject reports none', async () => {
+            mockedScanProject.mockResolvedValue(makeScanResult(undefined, []));
+            const warnSpy = jest.spyOn(console, 'warn');
+
+            await analyzeCycles({ ...baseArgs, mode: MODES.COMPACT });
+
+            const warnedIncomplete = warnSpy.mock.calls.some(
+                ([message]) => typeof message === 'string' && /unresolved/i.test(message)
+            );
+            expect(warnedIncomplete).toBe(false);
+        });
     });
 });

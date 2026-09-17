@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { UnresolvedImport } from '@core/graph/types';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters/buildCytoscapeElements';
 import type { CycleFindings } from '../findings/buildCycleFindings';
 import { buildHtmlTemplate } from './template';
@@ -12,15 +13,17 @@ type GenerateHtmlArgs = {
     };
     findings: CycleFindings;
     outputPath: string;
+    unresolvedImports?: UnresolvedImport[];
 };
 export function generateHtml(args: GenerateHtmlArgs): void {
     const {
         graph: { nodes, edges },
         findings,
         outputPath,
+        unresolvedImports,
     } = args;
 
-    const html = buildHtmlTemplate({ nodes, edges, findings });
+    const html = buildHtmlTemplate({ nodes, edges, findings, unresolvedImports });
 
     const resolvedPath = path.resolve(outputPath);
     const directory = path.dirname(resolvedPath);
