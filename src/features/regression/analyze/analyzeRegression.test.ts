@@ -185,6 +185,31 @@ describe('analyzeRegression', () => {
         });
     });
 
+    // F4/F26: the CURRENT-side scan targets the real project directory
+    // (unlike the baseline scan, which runs inside a throwaway git
+    // worktree that can't contain the live, normally-gitignored report
+    // file) - so it needs the same report-output exclusion analyzeCycles.ts
+    // already got. Verified here at the wiring level (scanProject is
+    // mocked in this file the same way every other test here already
+    // does); the exclusion logic itself has its own real, unmocked
+    // end-to-end coverage in analyzeCycles.reportOutputExclusion.test.ts
+    // and unit coverage in getReportOutputExcludePatterns.test.ts.
+    describe('report output exclusion (F4/F26)', () => {
+        it('excludes its own html report from the CURRENT scan, not the baseline scan', async () => {
+            await analyzeRegression({ ...baseArgs, target: '.', htmlReportOutputPath: './out.html' });
+
+            const currentScanArgs = mockedScanProject.mock.calls[0]?.[0];
+            const baselineScanArgs = mockedScanProject.mock.calls[1]?.[0];
+
+            expect(currentScanArgs?.exclude).toEqual(expect.arrayContaining(['out.html', 'assets/**']));
+            // The baseline scan runs inside a temp worktree the report
+            // never touches - its exclude list must stay exactly what the
+            // caller passed in (undefined here, since baseArgs sets none),
+            // not gain the current project's report-output patterns too.
+            expect(baselineScanArgs?.exclude).toBeUndefined();
+        });
+    });
+
     it('should not fail when no findings meet the failOn severity', async () => {
         mockedBuildDependencyInsights.mockReturnValue([makeFinding({ severity: 'info' })]);
 

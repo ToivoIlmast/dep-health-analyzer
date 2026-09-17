@@ -9,6 +9,7 @@ import { getLargestSccSize } from './metrics/getLargestSccSize';
 import { printMetricsSummary } from './metrics/report';
 import { ModuleMetrics } from './metrics/types';
 import { ModeType, MODES } from '@shared/types';
+import { getReportOutputExcludePatterns } from '@shared/getReportOutputExcludePatterns';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
@@ -73,11 +74,17 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
         exclude,
     } = args;
 
+    // F4/F26: the tool's own generated HTML report (and, for `cycles`, the
+    // vendored assets copied alongside it - see copyAssets.ts) must never
+    // be re-discovered as project source, whether it already exists from a
+    // previous run or is only about to be created by this one. Merged into
+    // a NEW array (never mutating the caller's `exclude`), so a shared
+    // config.exclude array can't grow across repeated calls.
     const result = await scanProject({
         scanRoot: target,
         projectRoot: process.cwd(),
         includeTypeOnlyImports,
-        exclude,
+        exclude: [...(exclude ?? []), ...getReportOutputExcludePatterns(target, htmlReportOutputPath)],
     });
     console.log(`Scanned files: ${result.scannedFiles}`);
     console.log(`Modules: ${result.graph.nodes.size}`);

@@ -2,6 +2,7 @@ import { analyzeCycles } from '@features/cycles/analyzeCycles';
 import { analyzeHistory, analyzeRegression, explainHistory, explainRegression } from '@features/regression';
 import { CLI_COMMANDS, CliArgs } from './types';
 import { IConfig } from '../config/types';
+import { defaultConfig } from '../config/defaultConfig';
 import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
 
 const RED = '\x1b[31m';
@@ -26,7 +27,8 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 failOn: config.features?.scc?.failOn ?? 'error',
                 enableHtmlReport: config.features?.scc?.reporting?.html?.enabled ?? true,
                 htmlReportOutputPath:
-                    config.features?.scc?.reporting?.html?.outputPath ?? './reports/cycles.html',
+                    config.features?.scc?.reporting?.html?.outputPath ??
+                    defaultConfig.features.scc.reporting.html.outputPath,
                 includeTypeOnlyImports: sccConfig.typescript?.includeTypeOnlyImports ?? false,
                 exclude: config.exclude,
             });
@@ -46,7 +48,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 target,
                 baselineRef: args.baselineRef,
                 mode,
-                failOn: config.features?.regression?.failOn ?? 'error',
+                failOn: config.features?.regression?.failOn ?? defaultConfig.features.regression.failOn,
                 rules: {
                     thresholds: {
                         deepInternalResidualDepth:
@@ -65,7 +67,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                     config.features?.regression?.reporting?.html?.enabled ?? true,
                 htmlReportOutputPath:
                     config.features?.regression?.reporting?.html?.outputPath ??
-                    './reports/regression.html',
+                    defaultConfig.features.regression.reporting.html.outputPath,
                 scopes: config.features?.regression?.scopes,
                 includeTypeOnlyImports: regressionConfig.typescript?.includeTypeOnlyImports ?? false,
                 exclude: config.exclude,
@@ -109,7 +111,7 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 sampleSize: args.sampleSize,
                 strategy: args.strategy,
                 mode,
-                failOn: regressionConfig?.failOn ?? 'error',
+                failOn: regressionConfig?.failOn ?? defaultConfig.features.regression.failOn,
                 rules: {
                     thresholds: {
                         deepInternalResidualDepth:
@@ -127,7 +129,8 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                 scopes: regressionConfig?.scopes,
                 isHtmlReportingEnabled: historyConfig?.reporting?.html?.enabled ?? true,
                 htmlReportOutputPath:
-                    historyConfig?.reporting?.html?.outputPath ?? './dep-health-reports/history.html',
+                    historyConfig?.reporting?.html?.outputPath ??
+                    defaultConfig.features.regression.history.reporting.html.outputPath,
                 includeTypeOnlyImports: regressionConfig?.typescript?.includeTypeOnlyImports ?? false,
                 exclude: config.exclude,
             });

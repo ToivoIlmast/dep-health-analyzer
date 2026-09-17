@@ -13,6 +13,7 @@ import type { ScanResult } from '@core/graph/types';
 import { ModeType, MODES, IRegressionScope } from '@shared/types';
 import { buildDependencyInsights } from '../delta/insights/buildDependencyInsights';
 import { execFileSync } from 'node:child_process';
+import { getReportOutputExcludePatterns } from '@shared/getReportOutputExcludePatterns';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
@@ -110,11 +111,17 @@ export async function analyzeRegression(
     console.log();
 
     const currentProjectRoot = process.cwd();
+    // F4/F26: the CURRENT scan targets the real project directory, where
+    // this run's own HTML report may already exist (from a previous run)
+    // or is about to be written - see analyzeCycles.ts for the same fix.
+    // The baseline scan below runs inside a throwaway git worktree that
+    // never contains the live report, so it keeps the caller's `exclude`
+    // unchanged.
     const current = await scanProject({
         scanRoot: target,
         projectRoot: currentProjectRoot,
         includeTypeOnlyImports,
-        exclude,
+        exclude: [...(exclude ?? []), ...getReportOutputExcludePatterns(target, htmlReportOutputPath)],
     });
     console.log(`Scanned files: ${current.scannedFiles}`);
     console.log(`Modules: ${current.graph.nodes.size}`);

@@ -4,6 +4,7 @@ import { HISTORY_STRATEGIES, MODES } from '@shared/types';
 import { analyzeCycles } from '@features/cycles/analyzeCycles';
 import { analyzeHistory, analyzeRegression, explainHistory, explainRegression } from '@features/regression';
 import { validateOllamaAIEnvironment } from '@features/regression/ai/validateAIEnvironment';
+import { defaultConfig } from '../config/defaultConfig';
 
 jest.mock('@features/cycles/analyzeCycles', () => ({
     analyzeCycles: jest.fn(),
@@ -52,7 +53,12 @@ describe('routeCommand', () => {
             mode: MODES.FULL,
             failOn: 'error',
             enableHtmlReport: true,
-            htmlReportOutputPath: './reports/cycles.html',
+            // F26: the runtime fallback (used when config omits this field,
+            // as this test's config does) must be the SAME value
+            // documented in defaultConfig.ts, not a second, independently
+            // hardcoded literal - see the "runtime defaults vs
+            // defaultConfig" describe block below for the general case.
+            htmlReportOutputPath: defaultConfig.features.scc.reporting.html.outputPath,
             includeTypeOnlyImports: false,
         });
     });
@@ -431,5 +437,123 @@ describe('routeCommand', () => {
         );
 
         expect(explainHistoryMock).not.toHaveBeenCalled();
+    });
+});
+
+// F26 (AUDIT_v0.11.0.md): `loadConfig` never merges `defaultConfig.ts` - the
+// values a user actually gets when a field is omitted come entirely from
+// `??` fallbacks hardcoded separately in routeCommand.ts, which had drifted
+// from the documented defaults (`outputPath` under two different
+// directories/filenames, `failOn` 'error' vs 'warning'). These tests derive
+// their expectation from `defaultConfig` itself, never from a second
+// hardcoded literal - so they catch the SOURCES disagreeing, not just a
+// snapshot of today's values.
+describe('routeCommand runtime defaults vs defaultConfig (F26)', () => {
+    afterEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('falls back to defaultConfig\'s scc html outputPath when config omits it', async () => {
+        const analyzeCyclesMock = jest.mocked(analyzeCycles);
+        analyzeCyclesMock.mockResolvedValue(false);
+
+        await routeCommand(
+            { command: CLI_COMMANDS.CYCLES, target: '.', mode: MODES.FULL, ai: false },
+            { features: { scc: { enabled: true } } }
+        );
+
+        expect(analyzeCyclesMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                htmlReportOutputPath: defaultConfig.features.scc.reporting.html.outputPath,
+            })
+        );
+    });
+
+    it('falls back to defaultConfig\'s regression html outputPath when config omits it', async () => {
+        const analyzeRegressionMock = jest.mocked(analyzeRegression);
+        analyzeRegressionMock.mockResolvedValue({ failed: false, findings: [] });
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.REGRESSION,
+                target: '.',
+                baselineRef: 'HEAD~1',
+                mode: MODES.FULL,
+                ai: false,
+            },
+            { features: { regression: { enabled: true } } }
+        );
+
+        expect(analyzeRegressionMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                htmlReportOutputPath: defaultConfig.features.regression.reporting.html.outputPath,
+            })
+        );
+    });
+
+    it('falls back to defaultConfig\'s history html outputPath when config omits it', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+        analyzeHistoryMock.mockResolvedValue({ failed: false, points: [] });
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: '.',
+                baselineRef: 'HEAD~1',
+                sampleSize: 2,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: false,
+            },
+            { features: { regression: { history: { enabled: true } } } }
+        );
+
+        expect(analyzeHistoryMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                htmlReportOutputPath: defaultConfig.features.regression.history.reporting.html.outputPath,
+            })
+        );
+    });
+
+    it('falls back to defaultConfig\'s regression failOn when config omits it', async () => {
+        const analyzeRegressionMock = jest.mocked(analyzeRegression);
+        analyzeRegressionMock.mockResolvedValue({ failed: false, findings: [] });
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.REGRESSION,
+                target: '.',
+                baselineRef: 'HEAD~1',
+                mode: MODES.FULL,
+                ai: false,
+            },
+            { features: { regression: { enabled: true } } }
+        );
+
+        expect(analyzeRegressionMock).toHaveBeenCalledWith(
+            expect.objectContaining({ failOn: defaultConfig.features.regression.failOn })
+        );
+    });
+
+    it('falls back to defaultConfig\'s regression failOn for history too, when config omits it', async () => {
+        const analyzeHistoryMock = jest.mocked(analyzeHistory);
+        analyzeHistoryMock.mockResolvedValue({ failed: false, points: [] });
+
+        await routeCommand(
+            {
+                command: CLI_COMMANDS.HISTORY,
+                target: '.',
+                baselineRef: 'HEAD~1',
+                sampleSize: 2,
+                strategy: HISTORY_STRATEGIES.INCREMENTAL,
+                mode: MODES.COMPACT,
+                ai: false,
+            },
+            { features: { regression: { history: { enabled: true } } } }
+        );
+
+        expect(analyzeHistoryMock).toHaveBeenCalledWith(
+            expect.objectContaining({ failOn: defaultConfig.features.regression.failOn })
+        );
     });
 });

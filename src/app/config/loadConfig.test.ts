@@ -212,4 +212,35 @@ describe('loadConfig', () => {
             expect(() => loadConfig()).toThrow(/internalDepth/);
         });
     });
+
+    // F4/F26 part C: loadConfig has no normalize/apply-defaults step at all
+    // today (see routeCommand.ts's own `??` fallbacks, fixed separately in
+    // this same task) - it only parses and validates. That means it is
+    // ALREADY idempotent by construction: nothing here computes derived
+    // values or mutates shared state across calls. This locks that
+    // existing, correct contract rather than inventing a defect that isn't
+    // there.
+    describe('idempotency (F4/F26 part C)', () => {
+        it('returns a deep-equal, independently-instanced config on every call for the same file contents', () => {
+            const config = {
+                features: {
+                    scc: { enabled: true, reporting: { html: { outputPath: './out.html' } } },
+                },
+                exclude: ['vendor/**'],
+            };
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(config));
+
+            const first = loadConfig();
+            const second = loadConfig();
+
+            expect(second).toEqual(first);
+            expect(second).not.toBe(first);
+            // A caller mutating the array it got back must not affect a
+            // later call's result.
+            (first as { exclude?: string[] }).exclude?.push('mutated/**');
+            expect((second as { exclude?: string[] }).exclude).toEqual(['vendor/**']);
+        });
+    });
 });
