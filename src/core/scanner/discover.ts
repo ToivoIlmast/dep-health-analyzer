@@ -36,5 +36,11 @@ export async function discoverFiles(root: string, exclude: string[] = []): Promi
         dot: false,
     });
 
-    return files.map((file) => path.normalize(file));
+    // F20: fast-glob's own README documents results as returned in
+    // "arbitrary order" - relying on that order would make everything
+    // downstream (scanProject's node/edge insertion order, findSCCs'
+    // Kosaraju traversal, SCC ids, colours, "SCC #N") depend on
+    // unspecified filesystem enumeration instead of the project's actual
+    // file set and content.
+    return files.map((file) => path.normalize(file)).sort();
 }

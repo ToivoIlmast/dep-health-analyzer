@@ -165,6 +165,44 @@ describe('discoverFiles', () => {
         });
     });
 
+    describe('sort order (F20)', () => {
+        // fast-glob's own README states results come back in "arbitrary
+        // order" - a documented contract, not a coincidence of any one
+        // filesystem. Everything downstream (scanProject's node/edge
+        // insertion order, findSCCs' Kosaraju traversal, SCC ids, colours,
+        // "SCC #N") derives from this order, so it must be a stable,
+        // reproducible contract, not whatever the OS happened to hand
+        // back. This exercises the real (unmocked) fast-glob call against
+        // real files created out of alphabetical order - see
+        // discover.sortOrder.test.ts for the mocked test that reliably
+        // proves this regardless of what this particular filesystem's
+        // traversal order happens to be.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-discover-sort-'));
+            for (const name of ['z', 'm', 'a', 'y', 'b']) {
+                fs.writeFileSync(path.join(root, `${name}.ts`), '');
+            }
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('returns files in sorted order for files created out of alphabetical order', async () => {
+            const result = await discoverFiles(root);
+
+            expect(result.map((file) => path.basename(file))).toEqual([
+                'a.ts',
+                'b.ts',
+                'm.ts',
+                'y.ts',
+                'z.ts',
+            ]);
+        });
+    });
+
     describe('exclude option (config: top-level `exclude`, shared by every command)', () => {
         // A real gap found while dogfooding: dep-health's own repo scanning
         // itself was silently sweeping up the entire test-projects/ external

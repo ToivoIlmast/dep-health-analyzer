@@ -16,6 +16,40 @@ describe('scanProject', () => {
         expect(result.root).toBe(path.resolve(scanRoot));
     });
 
+    describe('deterministic node ordering (F20)', () => {
+        // discoverFiles() now guarantees a sorted (not "whatever fast-glob's
+        // arbitrary traversal returned") file order - this locks that the
+        // guarantee actually reaches graph.nodes' own iteration order,
+        // since that's what findSCCs' Kosaraju traversal (buildFinishOrder,
+        // via graph.edges.keys()) walks to decide SCC order/ids. Files are
+        // created out of alphabetical order specifically so a passing test
+        // can't be explained by coincidental creation-order enumeration.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-scanproject-order-'));
+            for (const name of ['z', 'm', 'a', 'y', 'b']) {
+                fs.writeFileSync(path.join(root, `${name}.ts`), '');
+            }
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('iterates graph.nodes in sorted order', async () => {
+            const result = await scanProject({ projectRoot: root, scanRoot: root });
+
+            expect([...result.graph.nodes].map((file) => path.basename(file))).toEqual([
+                'a.ts',
+                'b.ts',
+                'm.ts',
+                'y.ts',
+                'z.ts',
+            ]);
+        });
+    });
+
     describe('absolute vs relative scanRoot (F3, part A invariant)', () => {
         // The path's FORM must not change the analysis result - a real
         // regression the audit found lower in the stack (resolveWorktreeTarget,
