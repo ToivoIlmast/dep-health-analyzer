@@ -195,6 +195,34 @@ describe('buildCytoscapeElements', () => {
         expect(result.nodes.filter((node) => node.classes === 'scc').length).toBe(2);
     });
 
+    it('assigns an SCC class/sccId/sccSize to a lone self-loop node (P1-2) - never silently invisible while the CLI counts it as a cycle', () => {
+        const graph: DependencyGraph = {
+            nodes: new Set(['self.ts', 'other.ts']),
+            edges: new Map<string, Set<string>>([
+                ['self.ts', new Set(['self.ts'])],
+                ['other.ts', new Set()],
+            ]),
+        };
+
+        const sccs = [['self.ts']];
+
+        const metrics = new Map<string, ModuleMetrics>([
+            ['self.ts', { ca: 0, ce: 1, instability: 1 }],
+            ['other.ts', { ca: 0, ce: 0, instability: 0 }],
+        ]);
+
+        const result = buildCytoscapeElements({ graph, metrics, sccs });
+
+        const selfLoopNode = result.nodes.find((node) => node.data.id === 'self.ts');
+        const otherNode = result.nodes.find((node) => node.data.id === 'other.ts');
+
+        expect(selfLoopNode?.classes).toBe('scc');
+        expect(selfLoopNode?.data.sccId).toBe(0);
+        expect(selfLoopNode?.data.sccSize).toBe(1);
+        expect(otherNode?.classes).toBe('');
+        expect(otherNode?.data.sccId).toBeUndefined();
+    });
+
     it('assigns SCC classes to cyclic nodes', () => {
         const graph: DependencyGraph = {
             nodes: new Set(['A', 'B', 'C']),

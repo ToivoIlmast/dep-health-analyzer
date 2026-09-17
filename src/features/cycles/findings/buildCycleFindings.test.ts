@@ -238,6 +238,22 @@ describe('buildCycleFindings', () => {
         assertRealPath(finding.exampleCycle, graph);
     });
 
+    it('reports a lone self-loop as a real size-1 finding (P1-2) - never silently invisible while the CLI counts it as a cycle', () => {
+        const graph = makeGraph({
+            'self.ts': ['self.ts'],
+            'a.ts': ['b.ts'],
+            'b.ts': [],
+        });
+        const sccs = findSCCs(graph);
+
+        const findings = buildCycleFindings({ graph, sccs });
+
+        expect(findings.sccs).toHaveLength(1);
+        expect(findings.sccs[0]?.size).toBe(1);
+        expect(findings.sccs[0]?.memberIds).toEqual(['self.ts']);
+        expect(findings.sccs[0]?.exampleCycle).toEqual(['self.ts', 'self.ts']);
+    });
+
     it('counts moduleCount/dependencyCount from the whole graph, independent of SCC membership', () => {
         const graph = makeGraph({
             'a.ts': ['b.ts'],

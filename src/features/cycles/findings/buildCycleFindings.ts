@@ -1,12 +1,16 @@
 import { DependencyGraph } from '@core/graph/types';
+import { filterRealCycleSccs } from '@features/cycles/metrics/realCycles';
 
 export interface SccFinding {
     // The same index buildCytoscapeElements.ts already assigns as a real
     // node's data.sccId - both are computed by applying the identical
-    // `scc.length > 1` filter to the same findSCCs() output, in the same
-    // order, so this id stays a valid sccId a future UI could hand
-    // straight to the graph (e.g. to focus/highlight this exact SCC)
-    // without any remapping step.
+    // filterRealCycleSccs() filter (realCycles.ts) to the same findSCCs()
+    // output, in the same order, so this id stays a valid sccId a future UI
+    // could hand straight to the graph (e.g. to focus/highlight this exact
+    // SCC) without any remapping step. Presentation order (see
+    // renderFindingsOverview in template.ts, sorted by size descending) is
+    // deliberately never allowed to change this value - id always tracks
+    // the original findSCCs() index, never a display position.
     id: number;
     size: number;
     // Sorted alphabetically - not the order Kosaraju's own DFS happened to
@@ -145,23 +149,21 @@ type BuildCycleFindings = {
  * separate findings the way detectCycles' naive, undercounting DFS would
  * report them.
  *
- * "Non-trivial" here means the same `scc.length > 1` a real node already
- * needs to get a data-sccId in the existing graph (see
- * buildCytoscapeElements.ts's `realSccs` filter) - a lone self-loop file
- * (a size-1 component that imports itself) is intentionally excluded here
- * too, for consistency with what the graph itself already treats as a
- * highlighted SCC. This differs from getLargestSccSize.ts's own
- * self-loop-aware "is this a real cycle" check (used only for the
- * console's "Largest SCC" scalar) - a known, pre-existing inconsistency
- * between those two call sites, not something this function should
- * silently paper over by picking a third definition.
+ * "Real cycle" here is filterRealCycleSccs' shared definition
+ * (realCycles.ts): a 2+-member component, or a size-1 component that is a
+ * genuine self-loop (a file importing itself) - the SAME predicate
+ * buildCytoscapeElements.ts's `realSccs` filter and getLargestSccSize.ts's
+ * "Largest SCC" scalar now both use too (P1-1/P1-2 fix), so a self-loop
+ * counted as a cycle by the CLI is guaranteed to also show up here and in
+ * the graph, never silently invisible in one surface while flagged by
+ * another.
  */
 export function buildCycleFindings(args: BuildCycleFindings): CycleFindings {
     const { graph, sccs } = args;
 
-    const nonTrivialSccs = sccs.filter((scc) => scc.length > 1);
+    const realCycleSccs = filterRealCycleSccs(sccs, graph);
 
-    const findings: SccFinding[] = nonTrivialSccs.map((scc, index) => {
+    const findings: SccFinding[] = realCycleSccs.map((scc, index) => {
         const memberIds = [...scc].sort();
 
         return {
