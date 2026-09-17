@@ -136,6 +136,21 @@ export async function analyzeRegression(
     console.log(`Scanned files: ${baseline.scannedFiles}`);
     console.log(`Modules: ${baseline.graph.nodes.size}`);
 
+    // F3 (AUDIT_v0.11.0.md), defence in depth: a broken baseline scan (0
+    // files) makes every current dependency look newly "added" -
+    // calculateDependencyDelta has no way to tell "nothing existed before"
+    // apart from "the baseline scan itself is broken". Refuse to present
+    // those as trustworthy findings rather than let a scan failure look
+    // like a real architectural regression. A current scan that is ALSO
+    // empty is a different (genuinely empty project) case, not this one.
+    if (baseline.scannedFiles === 0 && current.scannedFiles > 0) {
+        console.error(
+            `Baseline scan at "${baselineRef}" found 0 files while the current scan found ${current.scannedFiles} - refusing to compare against an empty baseline (every existing dependency would otherwise look newly added). Check that --target resolves correctly inside the baseline worktree.`
+        );
+        process.exit(1);
+        return { failed: true, findings: [] };
+    }
+
     const delta = calculateDependencyDelta({
         current,
         baseline,

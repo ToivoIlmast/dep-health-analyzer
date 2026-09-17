@@ -16,6 +16,45 @@ describe('scanProject', () => {
         expect(result.root).toBe(path.resolve(scanRoot));
     });
 
+    describe('absolute vs relative scanRoot (F3, part A invariant)', () => {
+        // The path's FORM must not change the analysis result - a real
+        // regression the audit found lower in the stack (resolveWorktreeTarget,
+        // see F3), where an absolute --target silently produced a different
+        // (empty) scan than the equivalent relative one. This locks the
+        // invariant at the scanProject layer itself: whatever form scanRoot
+        // takes, path.resolve() normalizes it to the same absolute node ids,
+        // so the two scans must be identical, not just similarly-sized.
+        let root: string;
+
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-scanproject-abs-vs-rel-'));
+            fs.writeFileSync(path.join(root, 'a.ts'), `import { b } from './b';\nexport const a = b;\n`);
+            fs.writeFileSync(path.join(root, 'b.ts'), `export const b = 1;\n`);
+        });
+
+        afterEach(() => {
+            fs.rmSync(root, { recursive: true, force: true });
+        });
+
+        it('produces the exact same graph for an absolute scanRoot and an equivalent relative one', async () => {
+            const absoluteResult = await scanProject({ projectRoot: root, scanRoot: path.resolve(root) });
+
+            const originalCwd = process.cwd();
+            process.chdir(root);
+            let relativeResult;
+            try {
+                relativeResult = await scanProject({ projectRoot: '.', scanRoot: '.' });
+            } finally {
+                process.chdir(originalCwd);
+            }
+
+            expect(relativeResult.scannedFiles).toBe(absoluteResult.scannedFiles);
+            expect(relativeResult.graph.nodes).toEqual(absoluteResult.graph.nodes);
+            expect(relativeResult.graph.edges).toEqual(absoluteResult.graph.edges);
+            expect(relativeResult.unresolvedImports).toEqual(absoluteResult.unresolvedImports);
+        });
+    });
+
     describe('includeTypeOnlyImports', () => {
         let root: string;
 

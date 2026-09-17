@@ -136,6 +136,55 @@ describe('analyzeRegression', () => {
         expect(process.exit).toHaveBeenCalledWith(1);
     });
 
+    // F3 · P1 (AUDIT_v0.11.0.md): a broken baseline scan (historically caused
+    // by resolveWorktreeTarget mishandling an absolute --target, but the
+    // guard below must trigger regardless of WHY the baseline came back
+    // empty) makes baselineDependencies an empty set, so
+    // calculateDependencyDelta treats every pre-existing dependency as
+    // newly "added" - a false positive that can fail CI on a change that
+    // introduced nothing. "Defence in depth" per the audit's own
+    // recommendation: refuse to present findings when baseline scanned 0
+    // files while current scanned more than 0.
+    describe('empty baseline scan (F3, part B)', () => {
+        it('refuses to compare and does not compute findings when the baseline scanned 0 files but current scanned more than 0', async () => {
+            mockedScanProject.mockReset();
+            mockedScanProject
+                .mockResolvedValueOnce(makeScanResult(5)) // current
+                .mockResolvedValueOnce(makeScanResult(0)); // baseline - empty
+
+            const result = await analyzeRegression(baseArgs);
+
+            const warnedAboutEmptyBaseline = (console.error as jest.Mock).mock.calls.some(
+                ([message]) =>
+                    typeof message === 'string' && /baseline/i.test(message) && /0 file/i.test(message)
+            );
+            expect(warnedAboutEmptyBaseline).toBe(true);
+            expect(process.exit).toHaveBeenCalledWith(1);
+            expect(mockedCalculateDependencyDelta).not.toHaveBeenCalled();
+            expect(mockedBuildDependencyInsights).not.toHaveBeenCalled();
+            expect(result.failed).toBe(true);
+        });
+
+        it('does not trigger the empty-baseline guard when both current and baseline scan 0 files (a genuinely empty project, not a broken scan)', async () => {
+            mockedScanProject.mockReset();
+            mockedScanProject
+                .mockResolvedValueOnce(makeScanResult(0)) // current
+                .mockResolvedValueOnce(makeScanResult(0)); // baseline
+
+            await analyzeRegression(baseArgs);
+
+            expect(process.exit).not.toHaveBeenCalled();
+            expect(mockedCalculateDependencyDelta).toHaveBeenCalled();
+        });
+
+        it('does not trigger the empty-baseline guard when the baseline scanned files normally', async () => {
+            await analyzeRegression(baseArgs);
+
+            expect(process.exit).not.toHaveBeenCalled();
+            expect(mockedCalculateDependencyDelta).toHaveBeenCalled();
+        });
+    });
+
     it('should not fail when no findings meet the failOn severity', async () => {
         mockedBuildDependencyInsights.mockReturnValue([makeFinding({ severity: 'info' })]);
 
