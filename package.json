@@ -1,6 +1,6 @@
 {
     "name": "dep-health-analyzer",
-    "version": "0.10.2",
+    "version": "0.11.0",
     "license": "MIT",
     "type": "commonjs",
     "repository": {
@@ -29,7 +29,11 @@
         "generate:config-validator": "node scripts/generateConfigValidator.js",
         "test-projects:generate": "node scripts/gen-basic.mjs && node scripts/gen-frontend.mjs && node scripts/gen-backend.mjs && node scripts/gen-fullstack.mjs && node scripts/gen-libraries.mjs && node scripts/gen-monorepos.mjs && node scripts/gen-structural.mjs && node scripts/gen-stress.mjs && node scripts/gen-traps.mjs && node scripts/gen-mts-cts.mjs && node scripts/gen-history-lab.mjs && node scripts/gen-readmes.mjs",
         "test-projects:validate": "node scripts/validate-test-projects.mjs",
-        "dev:cycle-map": "npm run build && cd test-projects/large-cycle-app && node ../../dist/app/cli.js cycles --mode html"
+        "test-projects-scale:generate": "node scripts/gen-scale-cycles.mjs && node scripts/gen-scale-perf.mjs && node scripts/gen-scale-regression.mjs",
+        "test-projects-scale:validate": "node scripts/validate-scale-corpus.mjs",
+        "dev:cycle-map": "npm run build && cd test-projects/large-cycle-app && node ../../dist/app/cli.js cycles --mode html",
+        "dev:cycle-map:large": "npm run build && cd test-projects-scale/cycles-large && node ../../dist/app/cli.js cycles --mode html",
+        "verify:cycles-graph-fit": "node scripts/verify-cycles-graph-fit.mjs"
     },
     "bin": {
         "dep-health-analyzer": "dist/app/cli.js"
@@ -50,12 +54,14 @@
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@types/jest": "^30.0.0",
+        "@types/jsdom": "^21.1.7",
         "@types/node": "^25.6.0",
         "ajv": "^8.20.0",
         "eslint": "^10.3.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.5",
         "jest": "^30.3.0",
+        "jsdom": "^26.1.0",
         "json-schema-to-typescript": "^15.0.4",
         "prettier": "^3.8.3",
         "ts-jest": "^29.4.9",

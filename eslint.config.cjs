@@ -16,6 +16,7 @@ module.exports = [
             'docs/**',
             'scripts/**',
             'test-projects/**',
+            'test-projects-scale/**',
             'dep-health-reports/**',
             'src/app/config/validateConfig.generated.js',
         ],

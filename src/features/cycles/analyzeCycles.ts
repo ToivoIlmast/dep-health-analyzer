@@ -1,7 +1,7 @@
 import { buildCytoscapeElements } from '@features/cycles/adapters';
 import { generateHtml } from '@features/cycles/visualization/generateHtml';
 import { scanProject } from '@core/scanProject';
-import { detectCycles } from './detectCycles';
+import { buildCycleFindings } from './findings/buildCycleFindings';
 import { calculateArchitectureMetrics } from './metrics/architectureMetrics';
 import { findSCCs } from './metrics/findScc';
 import { getLargestSccSize } from './metrics/getLargestSccSize';
@@ -78,33 +78,34 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
         includeTypeOnlyImports,
         exclude,
     });
-    const cycles = detectCycles(result.graph);
-    result.cycles = cycles;
-
     console.log(`Scanned files: ${result.scannedFiles}`);
     console.log(`Modules: ${result.graph.nodes.size}`);
 
-    let edgesCount = 0;
-    for (const deps of result.graph.edges.values()) {
-        edgesCount += deps.size;
-    }
-
-    console.log(`Dependencies: ${edgesCount}`);
-    console.log(`Cycles detected: ${result.cycles.length}`);
-
-    // detectCycles enumerates individual cycles via a naive DFS, which can
-    // undercount true architectural entanglement when cycles share a node
-    // (e.g. A->B->C->A plus A->D->A is genuinely one 4-node SCC, but
-    // detectCycles reports two separate 3-node/2-node cycles). findSCCs runs
-    // the real Kosaraju algorithm, so "Largest SCC" is computed from that
-    // instead - and reused below for the HTML report, so both stay
-    // consistent with each other by construction.
+    // P1-1 fix: every number below - the CLI's own "Cycles detected" line,
+    // exit code/failOn, the HTML summary, and the Findings list - now comes
+    // from this SAME findSCCs()+buildCycleFindings() computation, never
+    // from detectCycles() (a naive DFS back-edge enumerator that counts
+    // something genuinely different: individual back-edges hit during a
+    // single shared-visited-set traversal, not cyclic components - it can
+    // both undercount when cycles share a node, e.g. A->B->C->A plus
+    // A->D->A is genuinely one 4-node SCC but detectCycles reports two
+    // separate 3-node/2-node cycles, and disagree with "Largest SCC" for a
+    // self-loop, see realCycles.ts). "Cycles detected: N" means exactly
+    // "N real cyclic strongly-connected components" - the same N as
+    // findings.sccs.length and the HTML report's own SCC count, always, by
+    // construction, since they're literally the same array.
     const sccs = findSCCs(result.graph);
+    const findings = buildCycleFindings({ graph: result.graph, sccs });
+    const cyclesCount = findings.sccs.length;
+
+    console.log(`Dependencies: ${findings.dependencyCount}`);
+    console.log(`Cycles detected: ${cyclesCount}`);
+
     const largestScc = getLargestSccSize(sccs, result.graph);
     console.log(`Largest SCC: ${largestScc} module(s)`);
     const instabilityMetrics = calculateArchitectureMetrics(result.graph);
 
-    const failed = shouldFail({ cyclesCount: result.cycles.length, failOn });
+    const failed = shouldFail({ cyclesCount, failOn });
 
     const handler = handlers[mode];
     handler({ metrics: instabilityMetrics });
@@ -122,7 +123,7 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
             projectRoot: process.cwd(),
         });
 
-        generateHtml({ graph: elements, outputPath: htmlReportOutputPath });
+        generateHtml({ graph: elements, findings, outputPath: htmlReportOutputPath });
     }
 
     return failed;

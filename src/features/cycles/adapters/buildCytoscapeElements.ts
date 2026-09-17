@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { DependencyGraph } from '@core/graph/types';
 import { ModuleMetrics } from '@features/cycles/metrics/types';
+import { filterRealCycleSccs } from '@features/cycles/metrics/realCycles';
 
 export type CytoscapeNode = {
     data: {
@@ -293,16 +294,19 @@ export function buildCytoscapeElements(args: BuildCytoscapeElements): {
     edges: CytoscapeEdge[];
 } {
     const { graph, metrics, sccs, projectRoot } = args;
-    // findSCCs() (Kosaraju) returns a trivial size-1 "component" for every
-    // node that isn't part of any real cycle - that's not a cycle and must
-    // stay filtered out. But a real, honest cycle needs only 2 nodes
-    // (A <-> B is the single most common real-world case - a direct
-    // circular import), and `> 2` here was silently treating those exactly
-    // like ordinary nodes: no color, no `.scc` class, nothing - even
-    // though the CLI's own "Cycles detected"/"Largest SCC" output correctly
-    // reported them. A 2-node SCC is still a real cycle; only a 1-node one
-    // is the non-cycle case that needs excluding.
-    const realSccs = sccs.filter((scc) => scc.length > 1);
+    // filterRealCycleSccs (realCycles.ts) is the single shared definition
+    // of "real cycle" every consumer of findSCCs()'s output uses (P1-1/
+    // P1-2 fix) - a trivial size-1 "component" for a node that isn't part
+    // of any real cycle is excluded, a 2+-member component is always a
+    // real cycle (A <-> B, the single most common real-world case - a
+    // direct circular import - included), and a size-1 component IS
+    // included when that lone node has a self-loop (a file importing
+    // itself): before this shared definition existed, this filter's own
+    // `scc.length > 1` silently gave a self-loop node no color/`.scc`
+    // class/sccId at all, even though the CLI's "Cycles detected"/"Largest
+    // SCC" output could report it as a real cycle - an invisible-in-the-
+    // graph cycle the CLI told the reader to go find.
+    const realSccs = filterRealCycleSccs(sccs, graph);
 
     const nodes = buildNodes({
         // graph.nodes tracks every scanned file, including ones with zero
