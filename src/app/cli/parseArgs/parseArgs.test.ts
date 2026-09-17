@@ -49,6 +49,52 @@ describe('parseArgs', () => {
         expect(result).not.toHaveProperty('strategy');
     });
 
+    // F19: cycles has no use for a baseline at all (it never diffs two
+    // scans) - resolveBaselineRef() must not run for it. Before this fix
+    // it ran unconditionally for every non-history command, which is
+    // exactly why a plain `cycles` run could print a Git baseline note
+    // ("HEAD~1 could not be resolved...") that has nothing to do with what
+    // the user asked for.
+    describe('cycles does not resolve a baseline (F19)', () => {
+        it('does not call resolveBaselineRef for the cycles command', () => {
+            setArgv('cycles');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.CYCLES);
+
+            parseArgs({});
+
+            expect(mockedResolveBaselineRef).not.toHaveBeenCalled();
+        });
+
+        it('does not include a baselineRef property for the cycles command', () => {
+            setArgv('cycles');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.CYCLES);
+
+            const result = parseArgs({});
+
+            expect(result).not.toHaveProperty('baselineRef');
+        });
+
+        it('still calls resolveBaselineRef for the regression command (unchanged)', () => {
+            setArgv('regression');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.REGRESSION);
+
+            const result = parseArgs({});
+
+            expect(mockedResolveBaselineRef).toHaveBeenCalledWith(undefined);
+            expect(result).toHaveProperty('baselineRef', 'HEAD~1');
+        });
+
+        it('still calls resolveBaselineRef for the history command (unchanged)', () => {
+            setArgv('history');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.HISTORY);
+
+            const result = parseArgs({});
+
+            expect(mockedResolveBaselineRef).toHaveBeenCalledWith(undefined, 'HEAD~9');
+            expect(result).toHaveProperty('baselineRef', 'HEAD~1');
+        });
+    });
+
     it('does not include sampleSize/strategy for the regression command', () => {
         setArgv('regression');
         mockedParseCommand.mockReturnValue(CLI_COMMANDS.REGRESSION);

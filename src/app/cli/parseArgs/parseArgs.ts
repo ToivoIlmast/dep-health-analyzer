@@ -33,6 +33,19 @@ export function parseArgs(config: IConfig): CliArgs {
         config.features?.regression?.history?.strategy ?? HISTORY_STRATEGIES.INCREMENTAL
     );
 
+    // F19: cycles never diffs two scans, so it has no use for a baseline
+    // ref at all - resolveBaselineRef() must not run for it (it can shell
+    // out to git and print a Git-specific warning, neither of which has
+    // anything to do with a plain cycles run).
+    if (command === CLI_COMMANDS.CYCLES) {
+        return {
+            command,
+            target,
+            mode,
+            ai,
+        };
+    }
+
     // this flag is only for regression and history - history's default
     // fallback must reach back sampleSize-1 commits, not a fixed HEAD~1,
     // otherwise the sampled range is always exactly 2 commits regardless
