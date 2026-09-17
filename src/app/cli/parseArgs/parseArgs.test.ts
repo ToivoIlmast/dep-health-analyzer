@@ -127,4 +127,53 @@ describe('parseArgs', () => {
 
         expect(mockedResolveBaselineRef).toHaveBeenCalledWith(undefined);
     });
+
+    // F16: --target is the one option parseArgs.ts resolves itself
+    // (getArgValue/parseTarget are not mocked in this file, unlike every
+    // other option above) - so these exercise the real, end-to-end wiring,
+    // not just parseTarget's own unit tests.
+    describe('--target (F16)', () => {
+        it('defaults to "." when --target is omitted entirely', () => {
+            setArgv('cycles');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.CYCLES);
+
+            const result = parseArgs({});
+
+            expect(result.target).toBe('.');
+        });
+
+        it('reads a normal --target value', () => {
+            setArgv('cycles', '--target', './src');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.CYCLES);
+
+            const result = parseArgs({});
+
+            expect(result.target).toBe('./src');
+        });
+
+        it('does not read the next flag as --target\'s value, and exits with a controlled error instead', () => {
+            setArgv('cycles', '--target', '--mode', 'html');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.CYCLES);
+            const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+            const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+
+            const result = parseArgs({});
+
+            expect(result.target).not.toBe('--mode');
+            expect(consoleErrorSpy).toHaveBeenCalled();
+            expect(exitSpy).toHaveBeenCalledWith(1);
+        });
+
+        it('exits with a controlled error when --target is the last token, instead of silently defaulting', () => {
+            setArgv('cycles', '--target');
+            mockedParseCommand.mockReturnValue(CLI_COMMANDS.CYCLES);
+            const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+            const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+
+            parseArgs({});
+
+            expect(consoleErrorSpy).toHaveBeenCalled();
+            expect(exitSpy).toHaveBeenCalledWith(1);
+        });
+    });
 });

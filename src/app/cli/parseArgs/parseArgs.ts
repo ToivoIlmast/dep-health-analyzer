@@ -2,6 +2,7 @@ import { IConfig } from 'app/config/types';
 import { CLI_COMMANDS, CLI_FLAG, CliArgs } from '../types';
 import { parseCommand } from './parseCommand';
 import { getArgValue } from './getArgValue';
+import { parseTarget } from './parseTarget';
 import { parseMode } from './parseMode';
 import { parsePoints } from './parsePoints';
 import { parseHistoryStrategy } from './parseHistoryStrategy';
@@ -21,7 +22,7 @@ export function parseArgs(config: IConfig): CliArgs {
               : (config.features?.scc?.mode ?? MODES.FULL);
 
     // these are common flags
-    const target = getArgValue(args, CLI_FLAG.TARGET) ?? '.';
+    const target = parseTarget(args);
     const mode = parseMode(args, defaultMode);
     const ai = parseAI(args) ?? false;
 
