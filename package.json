@@ -36,7 +36,8 @@
         "test-projects-scale:validate": "node scripts/validate-scale-corpus.mjs",
         "dev:cycle-map": "npm run build && cd test-projects/large-cycle-app && node ../../dist/app/cli.js cycles --mode html",
         "dev:cycle-map:large": "npm run build && cd test-projects-scale/cycles-large && node ../../dist/app/cli.js cycles --mode html",
-        "verify:cycles-graph-fit": "node scripts/verify-cycles-graph-fit.mjs"
+        "verify:cycles-graph-fit": "node scripts/verify-cycles-graph-fit.mjs",
+        "verify:focus-overlap": "node scripts/verify-focus-overlap.mjs"
     },
     "bin": {
         "dep-health-analyzer": "dist/app/cli.js"

@@ -1935,6 +1935,27 @@ describe('buildHtmlTemplate overlap-resolution scalability (P0-2 fix)', () => {
         expect(html.match(/function resolveEdgeNodeOverlaps\(cy, options\)/g)).toHaveLength(1);
         expect(html.match(/function resolveNodeOverlaps\(cy, options\)/g)).toHaveLength(1);
     });
+
+    // F9 regression. The node style is 'width': 'label', 'height': 'label',
+    // 'padding': '10px' - node.width()/node.height() return the label box
+    // WITHOUT that padding (or any border), so the pure algorithm above
+    // (correct on the {width, height} it's given - see
+    // graphOverlapResolution.test.ts) resolves overlap against boxes ~20px
+    // per dimension smaller than what actually gets rendered, leaving the
+    // real, rendered boxes still overlapping even though the algorithm
+    // itself reports success. node.outerWidth()/outerHeight() include
+    // padding and border and are the correct measurement for this style.
+    it('F9 fix: both cytoscape-facing wrappers measure the real rendered node box (outerWidth/outerHeight), not the naked label box excluding padding/border', () => {
+        const edgeNodeWrapperStart = html.indexOf('function resolveEdgeNodeOverlaps(cy, options)');
+        const nodeOverlapWrapperStart = html.indexOf('function resolveNodeOverlaps(cy, options)');
+        const nextFnStart = html.indexOf('function ', nodeOverlapWrapperStart + 1);
+        const bothWrappersSource = html.slice(edgeNodeWrapperStart, nextFnStart);
+
+        expect(bothWrappersSource.match(/width: node\.outerWidth\(\)/g)).toHaveLength(2);
+        expect(bothWrappersSource.match(/height: node\.outerHeight\(\)/g)).toHaveLength(2);
+        expect(bothWrappersSource).not.toContain('width: node.width()');
+        expect(bothWrappersSource).not.toContain('height: node.height()');
+    });
 });
 
 describe('buildHtmlTemplate unresolved imports (F1)', () => {

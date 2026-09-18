@@ -2066,9 +2066,19 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // per push, as the pre-fix version made throughout the whole
             // iterative process).
             function resolveEdgeNodeOverlaps(cy, options) {
+                // F9 fix: the node style is 'width': 'label', 'height':
+                // 'label', 'padding': '10px' - node.width()/node.height()
+                // return the label box WITHOUT that padding (or any
+                // border), so the pure algorithm below (correct on
+                // whatever {width, height} it's given) was resolving
+                // overlap against boxes smaller than what actually
+                // renders, leaving real, rendered boxes still overlapping
+                // even once it reported success. outerWidth()/
+                // outerHeight() include padding and border - the real
+                // rendered box size.
                 const plainNodes = visibleNodes(cy).map((node) => {
                     const pos = node.position();
-                    return { id: node.id(), x: pos.x, y: pos.y, width: node.width(), height: node.height() };
+                    return { id: node.id(), x: pos.x, y: pos.y, width: node.outerWidth(), height: node.outerHeight() };
                 });
                 const plainEdges = visibleEdges(cy).map((edge) => ({
                     sourceId: edge.source().id(),
@@ -2114,9 +2124,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             const resolveNodeOverlapsPure = ${resolveNodeOverlapsPure.toString()};
 
             function resolveNodeOverlaps(cy, options) {
+                // F9 fix: see resolveEdgeNodeOverlaps's own comment above -
+                // outerWidth()/outerHeight() (padding + border included),
+                // not width()/height(), is the real rendered box size.
                 const plainNodes = visibleNodes(cy).map((node) => {
                     const pos = node.position();
-                    return { id: node.id(), x: pos.x, y: pos.y, width: node.width(), height: node.height() };
+                    return { id: node.id(), x: pos.x, y: pos.y, width: node.outerWidth(), height: node.outerHeight() };
                 });
 
                 resolveNodeOverlapsPure(plainNodes, options);
