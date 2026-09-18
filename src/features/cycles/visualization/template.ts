@@ -4116,7 +4116,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     // strong connectivity. Defensive only.
                     return null;
                 }
-                const firstStep = startTargets[0];
+                // F7: exclude a self-loop (startId -> startId) from the
+                // first-step choice, mirroring the server's own
+                // pickFirstStep (buildCycleFindings.ts) - without this, a
+                // self-loop that sorts first lets the BFS close on the very
+                // first step, producing a degenerate [startId, startId]
+                // "cycle" instead of the SCC's real multi-member one. Falls
+                // back to the self-loop only if literally nothing else
+                // exists, same defensive floor as the server copy.
+                const realStartTargets = startTargets.filter((target) => target !== startId);
+                const firstStep = realStartTargets[0] ?? startTargets[0];
 
                 const cameFrom = new Map([[firstStep, null]]);
                 const queue = [firstStep];

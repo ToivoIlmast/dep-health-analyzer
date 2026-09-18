@@ -778,7 +778,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         // output confirmed via headless Chrome.
         expect(html).toContain('function findCycleThroughNode(sccId, startId)');
         expect(html).toContain("candidate.data('sccId') === sccId");
-        expect(html).toContain('const firstStep = startTargets[0];');
+        expect(html).toContain('const firstStep = realStartTargets[0] ?? startTargets[0];');
         expect(html).toContain('const cameFrom = new Map([[firstStep, null]]);');
     });
 
@@ -820,7 +820,7 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
 
     it('is deterministic - fixed sorted adjacency and a fixed starting neighbor, not a random/unordered choice', () => {
         expect(html).toContain('adjacency.forEach((targets) => targets.sort());');
-        expect(html).toContain('const firstStep = startTargets[0];');
+        expect(html).toContain('const firstStep = realStartTargets[0] ?? startTargets[0];');
     });
 
     it('reads the WHOLE analyzed graph, not the currently filtered view - a cycle is a fact independent of Area/Connections', () => {
@@ -840,6 +840,44 @@ describe('buildHtmlTemplate concrete dependency cycle', () => {
         const fnSource = html.slice(fnStart, fnEnd);
 
         expect(fnSource).not.toContain('area-hidden');
+    });
+
+    it('F7: a self-loop on the alphabetically-first member does not derail the cycle into a trivial A->A (parity with the server\'s pickFirstStep, buildCycleFindings.ts)', () => {
+        // The server's own pickFirstStep (buildCycleFindings.ts) filters
+        // out a self-target before picking the first BFS step, exactly to
+        // avoid this. findCycleThroughNode's `const firstStep =
+        // startTargets[0];` has no such filter - extracted here and run
+        // against a stub `cy` (array-based nodes()/edges(), same
+        // data()/id() shape cytoscape provides) to prove it live, the same
+        // way buildCycleFindings.test.ts proves the server twin.
+        const fnStart = html.indexOf('function findCycleThroughNode(sccId, startId)');
+        const fnEnd = html.indexOf('function ', fnStart + 1);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        const makeNode = (id: string, sccId: string) => ({
+            id: () => id,
+            data: (key: string) => (key === 'sccId' ? sccId : undefined),
+        });
+        const makeEdge = (source: string, target: string) => ({
+            data: (key: string) => (key === 'source' ? source : target),
+        });
+
+        // Same shape as buildCycleFindings.test.ts's self-loop fixture:
+        // a.ts -> a.ts (self), a.ts -> b.ts, b.ts -> c.ts, c.ts -> a.ts.
+        const nodes = [makeNode('a.ts', 'scc-1'), makeNode('b.ts', 'scc-1'), makeNode('c.ts', 'scc-1')];
+        const edges = [
+            makeEdge('a.ts', 'a.ts'),
+            makeEdge('a.ts', 'b.ts'),
+            makeEdge('b.ts', 'c.ts'),
+            makeEdge('c.ts', 'a.ts'),
+        ];
+        const cy = { nodes: () => nodes, edges: () => edges };
+
+        const findCycleThroughNode = new Function('cy', `${fnSource}\nreturn findCycleThroughNode;`)(cy);
+        const path = findCycleThroughNode('scc-1', 'a.ts');
+
+        expect(path.length).toBeGreaterThan(2);
+        expect(new Set(path.slice(0, -1))).toEqual(new Set(['a.ts', 'b.ts', 'c.ts']));
     });
 
     it('never claims the shown cycle is the only one within the SCC', () => {
