@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
@@ -7,7 +7,7 @@ export function resolveBaselineRef(value?: string, fallbackRef = 'HEAD~1'): stri
     if (value) return value;
 
     try {
-        execSync(`git rev-parse --verify ${fallbackRef}`, { stdio: 'ignore' });
+        execFileSync('git', ['rev-parse', '--verify', fallbackRef], { stdio: 'ignore' });
         return fallbackRef;
     } catch {
         console.warn(
