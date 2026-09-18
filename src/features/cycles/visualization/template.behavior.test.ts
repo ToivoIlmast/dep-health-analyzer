@@ -311,6 +311,55 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
         expect(cy.getElementById('focus-overflow-proxy').empty()).toBe(false);
     });
 
+    // F8 regression, verified live: focusScc() computes currentFocus.nodeIds
+    // (the layout/fit membership set) BEFORE refreshAreaView() adds the
+    // overflow proxy node, so isNodeInCurrentView() never counts the proxy
+    // as part of the focused view - it is excluded from runFocusLayout()'s
+    // own cose run (which only lays out visibleElements(cy)) and never
+    // gets a position, leaving it at cytoscape's own default (0, 0) even
+    // once the layout has fully converged. Same convergence budget as the
+    // P2 fix test above (2000ms, regardless of graph size).
+    it('F8 regression, verified live: the Focus overflow proxy is positioned once the layout converges, not stuck at (0, 0)', () => {
+        const HUB_NEIGHBOUR_COUNT = 600;
+        const nodes: CytoscapeNode[] = [
+            makeNode('/repo/src/hub/logger.ts', { sccId: 0, sccSize: 2, color: '#1b9e77' }),
+            makeNode('/repo/src/hub/config.ts', { sccId: 0, sccSize: 2, color: '#1b9e77' }),
+        ];
+        const edgesList: CytoscapeEdge[] = [
+            edge('/repo/src/hub/logger.ts', '/repo/src/hub/config.ts'),
+            edge('/repo/src/hub/config.ts', '/repo/src/hub/logger.ts'),
+        ];
+
+        for (let i = 0; i < HUB_NEIGHBOUR_COUNT; i++) {
+            const id = `/repo/src/consumers/consumer${i}.ts`;
+            nodes.push(makeNode(id));
+            edgesList.push(edge(id, '/repo/src/hub/logger.ts'));
+        }
+
+        const findings: CycleFindings = {
+            moduleCount: nodes.length,
+            dependencyCount: edgesList.length,
+            sccs: [
+                {
+                    id: 0,
+                    size: 2,
+                    memberIds: ['/repo/src/hub/config.ts', '/repo/src/hub/logger.ts'],
+                    exampleCycle: ['/repo/src/hub/logger.ts', '/repo/src/hub/config.ts', '/repo/src/hub/logger.ts'],
+                },
+            ],
+        };
+
+        const { win, cy } = renderInteractiveReport({ nodes, edges: edgesList, findings });
+
+        win.focusScc(0, '/repo/src/hub/logger.ts');
+
+        expect(cy.getElementById('focus-overflow-proxy').empty()).toBe(false);
+
+        jest.advanceTimersByTime(2000);
+
+        expect(positionOf(cy, 'focus-overflow-proxy')).not.toEqual({ x: 0, y: 0 });
+    });
+
     it('large SCC (above FOCUS_FULL_SCC_MAX): Focus falls back to a representative cycle, and every non-representative member is correctly off-screen, not silently misread as visible', () => {
         // A pure ring has no shorter cycle than the whole ring itself, so
         // it can't exercise the truncation path at all - this shape

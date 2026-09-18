@@ -3661,6 +3661,42 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     }
 
                     activeFocusLayout = null;
+
+                    // F8 fix: the overflow proxy (addFocusOverflowProxies())
+                    // is added to cy AFTER currentFocus.nodeIds was computed
+                    // in focusScc(), so isNodeInCurrentView() never counted
+                    // it as part of the focused view - it was excluded from
+                    // the cose run just above (visibleElements(cy) at the
+                    // top of this function) and from onLayoutFinished's own
+                    // fit (applyInitialView() -> fitCyAvoidingChrome(cy, 80),
+                    // also keyed off visibleElements(cy)), leaving it at
+                    // cytoscape's own default (0, 0) - see AUDIT_v0.11.0.md
+                    // F8. Placed at the now-settled core's centroid and
+                    // folded into currentFocus.nodeIds here, right before
+                    // onLayoutFinished(cy, 'cose') below, so it both starts
+                    // out next to the cycle it summarizes and is included in
+                    // that same fit. Two single-axis position(name, value)
+                    // calls, not one object-valued position(pos) call -
+                    // confirmed directly (this fix's own behavioral test)
+                    // that only the single-axis form reliably moves a node
+                    // added via cy.add() after construction.
+                    const overflowProxy = cy.getElementById(FOCUS_OVERFLOW_PROXY_ID);
+
+                    if (currentFocus && !overflowProxy.empty()) {
+                        const coreNodes = cy.nodes().filter((node) => currentFocus.coreIds.has(node.id()));
+                        const centroid = coreNodes.reduce(
+                            (acc, node) => {
+                                const pos = node.position();
+                                return { x: acc.x + pos.x, y: acc.y + pos.y };
+                            },
+                            { x: 0, y: 0 },
+                        );
+
+                        overflowProxy.position('x', centroid.x / coreNodes.length);
+                        overflowProxy.position('y', centroid.y / coreNodes.length);
+                        currentFocus.nodeIds.add(FOCUS_OVERFLOW_PROXY_ID);
+                    }
+
                     onLayoutFinished(cy, 'cose');
                 });
 
