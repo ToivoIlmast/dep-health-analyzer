@@ -201,7 +201,14 @@ describe('analyzeRegression', () => {
             const currentScanArgs = mockedScanProject.mock.calls[0]?.[0];
             const baselineScanArgs = mockedScanProject.mock.calls[1]?.[0];
 
-            expect(currentScanArgs?.exclude).toEqual(expect.arrayContaining(['out.html', 'assets/**']));
+            expect(currentScanArgs?.exclude).toEqual(
+                expect.arrayContaining([
+                    'out.html',
+                    'assets/cytoscape.min.js',
+                    'assets/dagre.min.js',
+                    'assets/cytoscape-dagre.js',
+                ])
+            );
             // The baseline scan runs inside a temp worktree the report
             // never touches - its exclude list must stay exactly what the
             // caller passed in (undefined here, since baseArgs sets none),

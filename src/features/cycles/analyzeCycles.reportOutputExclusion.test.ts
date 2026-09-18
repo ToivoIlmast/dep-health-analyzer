@@ -130,6 +130,103 @@ describe('analyzeCycles - report output excluded from analysis (F4/F26)', () => 
         expect(console.log).toHaveBeenCalledWith('Modules: 2');
     });
 
+    describe('does not shadow a real user "assets" directory (F4 false-negative fix)', () => {
+        it('still scans a real user src/assets/ source directory when outputPath sits OUTSIDE src (Case 1)', async () => {
+            fs.mkdirSync(path.join(root, 'src', 'assets'), { recursive: true });
+            fs.writeFileSync(path.join(root, 'src', 'assets', 'icons.ts'), `export const icons = 1;\n`);
+            fs.writeFileSync(path.join(root, 'src', 'assets', 'logo.ts'), `export const logo = 1;\n`);
+            fs.writeFileSync(
+                path.join(root, 'src', 'index.ts'),
+                `import { icons } from './assets/icons';\nimport { logo } from './assets/logo';\nexport const both = icons + logo;\n`
+            );
+
+            const outputPath = path.join(root, 'report.html');
+
+            await analyzeCycles({
+                ...baseArgs,
+                target: root,
+                mode: MODES.COMPACT,
+                htmlReportOutputPath: outputPath,
+            });
+
+            // 3 real source files (index.ts, assets/icons.ts, assets/logo.ts).
+            expect(console.log).toHaveBeenCalledWith('Scanned files: 3');
+            expect(console.log).toHaveBeenCalledWith('Modules: 3');
+        });
+
+        it('still scans a real user src/assets/ source directory when outputPath sits INSIDE src (Case 3 - the exact "./src/report.html" scenario from the audit)', async () => {
+            fs.mkdirSync(path.join(root, 'src', 'assets'), { recursive: true });
+            fs.writeFileSync(path.join(root, 'src', 'assets', 'icons.ts'), `export const icons = 1;\n`);
+            fs.writeFileSync(path.join(root, 'src', 'assets', 'logo.ts'), `export const logo = 1;\n`);
+            fs.writeFileSync(
+                path.join(root, 'src', 'index.ts'),
+                `import { icons } from './assets/icons';\nimport { logo } from './assets/logo';\nexport const both = icons + logo;\n`
+            );
+
+            // outputPath is INSIDE src/, right next to the real assets/
+            // directory - the literal false-negative the audit found:
+            // "src/assets/**" used to also match this real source dir.
+            const outputPath = path.join(root, 'src', 'report.html');
+
+            // First, actually generate the report (+ its own vendored
+            // assets) into src/, next to the real assets/ directory -
+            // mirroring the two-phase pattern used by the other tests in
+            // this file (HTML mode writes the report, then a COMPACT
+            // rescan checks it wasn't re-discovered as source).
+            await analyzeCycles({
+                ...baseArgs,
+                target: root,
+                mode: MODES.HTML,
+                htmlReportOutputPath: outputPath,
+            });
+            expect(fs.existsSync(path.join(root, 'src', 'assets', 'cytoscape.min.js'))).toBe(true);
+
+            (console.log as jest.Mock).mockClear();
+            await analyzeCycles({
+                ...baseArgs,
+                target: root,
+                mode: MODES.COMPACT,
+                htmlReportOutputPath: outputPath,
+            });
+
+            expect(console.log).toHaveBeenCalledWith('Scanned files: 3');
+            expect(console.log).toHaveBeenCalledWith('Modules: 3');
+        });
+
+        it('does not drop a dependency finding rooted in a source file under assets/ just because outputPath moved (Case 4 - regression)', async () => {
+            fs.mkdirSync(path.join(root, 'src', 'assets'), { recursive: true });
+            fs.writeFileSync(path.join(root, 'src', 'assets', 'util.ts'), `export const util = 1;\n`);
+            fs.writeFileSync(
+                path.join(root, 'src', 'index.ts'),
+                `import { util } from './assets/util';\nexport const value = util;\n`
+            );
+
+            const outsideOutputPath = path.join(root, 'report.html');
+            const outsideResult = await analyzeCycles({
+                ...baseArgs,
+                target: root,
+                mode: MODES.COMPACT,
+                htmlReportOutputPath: outsideOutputPath,
+            });
+
+            (console.log as jest.Mock).mockClear();
+            const insideOutputPath = path.join(root, 'src', 'report.html');
+            const insideResult = await analyzeCycles({
+                ...baseArgs,
+                target: root,
+                mode: MODES.COMPACT,
+                htmlReportOutputPath: insideOutputPath,
+            });
+
+            // Same source, same real dependency - only outputPath moved.
+            // The finding (and pass/fail result) must not change.
+            expect(console.log).toHaveBeenCalledWith('Scanned files: 2');
+            expect(console.log).toHaveBeenCalledWith('Modules: 2');
+            expect(console.log).toHaveBeenCalledWith('Dependencies: 1');
+            expect(insideResult).toBe(outsideResult);
+        });
+    });
+
     describe('idempotency / non-mutation (F4/F26 part C)', () => {
         it('does not mutate or grow a shared exclude array across repeated calls, and produces the same scan result both times', async () => {
             fs.writeFileSync(path.join(root, 'a.ts'), `export const a = 1;\n`);
