@@ -3039,14 +3039,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 fitButton.addEventListener(
                     'click',
                     function () {
-                        // "Fit Graph" means "show me everything currently
-                        // visible" - which conflicts with an active SCC
-                        // focus's fade (only the focused SCC at full
-                        // opacity) still being applied underneath a
-                        // now-full-graph viewport. Exit first so the two
-                        // controls can't leave the report in a
-                        // half-exited, visually confusing state.
-                        exitFocus();
+                        // F18 fix (AUDIT_v0.11.0.md): "Fit Graph" means
+                        // "re-center on everything currently visible", not
+                        // "leave Focus". The old exitFocus() call here
+                        // predates the real-subgraph Focus rework above
+                        // (isNodeInCurrentView()/isEdgeInCurrentView()
+                        // already fold currentFocus in) and was only ever
+                        // needed to undo a fade-in-place effect that no
+                        // longer exists - fitCyAvoidingChrome()'s default
+                        // target, visibleElements(cy), already resolves to
+                        // just the focused subgraph while Focus is active,
+                        // and to the full graph otherwise, so no separate
+                        // branch is needed here for either case.
                         fitCyAvoidingChrome(cy, 40);
                     },
                 );

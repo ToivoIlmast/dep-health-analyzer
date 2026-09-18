@@ -52,22 +52,33 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(ROOT, 'dist/app/cli.js');
 const CYCLES_LARGE_DIR = path.join(ROOT, 'test-projects-scale/cycles-large');
 
+// Phase 1.7 (PLAN_post_v0.11.0.md): this script is now also called from
+// `npm run tff`, which has to stay runnable on a plain checkout with none
+// of the prerequisites below installed (see the file-level comment - a
+// real browser isn't guaranteed available in every environment this repo
+// is worked in). A missing prerequisite here is therefore a SKIP (exit 0,
+// same as the rest of `tff` proceeding normally), not a FAIL - only a real
+// geometry/behavioral assertion failing once the script actually ran is
+// allowed to fail the build. Running it directly (`npm run
+// verify:cycles-graph-fit`) still prints the same setup instructions.
+function skip(reason) {
+    console.warn(`SKIPPED verify:cycles-graph-fit - ${reason}`);
+    process.exit(0);
+}
+
 let chromium;
 try {
     ({ chromium } = await import('playwright-core'));
 } catch {
-    console.error('playwright-core is not installed. Run: npm install --no-save playwright-core');
-    process.exit(1);
+    skip('playwright-core is not installed. Run: npm install --no-save playwright-core');
 }
 
 if (!fs.existsSync(CLI)) {
-    console.error(`${CLI} not found. Run: npm run build`);
-    process.exit(1);
+    skip(`${CLI} not found. Run: npm run build`);
 }
 
 if (!fs.existsSync(CYCLES_LARGE_DIR)) {
-    console.error(`${CYCLES_LARGE_DIR} not found. Run: npm run test-projects-scale:generate`);
-    process.exit(1);
+    skip(`${CYCLES_LARGE_DIR} not found. Run: npm run test-projects-scale:generate`);
 }
 
 function resolveChromiumExecutable() {
@@ -119,10 +130,14 @@ function buildManyAreasFixture(dir) {
 }
 
 function generateReport(projectDir) {
-    // A stale reports/ dir from a previous (e.g. interrupted) run would
-    // get rescanned as extra "source" modules on the next pass (its own
-    // copied assets/*.js) - always start from a clean slate.
-    const reportsDir = path.join(projectDir, 'reports');
+    // A stale dep-health-reports/ dir from a previous (e.g. interrupted) run
+    // would get rescanned as extra "source" modules on the next pass (its
+    // own copied assets/*.js) - always start from a clean slate. The
+    // directory/file name here (not the older 'reports/cycles.html') is
+    // `defaultConfig.ts`'s current `features.scc.reporting.html.outputPath`
+    // default, which is what a fixture with no explicit outputPath (both
+    // fixtures below) actually gets written to.
+    const reportsDir = path.join(projectDir, 'dep-health-reports');
     fs.rmSync(reportsDir, { recursive: true, force: true });
 
     // A non-zero exit (process.exit(1) in src/app/cli.ts) is expected
@@ -132,11 +147,11 @@ function generateReport(projectDir) {
     try {
         execFileSync(process.execPath, [CLI, 'cycles', '--mode', 'html'], { cwd: projectDir, stdio: 'pipe' });
     } catch (err) {
-        if (!fs.existsSync(path.join(reportsDir, 'cycles.html'))) {
+        if (!fs.existsSync(path.join(reportsDir, 'scc.html'))) {
             throw err;
         }
     }
-    return path.join(reportsDir, 'cycles.html');
+    return path.join(reportsDir, 'scc.html');
 }
 
 const results = [];
@@ -345,8 +360,7 @@ async function assertGoodFit(page, label, { basePadding = 80 } = {}) {
 async function main() {
     const executablePath = resolveChromiumExecutable();
     if (!executablePath) {
-        console.error('No cached Chromium found. Run `npx playwright install chromium`, or set PLAYWRIGHT_CHROMIUM_PATH.');
-        process.exit(1);
+        skip('no cached Chromium found. Run `npx playwright install chromium`, or set PLAYWRIGHT_CHROMIUM_PATH.');
     }
 
     const manyAreasDir = path.join(os.tmpdir(), 'dep-health-verify-many-areas-fixture');
@@ -354,7 +368,16 @@ async function main() {
     const manyAreasReport = generateReport(manyAreasDir);
     const cyclesLargeReport = generateReport(CYCLES_LARGE_DIR);
 
-    const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
+    // A cached Chromium binary that fails to actually launch (typically
+    // missing system shared libs - libnspr4/libnss3/libasound2t64 - on a
+    // minimal box) is the same class of "not usable in this environment"
+    // as no cached binary at all: skip, don't fail `tff` over host setup.
+    let browser;
+    try {
+        browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
+    } catch (err) {
+        skip(`cached Chromium at ${executablePath} failed to launch (${err.message.split('\n')[0]}). See this script's own header comment for the manual system-lib workaround.`);
+    }
 
     // --- P0: tall #hint legend (14 areas) must not collapse the fit ---
     {
@@ -424,6 +447,68 @@ async function main() {
         await context.close();
     }
 
+    // --- F18: "Fit Graph" while Focused Graph is active must stay in Focus
+    // and fit the focused subgraph, not exit Focus and fit the whole graph
+    // (AUDIT_v0.11.0.md F18 - the fit button's click handler used to call
+    // exitFocus() unconditionally before fitCyAvoidingChrome(), discarding
+    // the user's Focus the moment they tried to re-center the very view
+    // they were already looking at) ---
+    {
+        const { context, page } = await openReport(browser, cyclesLargeReport, { width: 1366, height: 768 });
+
+        // Deliberately NOT switchToGraph(page) here - the cytoscape
+        // instance's node/'.not-in-view' state is independent of which
+        // report section (Findings vs. Graph) is currently visible, and
+        // switching to Graph first would hide the Findings section's own
+        // "View cycle" button that the click below needs to be actionable.
+        const fullGraphNodeCount = await page.evaluate(() => window.__testCy.nodes().filter((n) => !n.hasClass('not-in-view')).length);
+
+        const sccId = await page.evaluate(() => {
+            const rows = Array.from(document.querySelectorAll('.finding-row'));
+            let best = null;
+            let bestSize = -1;
+            for (const row of rows) {
+                const header = row.querySelector('.finding-row-header')?.textContent || '';
+                const match = header.match(/(\d+)\s+modules/);
+                const size = match ? Number(match[1]) : 0;
+                if (size > bestSize) {
+                    bestSize = size;
+                    best = row.dataset.findingSccId;
+                }
+            }
+            return best;
+        });
+
+        await page.click(`.finding-row[data-finding-scc-id="${sccId}"] .finding-view-cycle-btn`);
+        await page.waitForSelector('#cycle-detail-modal[open]');
+        const preFocusZoom = await page.evaluate(() => window.__testCy.zoom());
+        await page.click('#cycle-detail-modal .cycle-detail-focus-btn');
+        await waitForZoomStable(page, { baseline: preFocusZoom });
+
+        const beforeFit = await measureFitState(page);
+        record('F18 setup: Focus is active before clicking Fit Graph', beforeFit.currentFocusActive === true);
+        record(
+            'F18 setup: the focused subgraph is genuinely smaller than the full graph (a real regression window)',
+            beforeFit.visibleNodeCount < fullGraphNodeCount,
+            `focused=${beforeFit.visibleNodeCount} full=${fullGraphNodeCount}`
+        );
+
+        await page.click('#fit-btn');
+        await page.waitForTimeout(100);
+
+        const afterFit = await measureFitState(page);
+        record('F18 fix: Focus is STILL active after clicking Fit Graph', afterFit.currentFocusActive === true);
+        record(
+            'F18 fix: Fit Graph did not fall back to fitting the full graph - visible node count unchanged',
+            afterFit.visibleNodeCount === beforeFit.visibleNodeCount,
+            `before=${beforeFit.visibleNodeCount} after=${afterFit.visibleNodeCount} fullGraph=${fullGraphNodeCount}`
+        );
+
+        await assertGoodFit(page, 'cycles-large Focused Graph after clicking Fit Graph while focused', { basePadding: 40 });
+
+        await context.close();
+    }
+
     // --- P1: Focus SCC A, then open a cycle-detail modal for a DIFFERENT SCC B - hidden note must not blame "the current filter" ---
     {
         const { context, page } = await openReport(browser, cyclesLargeReport, { width: 1366, height: 768 });
@@ -466,7 +551,7 @@ async function main() {
 
     await browser.close();
     fs.rmSync(manyAreasDir, { recursive: true, force: true });
-    fs.rmSync(path.join(CYCLES_LARGE_DIR, 'reports'), { recursive: true, force: true });
+    fs.rmSync(path.join(CYCLES_LARGE_DIR, 'dep-health-reports'), { recursive: true, force: true });
 
     const failed = results.filter((r) => !r.pass);
     console.log('\n' + '='.repeat(60));

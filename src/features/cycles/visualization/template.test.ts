@@ -629,16 +629,22 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html).toContain(
             "showFullGraphButton?.addEventListener('click', () => {\n                exitFocus();\n            });",
         );
-        // Fit Graph and the Layout dropdown both still call exitFocus()
-        // first, so neither control can leave a half-exited focus state.
+        // The Layout dropdown still calls exitFocus() first (a layout
+        // re-run moves nodes and changes the Focus/Area filter has never
+        // applied to, so it exits rather than risk a stale framing) - out
+        // of scope for F18, unchanged here.
+        expect(html).toContain('exitFocus();\n\n                const runningLayout');
+    });
+
+    it('F18 fix (AUDIT_v0.11.0.md): "Fit Graph" does NOT call exitFocus() - it stays in Focus and fits whatever visibleElements(cy) currently resolves to (the focused subgraph while focused, the full graph otherwise)', () => {
         // (exitFocus is a hoisted function declaration, defined later in
-        // source order than these two call sites - that's fine at runtime,
-        // so this checks for the CALL at each site, not source position.)
+        // source order than this call site - that's fine at runtime, so
+        // this checks the CALL is absent at this site, not source position.)
         const fitBtnStart = html.indexOf('fitButton.addEventListener(');
         const fitBtnEnd = html.indexOf('fitCyAvoidingChrome(cy, 40);', fitBtnStart);
         expect(fitBtnStart).toBeGreaterThan(-1);
-        expect(html.slice(fitBtnStart, fitBtnEnd)).toContain('exitFocus();');
-        expect(html).toContain('exitFocus();\n\n                const runningLayout');
+        expect(fitBtnEnd).toBeGreaterThan(fitBtnStart);
+        expect(html.slice(fitBtnStart, fitBtnEnd)).not.toContain('exitFocus();');
     });
 
     it('a member hidden by the current filter can never make the HUD\'s own Focus button claim the whole SCC is shown', () => {
