@@ -421,6 +421,66 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
         expect(hudSelectedBody?.innerHTML).toContain('hub.ts');
     });
 
+    // F5 (AUDIT_v0.11.0.md): a pure ring SCC has no shorter cycle than the
+    // whole ring itself, so findCycleThroughNode(sccId, startId) - the
+    // "representative cycle" search focusScc() falls back to above
+    // FOCUS_FULL_SCC_MAX - returns a path through every single member. Before
+    // this fix, coreMembers was set to exactly that path with no further cap,
+    // so a 45-member ring rendered all 45 nodes at once (the audit's
+    // "cycles-large" 50-module SCC, 5% zoom) while isRepresentativeOnly was
+    // still (incorrectly) true, making #focus-status claim a truncation that
+    // never actually happened.
+    it('F5: a large pure-ring SCC (no shorter cycle exists) is still capped at FOCUS_FULL_SCC_MAX core nodes', () => {
+        const RING_SIZE = 45;
+        const ringIds = Array.from({ length: RING_SIZE }, (_, i) => `/repo/src/ring/r${String(i).padStart(2, '0')}.ts`);
+        const nodes: CytoscapeNode[] = ringIds.map((id) => makeNode(id, { sccId: 0, sccSize: RING_SIZE, color: '#1b9e77' }));
+        const edgesList: CytoscapeEdge[] = ringIds.map((id, i) => edge(id, ringIds[(i + 1) % RING_SIZE]!));
+
+        const findings: CycleFindings = {
+            moduleCount: ringIds.length,
+            dependencyCount: edgesList.length,
+            sccs: [
+                {
+                    id: 0,
+                    size: RING_SIZE,
+                    memberIds: [...ringIds].sort(),
+                    exampleCycle: [...ringIds, ringIds[0]!],
+                },
+            ],
+        };
+
+        const { document, win, cy } = renderInteractiveReport({ nodes, edges: edgesList, findings });
+
+        win.focusScc(0, ringIds[0]!);
+
+        // '.focus-neighbor' marks the (separately, already-correctly
+        // bounded by FOCUS_NEIGHBOR_LIMIT) 1-hop context nodes focusScc()
+        // adds around the core - for this ring shape, the truncation
+        // boundary itself creates up to two such neighbours (the ring
+        // member just past the cut, and the one that wraps back to the
+        // start). The FOCUS_FULL_SCC_MAX invariant is about the CORE only;
+        // it says nothing about how many neighbours a shape happens to have.
+        const visibleRingCoreMembers = cy
+            .nodes()
+            .filter((n) => n.id().startsWith('/repo/src/ring/') && !n.hasClass('not-in-view') && !n.hasClass('focus-neighbor'));
+        const hiddenRingMembers = cy.nodes().filter((n) => n.id().startsWith('/repo/src/ring/') && n.hasClass('not-in-view'));
+
+        // The FOCUS_FULL_SCC_MAX cap must hold even when the "representative
+        // cycle" search can only return the entire ring - the core stays
+        // readable instead of silently rendering all 45 members at once.
+        expect(visibleRingCoreMembers.length).toBeLessThanOrEqual(40);
+        expect(hiddenRingMembers.length).toBeGreaterThan(0);
+        expect(cy.getElementById(ringIds[0]!).hasClass('not-in-view')).toBe(false);
+
+        // The caption must agree with what's actually on screen: real
+        // truncation happened, so the representative-cycle note is correct
+        // here (unlike the pre-fix bug, this assertion alone wouldn't have
+        // caught it - see the shownCoreCount comment below).
+        const focusStatus = document.getElementById('focus-status');
+        expect(focusStatus?.hidden).toBe(false);
+        expect(focusStatus?.textContent).toContain('45');
+    });
+
     // P2 fix, verified live: runFocusLayout()'s cose layout runs with
     // animate: true (~1.7-2.6s to converge - see positionOf()'s own note on
     // why 20ms is "still mid-animation" regardless of graph size). Exiting

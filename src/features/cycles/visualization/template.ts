@@ -3795,7 +3795,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     const path = findCycleThroughNode(sccId, resolvedStartId);
 
                     if (path) {
-                        const pathIds = new Set(path.slice(0, -1));
+                        // F5 fix: findCycleThroughNode returns the SHORTEST
+                        // cycle through resolvedStartId - for a ring-shaped
+                        // SCC (no shorter cycle exists than the whole ring),
+                        // that "representative cycle" is every single
+                        // member, so taking it as-is left FOCUS_FULL_SCC_MAX
+                        // meaningless: a 50-member ring rendered all 50 nodes
+                        // at once (AUDIT_v0.11.0.md F5). openPath[0] is
+                        // always resolvedStartId (findCycleThroughNode
+                        // returns [startId, ...pathBackToStartId]), so
+                        // slicing to the first FOCUS_FULL_SCC_MAX entries
+                        // keeps a contiguous walk starting at the node the
+                        // user actually triggered Focus from.
+                        const openPath = path.slice(0, -1);
+                        const truncatedPath = openPath.slice(0, FOCUS_FULL_SCC_MAX);
+                        const pathIds = new Set(truncatedPath);
                         coreMembers = allMembers.filter((node) => pathIds.has(node.id()));
                         isRepresentativeOnly = true;
                     }
