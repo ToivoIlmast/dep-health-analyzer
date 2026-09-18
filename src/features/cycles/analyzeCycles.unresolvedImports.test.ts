@@ -123,5 +123,43 @@ describe('analyzeCycles - unresolved imports (F1, real scanner, real HTML)', () 
 
             expect(html).not.toMatch(/incomplete/i);
         });
+
+        // F30: mirrors F17's fix for the CLI/report metrics display (both
+        // already show a root-relative path, never a bare basename that
+        // collides for two files sharing a filename) - the HTML
+        // unresolved-imports warning added by F1 still used
+        // path.basename(entry.file) alone, so src/foo/index.ts and
+        // src/bar/index.ts both rendered as the exact same ambiguous
+        // "index.ts", with no way to tell which file the warning is about.
+        it('shows an unambiguous root-relative path for each entry, not a same-basename-colliding basename, when two unresolved-import files share a filename', async () => {
+            fs.mkdirSync(path.join(root, 'src', 'foo'), { recursive: true });
+            fs.mkdirSync(path.join(root, 'src', 'bar'), { recursive: true });
+            fs.writeFileSync(
+                path.join(root, 'src', 'foo', 'index.ts'),
+                `import { x } from './missing';\nexport const foo = x;\n`
+            );
+            fs.writeFileSync(
+                path.join(root, 'src', 'bar', 'index.ts'),
+                `import { x } from './missing';\nexport const bar = x;\n`
+            );
+            jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+            const outputPath = path.join(root, 'report', 'index.html');
+
+            await analyzeCycles({
+                ...baseArgs,
+                target: root,
+                mode: MODES.HTML,
+                htmlReportOutputPath: outputPath,
+            });
+
+            const html = fs.readFileSync(outputPath, 'utf-8');
+
+            expect(html).toContain('src/foo/index.ts');
+            expect(html).toContain('src/bar/index.ts');
+            // The bug this guards against: both entries collapse to the
+            // exact same bare "index.ts" label.
+            expect(html.match(/<code>index\.ts<\/code>/g)).toBeNull();
+        });
     });
 });

@@ -1939,4 +1939,27 @@ describe('buildHtmlTemplate unresolved imports (F1)', () => {
         expect(withEmptyArray).not.toMatch(/incomplete/i);
         expect(withOmittedField).not.toMatch(/incomplete/i);
     });
+
+    // F30: mirrors the exact defect F17 already fixed for the CLI/report
+    // metrics display (see metrics/report.ts's own displayName()) - a bare
+    // path.basename(entry.file) collides for two files that share a
+    // filename in different directories, making it impossible to tell
+    // which module an unresolved import actually belongs to.
+    it('shows an unambiguous path for each entry, not a same-basename-colliding bare filename, when two unresolved-import files share a filename', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: EMPTY_FINDINGS,
+            unresolvedImports: [
+                { file: '/project/src/foo/index.ts', specifier: './missing' },
+                { file: '/project/src/bar/index.ts', specifier: './missing' },
+            ],
+        });
+
+        expect(html).toContain('foo/index.ts');
+        expect(html).toContain('bar/index.ts');
+        // The bug this guards against: both entries collapse to the exact
+        // same bare "index.ts" label, with nothing left to tell them apart.
+        expect(html.match(/<code>index\.ts<\/code>/g)).toBeNull();
+    });
 });

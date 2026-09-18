@@ -267,7 +267,17 @@ function renderUnresolvedImportsNotice(unresolvedImports: UnresolvedImport[]): s
 
     const items = unresolvedImports
         .map((entry) => {
-            const file = escapeHtml(path.basename(entry.file));
+            // F30: path.basename(entry.file) alone collides for two files
+            // sharing a filename in different directories (src/foo/index.ts
+            // and src/bar/index.ts both rendering as "index.ts", making it
+            // impossible to tell which one this warning is about) - the
+            // exact defect F17 already fixed for the CLI/report metrics
+            // display. process.cwd()-relative is that same fix's own
+            // convention (see metrics/report.ts's displayName() and
+            // analyzeCycles.ts's own CLI unresolved-imports warning, both
+            // already using path.relative(process.cwd(), file)) - reused
+            // here rather than inventing a second path-formatting scheme.
+            const file = escapeHtml(path.relative(process.cwd(), entry.file));
             const specifier = escapeHtml(entry.specifier);
 
             return `<li><code>${file}</code> &rarr; <code>${specifier}</code></li>`;
