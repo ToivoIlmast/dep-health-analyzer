@@ -1,4 +1,5 @@
 import { buildHtmlTemplate } from './template';
+import { selectFocusCore } from './focusCoreSelection';
 import { selectFocusNeighbours } from './focusNeighbourSelection';
 import {
     edgeNodeOverlapIterationsFor,
@@ -501,7 +502,7 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html).toContain('if (allMembers.length < 2) {');
     });
 
-    it('above FOCUS_FULL_SCC_MAX members, falls back to a representative cycle (reusing findCycleThroughNode - not a second "pick a cycle" algorithm) plus its direct neighbours', () => {
+    it('above FOCUS_FULL_SCC_MAX members, the core comes from selectFocusCore (embedded verbatim), not from a cycle through the start node (F25)', () => {
         const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
         const focusFnEnd = html.indexOf('function exitFocus()');
         const focusFnSource = html.slice(focusFnStart, focusFnEnd);
@@ -509,11 +510,12 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html).toContain('const FOCUS_FULL_SCC_MAX = 40;');
         expect(focusFnStart).toBeGreaterThan(-1);
         expect(focusFnSource).toContain('if (allMembers.length > FOCUS_FULL_SCC_MAX) {');
-        expect(focusFnSource).toContain('findCycleThroughNode(sccId, resolvedStartId)');
+        expect(focusFnSource).toContain('selectFocusCore(memberIds, internalEdgeRefs, resolvedStartId, FOCUS_FULL_SCC_MAX)');
         expect(focusFnSource).toContain('isRepresentativeOnly = true;');
-        // Only one implementation of "find a concrete cycle" exists in the
-        // whole report - the concrete-cycle modal and Focus's huge-SCC
-        // fallback both call the same function.
+        expect(focusFnSource).not.toContain('findCycleThroughNode(');
+        expect(html).toContain(selectFocusCore.toString());
+        // The witness-cycle search still exists exactly once, for the
+        // concrete-cycle modal.
         expect(html.match(/function findCycleThroughNode\(sccId, startId\)/g)).toHaveLength(1);
     });
 

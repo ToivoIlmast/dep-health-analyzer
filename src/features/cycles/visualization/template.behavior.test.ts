@@ -11,7 +11,12 @@
 import path from 'node:path';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import type { CycleFindings } from '../findings/buildCycleFindings';
-import { closeAllRenderedReports, renderInteractiveReport, type CyCore } from './__fixtures__/browserHarness';
+import {
+    closeAllRenderedReports,
+    renderInteractiveReport,
+    type CyCollection,
+    type CyCore,
+} from './__fixtures__/browserHarness';
 
 // Focus's own 'cose' layout (runFocusLayout()) animates via a real
 // window.setTimeout-based ~60fps tick loop (see browserHarness.ts's own
@@ -55,6 +60,31 @@ function edge(source: string, target: string): CytoscapeEdge {
 // structural surface (see browserHarness.ts's own comment on why) - real
 // cytoscape has it, and the P2 race condition test below needs to compare
 // exact node coordinates, not just classes.
+// Read from the shipped script rather than duplicated here, so these tests
+// follow the real cap instead of a copy that could drift.
+function focusFullSccMaxOf(document: Document): number {
+    const scriptText = Array.from(document.querySelectorAll('script'))
+        .map((script) => script.textContent ?? '')
+        .join('\n');
+    const match = /const FOCUS_FULL_SCC_MAX = (\d+);/.exec(scriptText);
+
+    if (!match) {
+        throw new Error('FOCUS_FULL_SCC_MAX not found in the generated report script');
+    }
+
+    return Number(match[1]);
+}
+
+// Focus core = SCC members on screen that are not 1-hop '.focus-neighbor'
+// context (another SCC member can be shown as a neighbour of the core).
+function focusCoreMembers(cy: CyCore, idPrefix: string): CyCollection {
+    return cy
+        .nodes()
+        .filter(
+            (n) => n.id().startsWith(idPrefix) && !n.hasClass('not-in-view') && !n.hasClass('focus-neighbor'),
+        );
+}
+
 function positionOf(cy: CyCore, id: string): { x: number; y: number } {
     return (cy.getElementById(id) as unknown as { position(): { x: number; y: number } }).position();
 }
@@ -63,6 +93,113 @@ function positionOf(cy: CyCore, id: string): { x: number; y: number } {
 // (sccId 1) - plus one plain, non-cyclic node, matching the shape
 // buildCytoscapeElements.ts really produces (sccId/sccSize/color/'scc'
 // class only on real cycle members).
+// F25 fixtures: one SCC (sccId 0) of a given topology, every node a member.
+const BIG_SCC_PREFIX = '/repo/src/bigscc/';
+
+type SccTopology = { ids: string[]; edges: CytoscapeEdge[]; exampleCycle: string[] };
+
+// findCycleThroughNode is a top-level function of the report script, so a
+// global in the harness - just not part of RenderedReport['win']'s type.
+type WitnessSearch = { findCycleThroughNode(sccId: number, startId: string): string[] | null };
+
+function sccIds(prefix: string, count: number): string[] {
+    return Array.from({ length: count }, (_, i) => `${BIG_SCC_PREFIX}${prefix}${String(i).padStart(2, '0')}.ts`);
+}
+
+function singleSccFixture(
+    ids: string[],
+    edges: CytoscapeEdge[],
+    exampleCycle: string[],
+): { nodes: CytoscapeNode[]; edges: CytoscapeEdge[]; findings: CycleFindings } {
+    return {
+        nodes: ids.map((id) => makeNode(id, { sccId: 0, sccSize: ids.length, color: '#1b9e77' })),
+        edges,
+        findings: {
+            moduleCount: ids.length,
+            dependencyCount: edges.length,
+            sccs: [{ id: 0, size: ids.length, memberIds: [...ids].sort(), exampleCycle }],
+        },
+    };
+}
+
+const HUB = `${BIG_SCC_PREFIX}hub.ts`;
+const PARTNER = `${BIG_SCC_PREFIX}partner.ts`;
+
+// hub <-> partner, plus hub -> via00 -> ... -> via46 -> hub. 49 members.
+function detourTopology(): SccTopology {
+    const via = sccIds('via', 47);
+    return {
+        ids: [HUB, PARTNER, ...via],
+        edges: [
+            edge(HUB, PARTNER),
+            edge(PARTNER, HUB),
+            edge(HUB, via[0]!),
+            ...via.slice(0, -1).map((id, i) => edge(id, via[i + 1]!)),
+            edge(via[via.length - 1]!, HUB),
+        ],
+        exampleCycle: [HUB, PARTNER, HUB],
+    };
+}
+
+// hub <-> partner, hub <-> m00, and m00..m46 each importing the next three
+// (mod 47): densely connected, no long detour needed. 49 members.
+function shortCycleDenseMeshTopology(): SccTopology {
+    const mesh = sccIds('m', 47);
+    return {
+        ids: [HUB, PARTNER, ...mesh],
+        edges: [
+            edge(HUB, PARTNER),
+            edge(PARTNER, HUB),
+            edge(HUB, mesh[0]!),
+            edge(mesh[0]!, HUB),
+            ...mesh.flatMap((id, i) => [1, 2, 3].map((step) => edge(id, mesh[(i + step) % mesh.length]!))),
+        ],
+        exampleCycle: [HUB, PARTNER, HUB],
+    };
+}
+
+// hub <-> partner and hub <-> s00..s46 (a shared logger/config hub). Most
+// non-core members are direct neighbours of hub, so this also checks that
+// SCC members shown as '.focus-neighbor' are not counted as core. 49 members.
+function hubSpokesTopology(): SccTopology {
+    const spokes = sccIds('s', 47);
+    return {
+        ids: [HUB, PARTNER, ...spokes],
+        edges: [edge(HUB, PARTNER), edge(PARTNER, HUB), ...spokes.flatMap((id) => [edge(HUB, id), edge(id, HUB)])],
+        exampleCycle: [HUB, PARTNER, HUB],
+    };
+}
+
+// Each member imports the next `reach` members (mod size).
+function denseCirculantTopology(size: number, reach: number): SccTopology {
+    const ids = sccIds('d', size);
+    return {
+        ids,
+        edges: ids.flatMap((id, i) =>
+            Array.from({ length: reach }, (_, k) => edge(id, ids[(i + k + 1) % size]!)),
+        ),
+        exampleCycle: [...ids, ids[0]!],
+    };
+}
+
+function completeDigraphTopology(size: number): SccTopology {
+    const ids = sccIds('k', size);
+    return {
+        ids,
+        edges: ids.flatMap((a) => ids.filter((b) => b !== a).map((b) => edge(a, b))),
+        exampleCycle: [ids[0]!, ids[1]!, ids[0]!],
+    };
+}
+
+function ringTopology(size: number): SccTopology {
+    const ids = sccIds('r', size);
+    return {
+        ids,
+        edges: ids.map((id, i) => edge(id, ids[(i + 1) % size]!)),
+        exampleCycle: [...ids, ids[0]!],
+    };
+}
+
 function twoIndependentSccsFixture(): { nodes: CytoscapeNode[]; edges: CytoscapeEdge[]; findings: CycleFindings } {
     const nodes: CytoscapeNode[] = [
         makeNode('/repo/src/pair/a1.ts', { sccId: 0, sccSize: 2, color: '#1b9e77' }),
@@ -360,7 +497,7 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
         expect(positionOf(cy, 'focus-overflow-proxy')).not.toEqual({ x: 0, y: 0 });
     });
 
-    it('large SCC (above FOCUS_FULL_SCC_MAX): Focus falls back to a representative cycle, and every non-representative member is correctly off-screen, not silently misread as visible', () => {
+    it('F25: large SCC (above FOCUS_FULL_SCC_MAX) with a short internal cycle - the Focus core still fills to FOCUS_FULL_SCC_MAX, not to the witness cycle length', () => {
         // A pure ring has no shorter cycle than the whole ring itself, so
         // it can't exercise the truncation path at all - this shape
         // instead gives the SCC a genuine short cycle (hub<->partner)
@@ -393,24 +530,20 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
             ],
         };
 
-        const { win, cy } = renderInteractiveReport({ nodes, edges: edgesList, findings });
+        const { document, win, cy } = renderInteractiveReport({ nodes, edges: edgesList, findings });
 
         win.focusScc(0, '/repo/src/bigscc/hub.ts');
 
-        const visibleSccMembers = cy
-            .nodes()
-            .filter((n) => n.id().startsWith('/repo/src/bigscc/') && !n.hasClass('not-in-view'));
-        const hiddenSccMembers = cy
-            .nodes()
-            .filter((n) => n.id().startsWith('/repo/src/bigscc/') && n.hasClass('not-in-view'));
+        const focusFullSccMax = focusFullSccMaxOf(document);
+        const coreSccMembers = focusCoreMembers(cy, '/repo/src/bigscc/');
 
-        // FOCUS_FULL_SCC_MAX is 40 - this 49-member SCC must fall back to
-        // the representative concrete cycle (hub<->partner) plus its
-        // direct neighbours, never all 49 members at once, yet the
-        // trigger node itself must still be part of what's shown.
-        expect(sccSize).toBeGreaterThan(40);
-        expect(visibleSccMembers.length).toBeLessThan(sccSize);
-        expect(hiddenSccMembers.length).toBeGreaterThan(0);
+        // F25: the short hub<->partner witness cycle must not shrink the
+        // core below the cap - excess members are cut by FOCUS_FULL_SCC_MAX,
+        // not by how short a cycle through the start node happens to be.
+        // Counts core members only: SCC members pulled in as
+        // '.focus-neighbor' context are not part of the core.
+        expect(sccSize).toBeGreaterThan(focusFullSccMax);
+        expect(coreSccMembers.length).toBe(Math.min(sccSize, focusFullSccMax));
         expect(cy.getElementById('/repo/src/bigscc/hub.ts').hasClass('not-in-view')).toBe(false);
         expect(cy.getElementById('/repo/src/bigscc/partner.ts').hasClass('not-in-view')).toBe(false);
 
@@ -460,15 +593,14 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
         // member just past the cut, and the one that wraps back to the
         // start). The FOCUS_FULL_SCC_MAX invariant is about the CORE only;
         // it says nothing about how many neighbours a shape happens to have.
-        const visibleRingCoreMembers = cy
-            .nodes()
-            .filter((n) => n.id().startsWith('/repo/src/ring/') && !n.hasClass('not-in-view') && !n.hasClass('focus-neighbor'));
+        const visibleRingCoreMembers = focusCoreMembers(cy, '/repo/src/ring/');
         const hiddenRingMembers = cy.nodes().filter((n) => n.id().startsWith('/repo/src/ring/') && n.hasClass('not-in-view'));
 
         // The FOCUS_FULL_SCC_MAX cap must hold even when the "representative
         // cycle" search can only return the entire ring - the core stays
         // readable instead of silently rendering all 45 members at once.
-        expect(visibleRingCoreMembers.length).toBeLessThanOrEqual(40);
+        // Exact, not just an upper bound: the cap is also the target (F25).
+        expect(visibleRingCoreMembers.length).toBe(Math.min(RING_SIZE, focusFullSccMaxOf(document)));
         expect(hiddenRingMembers.length).toBeGreaterThan(0);
         expect(cy.getElementById(ringIds[0]!).hasClass('not-in-view')).toBe(false);
 
@@ -479,6 +611,92 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
         const focusStatus = document.getElementById('focus-status');
         expect(focusStatus?.hidden).toBe(false);
         expect(focusStatus?.textContent).toContain('45');
+    });
+
+    // F25: the number of SCC members in the Focus core is a coverage
+    // invariant - min(sccSize, FOCUS_FULL_SCC_MAX) - independent of the SCC's
+    // shape, of which member Focus was entered from, and of how short the
+    // witness cycle through that member is. No test here pins WHICH members
+    // form the core; only how many.
+    describe('F25: Focus core coverage', () => {
+        it('dense SCC above FOCUS_FULL_SCC_MAX: the core fills to FOCUS_FULL_SCC_MAX', () => {
+            const { ids, edges: edgesList, exampleCycle } = denseCirculantTopology(49, 5);
+            const { document, win, cy } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+            const focusFullSccMax = focusFullSccMaxOf(document);
+
+            win.focusScc(0, ids[0]!);
+
+            expect(ids.length).toBeGreaterThan(focusFullSccMax);
+            expect(focusCoreMembers(cy, BIG_SCC_PREFIX).length).toBe(focusFullSccMax);
+        });
+
+        it.each([
+            ['dense K12', () => completeDigraphTopology(12)],
+            ['ring of exactly FOCUS_FULL_SCC_MAX', () => ringTopology(40)],
+        ])('SCC at or below FOCUS_FULL_SCC_MAX (%s): every member is in the core and no truncation is claimed', (_name, build) => {
+            const { ids, edges: edgesList, exampleCycle } = build();
+            const { document, win, cy } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+
+            expect(ids.length).toBeLessThanOrEqual(focusFullSccMaxOf(document));
+
+            win.focusScc(0, ids[0]!);
+
+            expect(focusCoreMembers(cy, BIG_SCC_PREFIX).length).toBe(ids.length);
+            expect(document.getElementById('focus-status')?.hidden).toBe(true);
+        });
+
+        it.each([
+            ['short cycle + long detour', detourTopology],
+            ['short cycle + dense mesh', shortCycleDenseMeshTopology],
+            ['short cycle + hub spokes', hubSpokesTopology],
+        ])('same-size SCC (%s): a witness cycle exists and is shorter than the SCC, yet the core still fills to FOCUS_FULL_SCC_MAX', (_name, build) => {
+            const { ids, edges: edgesList, exampleCycle } = build();
+            const { document, win, cy } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+            const focusFullSccMax = focusFullSccMaxOf(document);
+            const start = [...ids].sort()[0]!;
+
+            const witness = (win as unknown as WitnessSearch).findCycleThroughNode(0, start);
+
+            expect(witness).not.toBeNull();
+            expect(witness![0]).toBe(start);
+            expect(witness![witness!.length - 1]).toBe(start);
+            expect(witness!.length - 1).toBeLessThan(ids.length);
+
+            win.focusScc(0, start);
+
+            expect(ids.length).toBe(49);
+            expect(focusCoreMembers(cy, BIG_SCC_PREFIX).length).toBe(Math.min(ids.length, focusFullSccMax));
+        });
+
+        it('SCC members shown as .focus-neighbor are context, not core: they are counted separately from the core', () => {
+            const { ids, edges: edgesList, exampleCycle } = hubSpokesTopology();
+            const { document, win, cy } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+
+            win.focusScc(0, HUB);
+
+            const visible = cy.nodes().filter((n) => n.id().startsWith(BIG_SCC_PREFIX) && !n.hasClass('not-in-view'));
+            const neighbours = visible.filter((n) => n.hasClass('focus-neighbor'));
+            const core = focusCoreMembers(cy, BIG_SCC_PREFIX);
+
+            expect(core.length).toBe(focusFullSccMaxOf(document));
+            expect(neighbours.length).toBeGreaterThan(0);
+            expect(core.length + neighbours.length).toBe(visible.length);
+        });
+
+        it.each(['hub.ts', 'partner.ts', 'via10.ts', 'via46.ts'])(
+            'the core size does not depend on which member Focus is entered from (start: %s)',
+            (startName) => {
+                const { ids, edges: edgesList, exampleCycle } = detourTopology();
+                const { document, win, cy } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+
+                win.focusScc(0, BIG_SCC_PREFIX + startName);
+
+                expect(cy.getElementById(BIG_SCC_PREFIX + startName).hasClass('not-in-view')).toBe(false);
+                expect(focusCoreMembers(cy, BIG_SCC_PREFIX).length).toBe(
+                    Math.min(ids.length, focusFullSccMaxOf(document)),
+                );
+            },
+        );
     });
 
     // P2 fix, verified live: runFocusLayout()'s cose layout runs with

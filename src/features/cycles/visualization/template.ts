@@ -5,6 +5,7 @@ import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
 import { Dictionary, I18N, LanguageCode, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
 import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
+import { selectFocusCore } from './focusCoreSelection';
 import { selectFocusNeighbours } from './focusNeighbourSelection';
 import {
     closestPointOnSegment,
@@ -458,8 +459,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             <!-- Local/Focused-graph UX pass. A short, quiet disclosure of
                  whatever the core "(X of Y modules)" count on the exit
-                 button above doesn't already say: a representative cycle
-                 shown instead of a huge SCC's full membership
+                 button above doesn't already say: a FOCUS_FULL_SCC_MAX-sized
+                 core shown instead of a huge SCC's full membership
                  (FOCUS_FULL_SCC_MAX/focusScc below), and/or a truncated
                  neighbour set (P0-1 fix, FOCUS_NEIGHBOR_LIMIT/focusScc) -
                  so neither case is ever mistaken for "this is the whole
@@ -3514,11 +3515,9 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // since abandoned and skip acting on it entirely.
             let activeFocusLayout = null;
 
-            // Above this many real SCC members, Focused Graph shows a
-            // representative concrete cycle (via findCycleThroughNode() -
-            // the exact same deterministic per-click search the
-            // concrete-cycle modal already uses, not a second "pick a
-            // cycle" algorithm) plus that cycle's own direct neighbours,
+            // Above this many real SCC members, Focused Graph's core is a
+            // FOCUS_FULL_SCC_MAX-sized subset of the SCC chosen by
+            // selectFocusCore() (below) plus its direct neighbours,
             // instead of laying out the whole SCC. Chosen directly from the
             // task's own worked examples (7 members: show all; 40: show
             // all if the layout stays readable; 1000: don't) - a margin
@@ -3537,8 +3536,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // lower - neighbours are supplementary context around the
             // cycle, not the structural subject of the view, so they get a
             // smaller share of the node budget. Even in the worst case
-            // (a huge SCC falling back to its FOCUS_FULL_SCC_MAX-sized
-            // representative cycle), 40 core + 30 neighbours = 70 nodes
+            // (a huge SCC reduced to a FOCUS_FULL_SCC_MAX-sized core),
+            // 40 core + 30 neighbours = 70 nodes
             // stays comfortably inside the range 'cose' already handles
             // well. For the overwhelming common case - a 2-5 member cycle
             // with a handful of neighbours - this limit is never
@@ -3560,6 +3559,10 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // that runs in the browser - no separate, potentially
             // drifting, client-side reimplementation.
             ${selectFocusNeighbours.toString()}
+
+            // Core subset for an SCC above FOCUS_FULL_SCC_MAX - embedded
+            // verbatim, unit-tested in focusCoreSelection.test.ts.
+            ${selectFocusCore.toString()}
 
             // Layout/Area/Connections all describe the FULL graph's own
             // structure/filtering - none of them apply to a deliberately
@@ -3584,12 +3587,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // before Focus was entered - reusing moduleCountParen/
             // moduleCountVisibleParen (no new dictionary key needed for
             // this part). X is how many of the SCC's real members the
-            // focused view's core actually is (the whole SCC, or just the
-            // representative cycle - see focusScc() below); Y is the SCC's
+            // focused view's core actually is (the whole SCC, or its
+            // FOCUS_FULL_SCC_MAX-sized subset - see focusScc() below); Y is the SCC's
             // total size. This count is deliberately about the CORE only,
             // not the whole focused view - #focus-status (below) is the
             // honest disclosure of everything the core count alone doesn't
-            // say: a representative-cycle truncation (FOCUS_FULL_SCC_MAX)
+            // say: a core truncation (FOCUS_FULL_SCC_MAX)
             // and/or a neighbour-count truncation (P0-1 fix,
             // FOCUS_NEIGHBOR_LIMIT). Before the P0-1 fix, neighbours were
             // unbounded and totally undisclosed here - a huge fan-in/fan-out
@@ -3731,8 +3734,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // startId is the node the user actually triggered Focus from
             // (the HUD's own selected module, or the concrete-cycle
             // modal's own node) - both call sites now pass it explicitly;
-            // see their own comments for why it's needed here (choosing
-            // which representative cycle to show for a huge SCC).
+            // see their own comments for why it's needed here (it seeds
+            // the core selection for a huge SCC).
             //
             // P1-5 fix: allMembers is filtered by '.area-hidden' - the
             // Area/Connections filter alone, deliberately ignoring whatever
@@ -3796,27 +3799,23 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         startCandidate && !startCandidate.empty() && !startCandidate.hasClass('area-hidden')
                             ? startId
                             : allMembers[0].id();
-                    const path = findCycleThroughNode(sccId, resolvedStartId);
-
-                    if (path) {
-                        // F5 fix: findCycleThroughNode returns the SHORTEST
-                        // cycle through resolvedStartId - for a ring-shaped
-                        // SCC (no shorter cycle exists than the whole ring),
-                        // that "representative cycle" is every single
-                        // member, so taking it as-is left FOCUS_FULL_SCC_MAX
-                        // meaningless: a 50-member ring rendered all 50 nodes
-                        // at once (AUDIT_v0.11.0.md F5). openPath[0] is
-                        // always resolvedStartId (findCycleThroughNode
-                        // returns [startId, ...pathBackToStartId]), so
-                        // slicing to the first FOCUS_FULL_SCC_MAX entries
-                        // keeps a contiguous walk starting at the node the
-                        // user actually triggered Focus from.
-                        const openPath = path.slice(0, -1);
-                        const truncatedPath = openPath.slice(0, FOCUS_FULL_SCC_MAX);
-                        const pathIds = new Set(truncatedPath);
-                        coreMembers = allMembers.filter((node) => pathIds.has(node.id()));
-                        isRepresentativeOnly = true;
-                    }
+                    // F25: the core is a coverage budget over the SCC, never
+                    // derived from a cycle through resolvedStartId - a short
+                    // witness cycle must not shrink it below the cap.
+                    const memberIds = allMembers.map((node) => node.id());
+                    const memberIdSet = new Set(memberIds);
+                    const internalEdgeRefs = cy
+                        .edges()
+                        .filter(
+                            (edge) =>
+                                memberIdSet.has(edge.source().id()) && memberIdSet.has(edge.target().id()),
+                        )
+                        .map((edge) => ({ source: edge.source().id(), target: edge.target().id() }));
+                    const coreIdSet = new Set(
+                        selectFocusCore(memberIds, internalEdgeRefs, resolvedStartId, FOCUS_FULL_SCC_MAX),
+                    );
+                    coreMembers = allMembers.filter((node) => coreIdSet.has(node.id()));
+                    isRepresentativeOnly = true;
                 }
 
                 const coreIds = new Set(coreMembers.map((node) => node.id()));
