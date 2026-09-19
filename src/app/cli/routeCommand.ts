@@ -31,6 +31,11 @@ export async function routeCommand(args: CliArgs, config: IConfig): Promise<bool
                     defaultConfig.features.scc.reporting.html.outputPath,
                 includeTypeOnlyImports: sccConfig.typescript?.includeTypeOnlyImports ?? false,
                 exclude: config.exclude,
+                // F14/2.2 - F26 rule: fall back to defaultConfig's own
+                // value, never a second, independently hardcoded literal.
+                modulesInCyclesThreshold:
+                    config.features?.scc?.modulesInCyclesThreshold ??
+                    defaultConfig.features.scc.modulesInCyclesThreshold,
             });
 
             results.push(!!result);

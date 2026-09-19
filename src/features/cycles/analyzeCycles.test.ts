@@ -46,6 +46,11 @@ const baseArgs = {
     mode: MODES.COMPACT,
     enableHtmlReport: true,
     htmlReportOutputPath: './out.html',
+    // F14/2.2: 0 replicates the pre-2.2 "fail on any real cycle" behavior
+    // exactly (a real cyclic SCC always has modulesInCycles >= 1), so every
+    // existing test above/below that doesn't care about the threshold
+    // itself keeps passing unchanged with this as the default.
+    modulesInCyclesThreshold: 0,
 };
 
 describe('analyzeCycles', () => {
@@ -444,6 +449,143 @@ describe('analyzeCycles', () => {
 
             expect(logSpyAfter).toHaveBeenCalledWith('Cycles detected: 1');
             expect(logSpyAfter).toHaveBeenCalledWith('Modules in cycles: 6 module(s)');
+        });
+    });
+
+    // F14/2.2 (PLAN_post_v0.11.0.md): gate failOn on modulesInCyclesThreshold,
+    // reusing the exact existing failOn severity pipeline (info never fails,
+    // warning/error fail once the trigger condition is true) - only the
+    // TRIGGER changes, from "cyclesCount > 0" to
+    // "modulesInCycles > modulesInCyclesThreshold". threshold=0 (baseArgs'
+    // own default) reproduces the pre-2.2 behavior exactly, which is why
+    // every pre-existing failOn test above needed no changes at all.
+    describe('failOn gating by modulesInCyclesThreshold (F14/2.2)', () => {
+        it('threshold=10, modulesInCycles=9: PASS even with failOn=error (below threshold)', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts', 'i.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 10 });
+
+            expect(failed).toBe(false);
+        });
+
+        it('threshold=10, modulesInCycles=10: PASS - the threshold itself is not exceeded (strictly greater-than, not >=)', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts', 'i.ts', 'j.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 10 });
+
+            expect(failed).toBe(false);
+        });
+
+        it('threshold=10, modulesInCycles=11: FAIL - strictly above the threshold', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts', 'i.ts', 'j.ts', 'k.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 10 });
+
+            expect(failed).toBe(true);
+        });
+
+        it('threshold=10, modulesInCycles=11, failOn=info: still PASS - info always suppresses failure, exactly as it already does for cyclesCount', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts', 'i.ts', 'j.ts', 'k.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'info', modulesInCyclesThreshold: 10 });
+
+            expect(failed).toBe(false);
+        });
+
+        it('threshold=10, modulesInCycles=11, failOn=warning: FAIL - warning triggers exactly like error, matching the existing failOn semantics', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts', 'i.ts', 'j.ts', 'k.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'warning', modulesInCyclesThreshold: 10 });
+
+            expect(failed).toBe(true);
+        });
+
+        it('threshold=0 (the default), no real cycles: PASS - zero modules in cycles never exceeds a zero threshold', async () => {
+            mockedFindSCCs.mockReturnValue([['a.ts'], ['b.ts']]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 0 });
+
+            expect(failed).toBe(false);
+        });
+
+        it('threshold=0 (the default), a real cycle exists: FAIL - reproduces the exact pre-2.2 "fail on any real cycle" behavior', async () => {
+            mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts']]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 0 });
+
+            expect(failed).toBe(true);
+        });
+
+        it('gates on the SUM across SCCs (modulesInCycles), not on how many SCCs there are - two small SCCs together can exceed a threshold that neither would alone', async () => {
+            // Two independent 3-module cycles: cyclesCount=2, but
+            // modulesInCycles=6. A gate keyed on SCC count (2) would never
+            // trip a threshold of 5; a gate keyed on modulesInCycles must.
+            mockedScanProject.mockResolvedValue(
+                makeScanResult({
+                    nodes: new Set(['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts']),
+                    edges: new Map([
+                        ['a.ts', new Set(['b.ts'])],
+                        ['b.ts', new Set(['c.ts'])],
+                        ['c.ts', new Set(['a.ts'])],
+                        ['d.ts', new Set(['e.ts'])],
+                        ['e.ts', new Set(['f.ts'])],
+                        ['f.ts', new Set(['d.ts'])],
+                    ]),
+                })
+            );
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts'],
+                ['d.ts', 'e.ts', 'f.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 5 });
+
+            expect(failed).toBe(true);
+        });
+
+        it('one SCC just at the threshold plus another SCC pushes the total over it - the gate is on the total, not on any single SCC', async () => {
+            // Largest SCC alone (5) does not exceed threshold 5, but the
+            // total modulesInCycles (5 + 2 = 7) does.
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'],
+                ['f.ts', 'g.ts'],
+            ]);
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 5 });
+
+            expect(failed).toBe(true);
+        });
+
+        it('does not change "Cycles detected" - it still reports the real SCC count, independent of the threshold or whether the run fails', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts', 'i.ts', 'j.ts', 'k.ts'],
+            ]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            const failed = await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 10 });
+
+            expect(failed).toBe(true);
+            expect(logSpy).toHaveBeenCalledWith('Cycles detected: 1');
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 11 module(s)');
+        });
+
+        it('the "Modules in cycles" line is printed with the real count, giving the reader the exact value the threshold was compared against', async () => {
+            mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts', 'c.ts']]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            await analyzeCycles({ ...baseArgs, failOn: 'error', modulesInCyclesThreshold: 10 });
+
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 3 module(s)');
         });
     });
 

@@ -60,6 +60,8 @@ describe('routeCommand', () => {
             // defaultConfig" describe block below for the general case.
             htmlReportOutputPath: defaultConfig.features.scc.reporting.html.outputPath,
             includeTypeOnlyImports: false,
+            // F14/2.2 - same F26 reasoning as htmlReportOutputPath above.
+            modulesInCyclesThreshold: defaultConfig.features.scc.modulesInCyclesThreshold,
         });
     });
 
@@ -467,6 +469,38 @@ describe('routeCommand runtime defaults vs defaultConfig (F26)', () => {
                 htmlReportOutputPath: defaultConfig.features.scc.reporting.html.outputPath,
             })
         );
+    });
+
+    // F14/2.2: the new gating threshold must follow the exact same
+    // single-source-of-truth rule F26 already established for every other
+    // scc/regression runtime default on this page - never a second,
+    // independently hardcoded literal in routeCommand.ts.
+    it('falls back to defaultConfig\'s scc modulesInCyclesThreshold when config omits it', async () => {
+        const analyzeCyclesMock = jest.mocked(analyzeCycles);
+        analyzeCyclesMock.mockResolvedValue(false);
+
+        await routeCommand(
+            { command: CLI_COMMANDS.CYCLES, target: '.', mode: MODES.FULL, ai: false },
+            { features: { scc: { enabled: true } } }
+        );
+
+        expect(analyzeCyclesMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                modulesInCyclesThreshold: defaultConfig.features.scc.modulesInCyclesThreshold,
+            })
+        );
+    });
+
+    it('passes an explicit scc.modulesInCyclesThreshold from config through unchanged, rather than always using the default', async () => {
+        const analyzeCyclesMock = jest.mocked(analyzeCycles);
+        analyzeCyclesMock.mockResolvedValue(false);
+
+        await routeCommand(
+            { command: CLI_COMMANDS.CYCLES, target: '.', mode: MODES.FULL, ai: false },
+            { features: { scc: { enabled: true, modulesInCyclesThreshold: 25 } } }
+        );
+
+        expect(analyzeCyclesMock).toHaveBeenCalledWith(expect.objectContaining({ modulesInCyclesThreshold: 25 }));
     });
 
     it('falls back to defaultConfig\'s regression html outputPath when config omits it', async () => {

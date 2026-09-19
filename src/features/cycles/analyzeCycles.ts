@@ -38,10 +38,20 @@ const handlers: Record<ModeType, ReportHandler> = {
     },
 };
 
-function shouldFail(args: { cyclesCount: number; failOn: 'info' | 'warning' | 'error' }): boolean {
-    const { cyclesCount, failOn } = args;
+// F14/2.2: the trigger is modulesInCycles (the monotone metric), never
+// cyclesCount (the SCC count) - PLAN_post_v0.11.0.md's own "not by SCC
+// count". Strictly greater-than: a project sitting exactly AT its
+// configured threshold still passes, only crossing it fails. failOn's own
+// three-level severity is unchanged - 'info' still never fails regardless
+// of the count, 'warning'/'error' still behave identically to each other.
+function shouldFail(args: {
+    modulesInCycles: number;
+    modulesInCyclesThreshold: number;
+    failOn: 'info' | 'warning' | 'error';
+}): boolean {
+    const { modulesInCycles, modulesInCyclesThreshold, failOn } = args;
 
-    if (cyclesCount === 0) {
+    if (modulesInCycles <= modulesInCyclesThreshold) {
         return false;
     }
 
@@ -62,6 +72,7 @@ type AnalyzeCyclesType = {
     htmlReportOutputPath: string;
     includeTypeOnlyImports?: boolean;
     exclude?: string[];
+    modulesInCyclesThreshold: number;
 };
 
 export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
@@ -73,6 +84,7 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
         htmlReportOutputPath,
         includeTypeOnlyImports,
         exclude,
+        modulesInCyclesThreshold,
     } = args;
 
     // F4/F26: the tool's own generated HTML report (and, for `cycles`, the
@@ -150,7 +162,7 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
 
     const instabilityMetrics = calculateArchitectureMetrics(result.graph);
 
-    const failed = shouldFail({ cyclesCount, failOn });
+    const failed = shouldFail({ modulesInCycles, modulesInCyclesThreshold, failOn });
 
     const handler = handlers[mode];
     handler({ metrics: instabilityMetrics });

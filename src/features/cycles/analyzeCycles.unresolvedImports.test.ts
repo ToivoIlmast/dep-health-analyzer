@@ -37,6 +37,7 @@ describe('analyzeCycles - unresolved imports (F1, real scanner, real HTML)', () 
     const baseArgs = {
         failOn: 'info' as const,
         enableHtmlReport: true,
+        modulesInCyclesThreshold: 0,
     };
 
     describe('CLI warning (compact mode)', () => {

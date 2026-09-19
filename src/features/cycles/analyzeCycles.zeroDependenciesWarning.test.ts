@@ -34,6 +34,7 @@ describe('analyzeCycles - zero-dependencies warning (F1b)', () => {
         failOn: 'info' as const,
         enableHtmlReport: false,
         htmlReportOutputPath: path.join('.', 'unused.html'),
+        modulesInCyclesThreshold: 0,
     };
 
     it('warns that analysis may be incomplete for a real CommonJS-style project with 0 detected dependencies', async () => {

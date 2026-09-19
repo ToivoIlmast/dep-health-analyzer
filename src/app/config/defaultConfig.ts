@@ -62,6 +62,12 @@ export const defaultConfig = {
             enabled: true,
             mode: 'compact',
             failOn: 'error',
+            // F14/2.2: 0 fails on any real cycle at all - the exact
+            // behavior this tool already had before this threshold
+            // existed. Raise it to only fail once the SUM across every
+            // real cyclic SCC (not any single SCC's own size) exceeds a
+            // number you choose.
+            modulesInCyclesThreshold: 0,
             reporting: {
                 html: {
                     enabled: true,

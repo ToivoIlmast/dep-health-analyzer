@@ -70,6 +70,10 @@ export interface ConfigSchema {
       enabled?: boolean;
       mode?: "full" | "compact" | "html";
       failOn?: "info" | "warning" | "error";
+      /**
+       * failOn (F14/2.2) triggers only once the real 'Modules in cycles' count exceeds this number (strictly greater than). 0 (the default) fails on any real cycle at all, matching the tool's pre-2.2 behavior.
+       */
+      modulesInCyclesThreshold?: number;
       reporting?: {
         html?: {
           enabled?: boolean;

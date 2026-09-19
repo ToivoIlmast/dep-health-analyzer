@@ -290,6 +290,11 @@
                             "enum": ["info", "warning", "error"]
                         },
 
+                        "modulesInCyclesThreshold": {
+                            "type": "number",
+                            "description": "failOn (F14/2.2) triggers only once the real 'Modules in cycles' count exceeds this number (strictly greater than). 0 (the default) fails on any real cycle at all, matching the tool's pre-2.2 behavior."
+                        },
+
                         "reporting": {
                             "type": "object",
 

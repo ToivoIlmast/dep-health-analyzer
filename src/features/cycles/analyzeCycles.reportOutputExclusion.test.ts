@@ -32,6 +32,7 @@ describe('analyzeCycles - report output excluded from analysis (F4/F26)', () => 
     const baseArgs = {
         failOn: 'info' as const,
         enableHtmlReport: true,
+        modulesInCyclesThreshold: 0,
     };
 
     it('does not count its own just-generated HTML report or copied assets when the SAME target is scanned again', async () => {
