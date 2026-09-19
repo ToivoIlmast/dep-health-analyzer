@@ -86,6 +86,17 @@ describe('I18N dictionaries', () => {
         }
     });
 
+    it('modulesInCyclesSummary (F14) uses %n and is a neutral fact, never framing the modules as "problematic"/"bad"/"dangerous"', () => {
+        for (const lang of SUPPORTED_LANGUAGES) {
+            expect(I18N[lang].modulesInCyclesSummary).toContain('%n');
+        }
+
+        // English is the source-of-truth wording check; the other 13
+        // languages are checked structurally above (%n presence) - the
+        // same reasoning already applied to focusRepresentativeNote.
+        expect(I18N.en.modulesInCyclesSummary).not.toMatch(/problematic|bad|dangerous|should be fixed/i);
+    });
+
     it('focusRepresentativeNote uses %visible and %n - after F25a the Focus core for a large SCC is a partial, counted subset, not a single witness cycle, so the note must be able to say "X of Y"', () => {
         for (const lang of SUPPORTED_LANGUAGES) {
             expect(I18N[lang].focusRepresentativeNote).toContain('%visible');

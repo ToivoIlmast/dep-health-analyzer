@@ -113,6 +113,11 @@ export interface Dictionary {
     detectedSccsCaption: string;
     noDependencySccsDetected: string;
     detectedSccsSummary: string; // 'Detected SCCs: %n &middot; Largest SCC: %largest modules.'
+    // F14: a SUM over every real cyclic SCC's member count (never the SCC
+    // count, never the largest SCC's size alone) - the one headline number
+    // that goes up, not down, when two cycles fuse into a bigger SCC.
+    // Appended after detectedSccsSummary, its own separate sentence.
+    modulesInCyclesSummary: string; // 'Modules in cycles: %n.'
     moduleAreaHeading: string;
     moduleAreaCaption: string;
     highlightConnectedToggle: string;
@@ -238,6 +243,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(entire analyzed graph, not the current filtered view)',
         noDependencySccsDetected: 'No dependency SCCs detected.',
         detectedSccsSummary: 'Detected SCCs: %n &middot; Largest SCC: %largest modules.',
+        modulesInCyclesSummary: 'Modules in cycles: %n.',
         moduleAreaHeading: 'Module area',
         moduleAreaCaption: '(from project structure)',
         highlightConnectedToggle: 'Highlight connected modules',
@@ -377,6 +383,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(koko analysoitu kaavio, ei nykyinen suodatettu näkymä)',
         noDependencySccsDetected: 'Riippuvuussyklejä sisältäviä SCC:itä ei havaittu.',
         detectedSccsSummary: 'Havaitut SCC:t: %n &middot; Suurin SCC: %largest moduulia.',
+        modulesInCyclesSummary: 'Moduuleja sykleissä: %n.',
         moduleAreaHeading: 'Moduulialue',
         moduleAreaCaption: '(projektin rakenteesta)',
         highlightConnectedToggle: 'Korosta yhdistetyt moduulit',
@@ -507,6 +514,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(hela den analyserade grafen, inte den aktuella filtrerade vyn)',
         noDependencySccsDetected: 'Inga beroende-SCC:er upptäcktes.',
         detectedSccsSummary: 'Upptäckta SCC:er: %n &middot; Största SCC: %largest moduler.',
+        modulesInCyclesSummary: 'Moduler i cykler: %n.',
         moduleAreaHeading: 'Modulomráde',
         moduleAreaCaption: '(från projektstrukturen)',
         highlightConnectedToggle: 'Markera anslutna moduler',
@@ -636,6 +644,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(hele den analyserte grafen, ikke den nåværende filtrerte visningen)',
         noDependencySccsDetected: 'Ingen avhengighets-SCC-er oppdaget.',
         detectedSccsSummary: 'Oppdagede SCC-er: %n &middot; Største SCC: %largest moduler.',
+        modulesInCyclesSummary: 'Moduler i sykluser: %n.',
         moduleAreaHeading: 'Modulområde',
         moduleAreaCaption: '(fra prosjektstrukturen)',
         highlightConnectedToggle: 'Fremhev tilkoblede moduler',
@@ -766,6 +775,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(hele den analyserede graf, ikke den aktuelle filtrerede visning)',
         noDependencySccsDetected: 'Ingen afhængigheds-SCC\'er fundet.',
         detectedSccsSummary: 'Fundne SCC\'er: %n &middot; Største SCC: %largest moduler.',
+        modulesInCyclesSummary: 'Moduler i cyklusser: %n.',
         moduleAreaHeading: 'Modulområde',
         moduleAreaCaption: '(fra projektstrukturen)',
         highlightConnectedToggle: 'Fremhæv forbundne moduler',
@@ -905,6 +915,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(allt greint graf, ekki núverandi síuð sýn)',
         noDependencySccsDetected: 'Engir SCC-hlutar með hringrásum fundust.',
         detectedSccsSummary: 'Fundnir SCC-hlutar: %n &middot; Stærsti SCC: %largest einingar.',
+        modulesInCyclesSummary: 'Einingar í hringrásum: %n.',
         moduleAreaHeading: 'Einingasvæði',
         moduleAreaCaption: '(úr uppbyggingu verkefnisins)',
         highlightConnectedToggle: 'Auðkenna tengdar einingar',
@@ -1034,6 +1045,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(gesamter analysierter Graph, nicht die aktuell gefilterte Ansicht)',
         noDependencySccsDetected: 'Keine Abhängigkeits-SCCs erkannt.',
         detectedSccsSummary: 'Erkannte SCCs: %n &middot; Größte SCC: %largest Module.',
+        modulesInCyclesSummary: 'Module in Zyklen: %n.',
         moduleAreaHeading: 'Modulbereich',
         moduleAreaCaption: '(aus der Projektstruktur)',
         highlightConnectedToggle: 'Verbundene Module hervorheben',
@@ -1164,6 +1176,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: "(l'ensemble du graphe analysé, pas la vue filtrée actuelle)",
         noDependencySccsDetected: 'Aucun SCC de dépendances détecté.',
         detectedSccsSummary: 'SCC détectés : %n &middot; Plus grand SCC : %largest modules.',
+        modulesInCyclesSummary: 'Modules dans des cycles : %n.',
         moduleAreaHeading: 'Zone du module',
         moduleAreaCaption: '(à partir de la structure du projet)',
         highlightConnectedToggle: 'Mettre en évidence les modules connectés',
@@ -1295,6 +1308,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(todo el grafo analizado, no la vista filtrada actual)',
         noDependencySccsDetected: 'No se detectaron SCC de dependencias.',
         detectedSccsSummary: 'SCC detectados: %n &middot; SCC más grande: %largest módulos.',
+        modulesInCyclesSummary: 'Módulos en ciclos: %n.',
         moduleAreaHeading: 'Área del módulo',
         moduleAreaCaption: '(a partir de la estructura del proyecto)',
         highlightConnectedToggle: 'Resaltar módulos conectados',
@@ -1431,6 +1445,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(cały analizowany graf, nie bieżący filtrowany widok)',
         noDependencySccsDetected: 'Nie wykryto SCC zawierających zależności cykliczne.',
         detectedSccsSummary: 'Wykryte SCC: %n &middot; Największe SCC: %largest modułów.',
+        modulesInCyclesSummary: 'Moduły w cyklach: %n.',
         moduleAreaHeading: 'Obszar modułu',
         moduleAreaCaption: '(na podstawie struktury projektu)',
         highlightConnectedToggle: 'Podświetl połączone moduły',
@@ -1561,6 +1576,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(todo o grafo analisado, não a visualização filtrada atual)',
         noDependencySccsDetected: 'Nenhum SCC de dependências detectado.',
         detectedSccsSummary: 'SCCs detectados: %n &middot; Maior SCC: %largest módulos.',
+        modulesInCyclesSummary: 'Módulos em ciclos: %n.',
         moduleAreaHeading: 'Área do módulo',
         moduleAreaCaption: '(a partir da estrutura do projeto)',
         highlightConnectedToggle: 'Destacar módulos conectados',
@@ -1696,6 +1712,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(весь проанализированный граф, а не текущий отфильтрованный вид)',
         noDependencySccsDetected: 'SCC с циклами зависимостей не обнаружены.',
         detectedSccsSummary: 'Обнаружено SCC: %n &middot; Наибольший SCC: %largest модулей.',
+        modulesInCyclesSummary: 'Модулей в циклах: %n.',
         moduleAreaHeading: 'Область модуля',
         moduleAreaCaption: '(из структуры проекта)',
         highlightConnectedToggle: 'Подсвечивать связанные модули',
@@ -1833,6 +1850,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '(كامل الرسم البياني المحلَّل، وليس العرض المُصفّى الحالي)',
         noDependencySccsDetected: 'لم يتم اكتشاف مكوّنات SCC تحتوي على دورات.',
         detectedSccsSummary: 'مكوّنات SCC المكتشَفة: %n &middot; أكبر SCC: %largest وحدة.',
+        modulesInCyclesSummary: 'الوحدات الموجودة في دورات: %n.',
         moduleAreaHeading: 'منطقة الوحدة',
         moduleAreaCaption: '(من بنية المشروع)',
         highlightConnectedToggle: 'إبراز الوحدات المتصلة',
@@ -1964,6 +1982,7 @@ export const I18N: Record<LanguageCode, Dictionary> = {
         detectedSccsCaption: '（現在のフィルター表示ではなく、分析されたグラフ全体）',
         noDependencySccsDetected: '循環を含むSCCは検出されませんでした。',
         detectedSccsSummary: '検出されたSCC: %n &middot; 最大のSCC: %largest モジュール。',
+        modulesInCyclesSummary: '循環に含まれるモジュール数: %n。',
         moduleAreaHeading: 'モジュールエリア',
         moduleAreaCaption: '（プロジェクト構造に基づく）',
         highlightConnectedToggle: '接続されたモジュールを強調表示',

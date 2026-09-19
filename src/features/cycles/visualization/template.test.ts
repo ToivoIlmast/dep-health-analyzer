@@ -261,6 +261,73 @@ describe('buildHtmlTemplate global SCC summary (findings data foundation)', () =
         expect(html).not.toContain('function computeSccSummary');
         expect(html).not.toContain('function renderSccSummary');
     });
+
+    // F14: "Modules in cycles" - a SUM over every real cyclic SCC's member
+    // count (findings.sccs already IS that filtered, partitioned set - see
+    // buildCycleFindings.ts/realCycles.ts - so this is a plain sum over
+    // .size, never a second cyclicity computation here).
+    describe('"Modules in cycles" (F14)', () => {
+        it('shows the sum of every SCC\'s size, not just the largest one', () => {
+            const html = buildHtmlTemplate({
+                nodes: [],
+                edges: [],
+                findings: {
+                    moduleCount: 16,
+                    dependencyCount: 17,
+                    sccs: [
+                        { id: 0, size: 2, memberIds: ['left.ts', 'right.ts'], exampleCycle: ['left.ts', 'right.ts', 'left.ts'] },
+                        {
+                            id: 1,
+                            size: 7,
+                            memberIds: ['ring0.ts', 'ring1.ts', 'ring2.ts', 'ring3.ts', 'ring4.ts', 'ring5.ts', 'ring6.ts'],
+                            exampleCycle: ['ring0.ts', 'ring1.ts', 'ring2.ts', 'ring3.ts', 'ring4.ts', 'ring5.ts', 'ring6.ts', 'ring0.ts'],
+                        },
+                    ],
+                },
+            });
+
+            const summaryStart = html.indexOf('id="scc-summary-text"');
+            const summaryEnd = html.indexOf('</span>', summaryStart);
+            const summaryText = html.slice(summaryStart, summaryEnd);
+
+            // 2 + 7 = 9, not 7 (the largest SCC) and not 2 (SCC count).
+            expect(summaryText).toContain('Modules in cycles: 9');
+            // The pre-existing "Detected SCCs / Largest SCC" text must
+            // still be there, unchanged - this is additive, not a
+            // replacement.
+            expect(summaryText).toContain('Detected SCCs: 2 &middot; Largest SCC: 7 modules.');
+        });
+
+        it('does not show "Modules in cycles" when there are no real cycles - the existing neutral empty state already covers that case', () => {
+            const html = buildHtmlTemplate({
+                nodes: [],
+                edges: [],
+                findings: { moduleCount: 3, dependencyCount: 2, sccs: [] },
+            });
+
+            const summaryStart = html.indexOf('id="scc-summary-text"');
+            const summaryEnd = html.indexOf('</span>', summaryStart);
+            const summaryText = html.slice(summaryStart, summaryEnd);
+
+            expect(summaryText).toContain('No dependency SCCs detected.');
+            expect(summaryText).not.toContain('Modules in cycles');
+        });
+
+        it('embeds the real modules-in-cycles count for the client-side re-render on language switch, not just the server-rendered English text', () => {
+            const html = buildHtmlTemplate({
+                nodes: [],
+                edges: [],
+                findings: {
+                    moduleCount: 5,
+                    dependencyCount: 6,
+                    sccs: [{ id: 0, size: 3, memberIds: ['a.ts', 'b.ts', 'c.ts'], exampleCycle: ['a.ts', 'b.ts', 'c.ts', 'a.ts'] }],
+                },
+            });
+
+            expect(html).toContain('"modulesInCycles":3');
+            expect(html).toContain('GRAPH_SCC_SUMMARY_COUNTS.modulesInCycles');
+        });
+    });
 });
 
 describe('buildHtmlTemplate SCC member navigation', () => {

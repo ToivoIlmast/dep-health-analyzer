@@ -46,8 +46,17 @@ function renderSccSummaryText(findings: CycleFindings, dict: Dictionary): string
     }
 
     const largestSize = Math.max(...findings.sccs.map((scc) => scc.size));
+    // F14: a SUM over every SCC's own member count - findings.sccs is
+    // already the filtered, partitioned set of real cyclic SCCs
+    // (buildCycleFindings.ts/realCycles.ts), so this is plain arithmetic
+    // over that partition, never a second cyclicity computation.
+    const modulesInCycles = findings.sccs.reduce((sum, scc) => sum + scc.size, 0);
 
-    return formatI18n(dict.detectedSccsSummary, { n: findings.sccs.length, largest: largestSize });
+    return (
+        formatI18n(dict.detectedSccsSummary, { n: findings.sccs.length, largest: largestSize }) +
+        ' ' +
+        formatI18n(dict.modulesInCyclesSummary, { n: modulesInCycles })
+    );
 }
 
 // Findings-first overview (Phase 1). A one-line, presentation-only preview
@@ -310,6 +319,8 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     const graphSccSummaryCounts = {
         sccCount: findings.sccs.length,
         largestSccSize: findings.sccs.length === 0 ? 0 : Math.max(...findings.sccs.map((scc) => scc.size)),
+        // F14: same SUM-over-the-partition as renderSccSummaryText above.
+        modulesInCycles: findings.sccs.reduce((sum, scc) => sum + scc.size, 0),
     };
     const graphScaleCounts = {
         moduleCount: findings.moduleCount,
@@ -834,6 +845,10 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                             : formatI18nClient(dict.detectedSccsSummary, {
                                   n: GRAPH_SCC_SUMMARY_COUNTS.sccCount,
                                   largest: GRAPH_SCC_SUMMARY_COUNTS.largestSccSize,
+                              }) +
+                              ' ' +
+                              formatI18nClient(dict.modulesInCyclesSummary, {
+                                  n: GRAPH_SCC_SUMMARY_COUNTS.modulesInCycles,
                               });
                 }
             }

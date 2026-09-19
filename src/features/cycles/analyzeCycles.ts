@@ -6,6 +6,7 @@ import { buildCycleFindings } from './findings/buildCycleFindings';
 import { calculateArchitectureMetrics } from './metrics/architectureMetrics';
 import { findSCCs } from './metrics/findScc';
 import { getLargestSccSize } from './metrics/getLargestSccSize';
+import { getModulesInCyclesCount } from './metrics/getModulesInCyclesCount';
 import { printMetricsSummary } from './metrics/report';
 import { ModuleMetrics } from './metrics/types';
 import { ModeType, MODES } from '@shared/types';
@@ -139,6 +140,14 @@ export async function analyzeCycles(args: AnalyzeCyclesType): Promise<boolean> {
 
     const largestScc = getLargestSccSize(sccs, result.graph);
     console.log(`Largest SCC: ${largestScc} module(s)`);
+
+    // F14: the one headline number that is monotone - fusing two cycles
+    // into a bigger SCC (which makes "Cycles detected" drop and can read as
+    // an improvement) never decreases this, since it sums every real
+    // cyclic SCC's own member count rather than counting SCCs.
+    const modulesInCycles = getModulesInCyclesCount(sccs, result.graph);
+    console.log(`Modules in cycles: ${modulesInCycles} module(s)`);
+
     const instabilityMetrics = calculateArchitectureMetrics(result.graph);
 
     const failed = shouldFail({ cyclesCount, failOn });

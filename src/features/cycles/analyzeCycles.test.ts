@@ -359,6 +359,94 @@ describe('analyzeCycles', () => {
         expect(logSpy).toHaveBeenCalledWith('Largest SCC: 0 module(s)');
     });
 
+    // F14: "Modules in cycles" is a SUM over every real cyclic SCC's member
+    // count, not the size of the largest one (Largest SCC) and not the SCC
+    // count (Cycles detected) - it's the one metric of the three that goes
+    // UP, never down, when two cycles fuse into a bigger one or a new cycle
+    // appears anywhere in the graph.
+    describe('"Modules in cycles" (F14)', () => {
+        it('reports 0 when there are no real cycles', async () => {
+            mockedFindSCCs.mockReturnValue([['a.ts'], ['b.ts']]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 0 module(s)');
+        });
+
+        it('counts every member of a single real cycle', async () => {
+            mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts', 'c.ts']]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 3 module(s)');
+        });
+
+        it('SUMS members across independent SCCs - unlike Largest SCC, which would report only the bigger one', async () => {
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts'],
+                ['c.ts', 'd.ts', 'e.ts'],
+            ]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 5 module(s)');
+            expect(logSpy).toHaveBeenCalledWith('Largest SCC: 3 module(s)');
+        });
+
+        it('counts the true SCC member count for overlapping cycles sharing a node, never the sum of the individual cycles\' lengths', async () => {
+            mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts', 'c.ts', 'd.ts']]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 4 module(s)');
+        });
+
+        it('counts a lone self-loop as 1 module in cycles', async () => {
+            mockedScanProject.mockResolvedValue(
+                makeScanResult({
+                    nodes: new Set(['self.ts']),
+                    edges: new Map([['self.ts', new Set(['self.ts'])]]),
+                })
+            );
+            mockedFindSCCs.mockReturnValue([['self.ts']]);
+            const logSpy = jest.spyOn(console, 'log');
+
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+            expect(logSpy).toHaveBeenCalledWith('Modules in cycles: 1 module(s)');
+        });
+
+        it('goes UP, not down, when two independent cycles fuse into one larger SCC (the exact F14 audit scenario)', async () => {
+            // Before: two independent 3-module cycles -> 6 modules in cycles.
+            mockedFindSCCs.mockReturnValue([
+                ['a.ts', 'b.ts', 'c.ts'],
+                ['d.ts', 'e.ts', 'f.ts'],
+            ]);
+            const logSpyBefore = jest.spyOn(console, 'log');
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+            expect(logSpyBefore).toHaveBeenCalledWith('Modules in cycles: 6 module(s)');
+
+            jest.clearAllMocks();
+            mockedScanProject.mockResolvedValue(makeScanResult());
+            mockedCalculateArchitectureMetrics.mockReturnValue(new Map());
+            mockedBuildCytoscapeElements.mockReturnValue({ nodes: [], edges: [] });
+
+            // After: the two cycles fuse into one 6-module SCC (Cycles
+            // detected drops 2 -> 1, which reads as an improvement) -
+            // Modules in cycles must stay at 6, never appear to drop.
+            mockedFindSCCs.mockReturnValue([['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts']]);
+            const logSpyAfter = jest.spyOn(console, 'log');
+            await analyzeCycles({ ...baseArgs, failOn: 'info' });
+
+            expect(logSpyAfter).toHaveBeenCalledWith('Cycles detected: 1');
+            expect(logSpyAfter).toHaveBeenCalledWith('Modules in cycles: 6 module(s)');
+        });
+    });
+
     it('should log the total number of dependency edges across the graph', async () => {
         mockedScanProject.mockResolvedValue(
             makeScanResult({
