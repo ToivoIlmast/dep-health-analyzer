@@ -698,11 +698,13 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html).toContain(
             "showFullGraphButton?.addEventListener('click', () => {\n                exitFocus();\n            });",
         );
-        // The Layout dropdown still calls exitFocus() first (a layout
-        // re-run moves nodes and changes the Focus/Area filter has never
-        // applied to, so it exits rather than risk a stale framing) - out
-        // of scope for F18, unchanged here.
-        expect(html).toContain('exitFocus();\n\n                const runningLayout');
+        // The Layout dropdown still calls exitFocus() first, immediately -
+        // a layout re-run moves nodes and changes the Focus/Area filter has
+        // never applied to, so it exits rather than risk a stale framing.
+        // F6: the actual .layout(...).run() call itself is now deferred
+        // via scheduleLayout() (unrelated to F18, unchanged in spirit here
+        // - exitFocus() still runs synchronously, right away).
+        expect(html).toContain('exitFocus();\n\n                scheduleLayout(() => {\n                    const runningLayout');
     });
 
     it('F18 fix (AUDIT_v0.11.0.md): "Fit Graph" does NOT call exitFocus() - it stays in Focus and fits whatever visibleElements(cy) currently resolves to (the focused subgraph while focused, the full graph otherwise)', () => {
@@ -812,6 +814,68 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(focusFnStart).toBeGreaterThan(-1);
         expect(focusAndExitSource).not.toContain('scc-summary');
         expect(html).toContain('entire analyzed graph, not the current filtered view');
+    });
+});
+
+// F6 (AUDIT_v0.11.0.md): dagre's own layout.run() is a single, synchronous,
+// uninterruptible computation (confirmed independently against real project
+// graphs via scripts/repro-dagre-layout-scale.mjs: ~21s at 2,022 modules,
+// does not complete within any practical time at 10,102). Passed directly
+// into the cytoscape() constructor (the pre-fix behavior), it blocks the
+// FIRST PAINT of the whole page - not just the Graph view, but the already
+// server-rendered Findings view too - for that entire duration, and the
+// exact same synchronous call recurs on every Layout/Area/Connections
+// change via runLayoutForCurrentView(). The actual live scheduling/
+// supersession behavior is verified separately in template.behavior.test.ts
+// (real jsdom/cytoscape + fake timers) - these are source-structure checks,
+// matching this file's own established convention for client-side logic
+// Jest can't execute directly.
+describe('buildHtmlTemplate full-graph layout scheduling (F6)', () => {
+    const html = buildHtmlTemplate({ nodes: [], edges: [], findings: EMPTY_FINDINGS });
+
+    it('the cytoscape() constructor never runs a real layout algorithm synchronously - it uses the no-op "preset" layout, not layouts.flowVertical', () => {
+        const constructorStart = html.indexOf('const cy = cytoscape({');
+        const constructorEnd = html.indexOf('markCycleEdges(cy);', constructorStart);
+        expect(constructorStart).toBeGreaterThan(-1);
+        expect(constructorEnd).toBeGreaterThan(constructorStart);
+
+        const constructorSource = html.slice(constructorStart, constructorEnd);
+        expect(constructorSource).toContain("layout: { name: 'preset' }");
+        expect(constructorSource).not.toContain('layout: layouts.flowVertical');
+    });
+
+    it('a single scheduleLayout() function is the only thing that ever calls .layout(...).run() for the full graph - both the initial load and runLayoutForCurrentView() go through it', () => {
+        expect(html.match(/function scheduleLayout\(runLayout\)/g)).toHaveLength(1);
+
+        // The initial load's own layout request.
+        const scheduleCallSites = [...html.matchAll(/scheduleLayout\(\(\) => \{/g)];
+        expect(scheduleCallSites.length).toBeGreaterThanOrEqual(2);
+
+        const runLayoutFnStart = html.indexOf('function runLayoutForCurrentView(layoutName)');
+        const runLayoutFnEnd = html.indexOf('\n            }', html.indexOf('scheduleLayout(', runLayoutFnStart));
+        const runLayoutFnSource = html.slice(runLayoutFnStart, runLayoutFnEnd);
+
+        expect(runLayoutFnSource).toContain('scheduleLayout(() => {');
+        // exitFocus() itself stays IMMEDIATE (synchronous), never deferred -
+        // only the expensive .layout(...).run() call is scheduled.
+        const exitFocusIndex = runLayoutFnSource.indexOf('exitFocus();');
+        const scheduleIndex = runLayoutFnSource.indexOf('scheduleLayout(');
+        expect(exitFocusIndex).toBeGreaterThan(-1);
+        expect(scheduleIndex).toBeGreaterThan(exitFocusIndex);
+    });
+
+    it('scheduleLayout() defers via a macrotask (setTimeout) and drops a request superseded before its own turn - it never calls the deferred work for a stale generation', () => {
+        const fnStart = html.indexOf('function scheduleLayout(runLayout)');
+        const fnEnd = html.indexOf('\n            }', fnStart);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        expect(fnStart).toBeGreaterThan(-1);
+        expect(fnSource).toContain('setTimeout(');
+        // A strictly-increasing generation counter, compared inside the
+        // deferred callback - the exact mechanism that lets a newer
+        // request silently win without ever running the older one.
+        expect(fnSource).toMatch(/latestLayoutGeneration\s*\+=\s*1/);
+        expect(fnSource).toMatch(/if\s*\(\s*myGeneration\s*!==\s*latestLayoutGeneration\s*\)/);
     });
 });
 

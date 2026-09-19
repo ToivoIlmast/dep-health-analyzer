@@ -113,6 +113,8 @@ export type RenderedReport = {
             applyLanguage: (lang: string) => void;
             // F25b
             openExploreSccModal: (sccId: number) => void;
+            // F6
+            runLayoutForCurrentView: (layoutName: string) => void;
         };
 };
 
@@ -218,6 +220,20 @@ export type RenderReportArgs = {
     findings: CycleFindings;
 };
 
+export type RenderReportOptions = {
+    // F6: the initial Full Graph layout is no longer run synchronously as
+    // part of the script (see scheduleLayout() in template.ts) - it's
+    // deferred by one macrotask so the browser gets a chance to paint
+    // first. Every caller of this harness already runs under
+    // jest.useFakeTimers() (see this file's own callers' beforeEach), so
+    // by default (true) this flushes that one pending tick before
+    // returning, keeping every EXISTING test's assertions (which expect
+    // the initial layout already applied) unchanged. Pass false only for
+    // a test that specifically wants to observe the still-deferred state,
+    // or to drive supersession itself before that first tick ever fires.
+    flushInitialLayout?: boolean;
+};
+
 // Renders the exact production buildHtmlTemplate() output, then executes
 // its own single inline <script> (extracted verbatim - never rewritten or
 // reimplemented) inside a real jsdom document via vm.runInContext(), the
@@ -258,7 +274,11 @@ export function closeAllRenderedReports(): void {
 const silentVirtualConsole = new VirtualConsole();
 silentVirtualConsole.on('jsdomError', () => {});
 
-export function renderInteractiveReport(args: RenderReportArgs): RenderedReport {
+export function renderInteractiveReport(
+    args: RenderReportArgs,
+    options: RenderReportOptions = {},
+): RenderedReport {
+    const { flushInitialLayout = true } = options;
     const html = buildHtmlTemplate(args);
 
     const dom = new JSDOM(html, {
@@ -284,6 +304,10 @@ export function renderInteractiveReport(args: RenderReportArgs): RenderedReport 
 
     if (!cyHolder.instance) {
         throw new Error('renderInteractiveReport: cytoscape() was never called by the executed script');
+    }
+
+    if (flushInitialLayout) {
+        jest.advanceTimersByTime(0);
     }
 
     return { dom, document: win.document, win, cy: cyHolder.instance };

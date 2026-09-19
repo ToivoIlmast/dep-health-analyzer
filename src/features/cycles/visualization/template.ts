@@ -1640,17 +1640,26 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     },
                 ],
     
-                // The default on first load used to be dagreLR - every
-                // screenshot demonstrating this branch's actual intended
-                // result was only ever reachable by manually reselecting
-                // the dropdown, making a fresh open of the file look
-                // broken even though nothing was. flowVertical is now both
-                // the layout run here and the <option selected> above, so
-                // what a fresh load shows matches what the dropdown claims
-                // is active - this is the layout confirmed as the good,
-                // stable checkpoint before the bottom-HUD experiment (see
-                // the git tag on this commit).
-                layout: layouts.flowVertical,
+                // F6 (AUDIT_v0.11.0.md): dagre's own layout.run() is a
+                // single, synchronous, uninterruptible computation -
+                // confirmed independently against real project graphs
+                // (scripts/repro-dagre-layout-scale.mjs: ~21s at 2,022
+                // modules, does not complete within any practical time at
+                // 10,102). Passing a real layout here would run it as
+                // part of THIS constructor call, blocking the very first
+                // paint of the whole page (not just the Graph view - the
+                // already server-rendered Findings view too) for however
+                // long that takes. 'preset' is cytoscape's own built-in
+                // no-op layout (keep whatever positions elements already
+                // have - here, none) - construction itself stays fast
+                // regardless of graph size (measured: ~125ms at 2,022
+                // nodes, ~390ms at 10,102). The real, default flowVertical
+                // layout - still exactly the layout run here and the
+                // <option selected> above, so what a fresh load eventually
+                // shows still matches what the dropdown claims is active -
+                // now runs through scheduleLayout() below instead, exactly
+                // like every other layout request.
+                layout: { name: 'preset' },
             });
 
             // Edge visual hierarchy (Graph UX pass). Computed ONCE, right
@@ -2731,13 +2740,54 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 redrawMinimapStatic(cy, orthogonalAxis);
             }
 
-            // The initial 'dagre' layout passed into the cytoscape()
-            // constructor above runs synchronously as part of construction,
-            // so its 'layoutstop' can fire before any listener registered
-            // after the fact would be attached in time to catch it -
-            // calling this directly, once, covers the initial-load case
-            // regardless of that timing.
-            onLayoutFinished(cy, 'flowVertical');
+            // F6 (AUDIT_v0.11.0.md): dagre's own layout.run() is a single,
+            // synchronous, uninterruptible computation - unlike Focus's own
+            // animated 'cose' layout (activeFocusLayout below - cose CAN be
+            // told to .stop() mid-animation), a started dagre run cannot be
+            // paused, cancelled, or chunked; it either hasn't started yet,
+            // or it will run to completion. What CAN be controlled is WHEN
+            // it starts: every full-graph layout request (the initial one
+            // right below, and every runLayoutForCurrentView() call - the
+            // Layout dropdown and the Area/Connections filters, which each
+            // trigger a re-layout too) goes through scheduleLayout() here,
+            // tagged with a strictly increasing generation number, and
+            // deferred by one macrotask. If a NEWER request supersedes an
+            // older one before its deferred callback has fired, the older
+            // one is dropped entirely - it never calls .layout(...).run()
+            // at all - so rapidly changing Layout/Area/Connections settings
+            // never queues up more than the one, most recent request's
+            // actual computation (before this fix, each one ran fully,
+            // back to back, however many were requested - confirmed: 100
+            // rapid requests meant 100 full synchronous layout runs). The
+            // deferral itself also lets the browser paint at least once
+            // before that computation starts - the report's own Findings
+            // view (already fully server-rendered HTML) and toolbar become
+            // visible immediately even on a huge project, instead of the
+            // whole page staying blank for however long dagre takes (a
+            // layout run synchronously inside the cytoscape() constructor,
+            // the previous behavior, blocks the very first paint the
+            // browser would otherwise be free to do).
+            let latestLayoutGeneration = 0;
+
+            function scheduleLayout(runLayout) {
+                latestLayoutGeneration += 1;
+                const myGeneration = latestLayoutGeneration;
+
+                setTimeout(() => {
+                    if (myGeneration !== latestLayoutGeneration) {
+                        return;
+                    }
+                    runLayout();
+                }, 0);
+            }
+
+            scheduleLayout(() => {
+                const initialLayout = cy.layout(layouts.flowVertical);
+                initialLayout.one('layoutstop', () => {
+                    onLayoutFinished(cy, 'flowVertical');
+                });
+                initialLayout.run();
+            });
 
             const layoutSelect = document.getElementById('layout-select');
 
@@ -2757,16 +2807,21 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // fade/highlight of "this SCC vs. everything else" would
                 // otherwise be left referring to a graph that no longer
                 // matches what's on screen - exit it rather than risk that
-                // going stale/misleading.
+                // going stale/misleading. Runs IMMEDIATELY (never deferred)
+                // - it's cheap, and its own state (currentFocus, toolbar)
+                // must reflect the request right away regardless of when
+                // the actual (possibly superseded) layout eventually runs.
                 exitFocus();
 
-                const runningLayout = visibleElements(cy).layout(layouts[layoutName]);
+                scheduleLayout(() => {
+                    const runningLayout = visibleElements(cy).layout(layouts[layoutName]);
 
-                runningLayout.one('layoutstop', () => {
-                    onLayoutFinished(cy, layoutName);
+                    runningLayout.one('layoutstop', () => {
+                        onLayoutFinished(cy, layoutName);
+                    });
+
+                    runningLayout.run();
                 });
-
-                runningLayout.run();
             }
 
             if (layoutSelect) {

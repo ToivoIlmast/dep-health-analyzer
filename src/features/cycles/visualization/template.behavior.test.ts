@@ -1066,4 +1066,133 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
             expect(resultText).toContain(baseName(DUMBBELL_B2));
         });
     });
+
+    // F6 (AUDIT_v0.11.0.md): dagre's own layout.run() is a single,
+    // synchronous, uninterruptible computation that used to run directly
+    // inside the cytoscape() constructor and again, synchronously, on
+    // every Layout/Area/Connections change - confirmed independently
+    // against real project graphs (scripts/repro-dagre-layout-scale.mjs:
+    // ~21s at 2,022 modules, does not complete within any practical time
+    // at 10,102). These tests drive the real scheduleLayout() mechanism
+    // (real cytoscape, real dagre, fake timers) rather than asserting on
+    // wall-clock duration, which would be exactly the brittle-timing test
+    // this task explicitly warns against. Small/synthetic graphs only -
+    // letting a REAL dagre run actually complete on a large graph inside a
+    // Jest test would make the test itself take the same 20+ real seconds
+    // regardless of fake timers (jest.advanceTimersByTime only fakes the
+    // scheduling delay, never the CPU-bound work a fired callback does) -
+    // the real large-corpus check is manual, documented in the session
+    // report, not a permanent automated test.
+    describe('F6: deferred/superseding full-graph layout', () => {
+        // onLayoutFinished(cy, layoutName) is the one signal common to
+        // BOTH the initial load (a direct cy.layout(...) call) and every
+        // re-layout via runLayoutForCurrentView() (visibleElements(cy)
+        // .layout(...) - a FRESH collection object each call, so spying
+        // on cy.layout itself would miss those entirely). It's a
+        // top-level function declaration in the script's own classic-
+        // script scope, so it's a real, reassignable property of `win` -
+        // wrapping it here observes every real layout completion,
+        // reliably, regardless of which object .layout() was called on.
+        function spyOnLayoutFinished(win: RenderedReport['win']): jest.Mock {
+            const original = (win as unknown as { onLayoutFinished: (cy: unknown, layoutName: string) => void })
+                .onLayoutFinished;
+            const spy = jest.fn(original);
+            (win as unknown as { onLayoutFinished: unknown }).onLayoutFinished = spy;
+            return spy;
+        }
+
+        it('the initial layout is deferred - it has not run yet immediately after the script executes', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { win } = renderInteractiveReport({ nodes, edges, findings }, { flushInitialLayout: false });
+            const finishedSpy = spyOnLayoutFinished(win);
+
+            expect(finishedSpy).not.toHaveBeenCalled();
+        });
+
+        it('the initial layout runs exactly once, for the real flowVertical layout, after one deferred tick', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { win } = renderInteractiveReport({ nodes, edges, findings }, { flushInitialLayout: false });
+            const finishedSpy = spyOnLayoutFinished(win);
+
+            jest.advanceTimersByTime(0);
+
+            expect(finishedSpy).toHaveBeenCalledTimes(1);
+            expect(finishedSpy).toHaveBeenCalledWith(expect.anything(), 'flowVertical');
+        });
+
+        it('rapidly switching the Layout dropdown before the deferred tick fires never runs the earlier, now-stale request - only the LAST one ever completes', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { win } = renderInteractiveReport({ nodes, edges, findings });
+            const finishedSpy = spyOnLayoutFinished(win);
+
+            // Both calls happen synchronously, before either's deferred
+            // tick has any chance to fire - simulating a user changing the
+            // Layout dropdown twice in quick succession.
+            win.runLayoutForCurrentView('dagreLR');
+            win.runLayoutForCurrentView('flowTB');
+
+            // Neither has run yet - both are still deferred.
+            expect(finishedSpy).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(0);
+
+            // dagreLR was superseded before it ever got a turn - it must
+            // never have run to completion at all, not merely have its
+            // result overwritten afterward by flowTB.
+            expect(finishedSpy).toHaveBeenCalledTimes(1);
+            expect(finishedSpy).toHaveBeenCalledWith(expect.anything(), 'flowTB');
+        });
+
+        it('final graph state matches the LAST requested layout, not the first, once settled', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { win, document } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.runLayoutForCurrentView('flowOrthogonal');
+            win.runLayoutForCurrentView('dagreLR');
+            jest.advanceTimersByTime(0);
+
+            // onLayoutFinished(cy, layoutName) toggles the orthogonal-edge
+            // classes to match whichever layout actually ran -
+            // flowOrthogonal would have turned '.orthogonal-edge-vertical'
+            // on graph-wide; dagreLR (not one of ORTHOGONAL_LAYOUT_AXES)
+            // must leave it off. Finding either class ON here would prove
+            // the superseded flowOrthogonal request still executed.
+            const orthogonalEdges = document.querySelectorAll('.orthogonal-edge-vertical, .orthogonal-edge-horizontal');
+            expect(orthogonalEdges.length).toBe(0);
+        });
+
+        it('100 rapid successive layout requests never cause a RangeError or unbounded backlog - only the final one ever completes', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { win } = renderInteractiveReport({ nodes, edges, findings });
+            const finishedSpy = spyOnLayoutFinished(win);
+            const alternatingNames = ['dagreLR', 'flowTB'];
+
+            expect(() => {
+                for (let i = 0; i < 100; i++) {
+                    win.runLayoutForCurrentView(alternatingNames[i % 2]!);
+                }
+            }).not.toThrow();
+
+            expect(finishedSpy).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(0);
+
+            // i = 99 (the last iteration) requested alternatingNames[1] = 'flowTB'.
+            expect(finishedSpy).toHaveBeenCalledTimes(1);
+            expect(finishedSpy).toHaveBeenCalledWith(expect.anything(), 'flowTB');
+        });
+
+        it('a settled layout (after its deferred tick) does not re-run on its own', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { win } = renderInteractiveReport({ nodes, edges, findings });
+            const finishedSpy = spyOnLayoutFinished(win);
+
+            // Nothing further triggers a layout on its own after the
+            // initial one has already settled (renderInteractiveReport's
+            // default flushInitialLayout: true already advanced past it).
+            jest.advanceTimersByTime(5000);
+
+            expect(finishedSpy).not.toHaveBeenCalled();
+        });
+    });
 });
