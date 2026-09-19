@@ -9,6 +9,8 @@ import {
 } from './graphOverlapResolution';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import type { CycleFindings } from '../findings/buildCycleFindings';
+import { I18N, SUPPORTED_LANGUAGES } from './i18n';
+import { escapeHtml } from '@shared/escapeHtml';
 
 // Most tests in this file exercise something other than the findings
 // summary itself (escaping, SCC navigation, Focus, the cycle modal) and
@@ -18,17 +20,15 @@ import type { CycleFindings } from '../findings/buildCycleFindings';
 // their own CycleFindings value instead of using this.
 const EMPTY_FINDINGS: CycleFindings = { moduleCount: 0, dependencyCount: 0, sccs: [] };
 
-// Information architecture rework: the Findings view now server-renders
-// one block per supported language (see renderFindingsOverview in
-// template.ts), only one of them ever visible at a time client-side -
-// English is always first (SUPPORTED_LANGUAGES[0] in i18n.ts) and is the
-// only block most content-shape tests care about. Slicing out just that
-// block keeps exact-count assertions (e.g. "exactly N finding rows")
-// correct regardless of how many languages exist, rather than every such
-// test needing to know and multiply by that count itself.
+// F29: the Findings view is now server-rendered exactly once (English,
+// SUPPORTED_LANGUAGES[0]) - there is no longer a per-language block to pick
+// out of several. Kept as a thin wrapper (rather than updating every call
+// site) so exact-count assertions written against "the English block" keep
+// reading the same way; it now simply returns the single #findings-view
+// subtree.
 function extractEnglishFindingsBlock(html: string): string {
-    const start = html.indexOf('data-lang="en"');
-    const end = html.indexOf('data-lang="fi"');
+    const start = html.indexOf('<main id="findings-view">');
+    const end = html.indexOf('</main>', start);
     return html.slice(start, end);
 }
 
@@ -1210,8 +1210,13 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
         // The zero-state reads as a deliberate, understood state ("nothing
         // found"), not an empty findings-list with no explanation - no
         // <ol class="findings-list"> should render at all when there's
-        // nothing to put in it.
-        expect(html).not.toContain('class="findings-list"');
+        // nothing to put in it. Scoped to the server-rendered #findings-view
+        // block specifically (F29): the client script's own source
+        // necessarily contains that class name as a string literal (see
+        // renderFindingsBody), since it has to be able to render the
+        // non-zero case too on a later language switch - that's a fact
+        // about the SCRIPT, not about what's actually rendered here.
+        expect(extractEnglishFindingsBlock(html)).not.toContain('class="findings-list"');
     });
 
     it('renders one finding for one SCC, with its size and a representative-cycle preview', () => {
@@ -1280,6 +1285,92 @@ describe('buildHtmlTemplate findings-first overview (Phase 1)', () => {
         // page for the language switcher.
         const englishBlock = extractEnglishFindingsBlock(html);
         expect(englishBlock.match(/class="finding-row"/g)).toHaveLength(2);
+    });
+
+    it('F29: renders each finding exactly once - never duplicated per supported language', () => {
+        // AUDIT F29: the old design rendered the whole findings list once
+        // per SUPPORTED_LANGUAGES entry (14x), so a naive regression here
+        // would show 2 * 14 = 28 server-rendered rows, not 2. Scoped to the
+        // server-rendered #findings-view block (extractEnglishFindingsBlock)
+        // rather than the whole document, since the client script's own
+        // source necessarily contains one literal "finding-row"/
+        // "findings-lang-block" occurrence each (see renderFindingRowClient/
+        // renderFindingsView) - that's the code able to render a row, not a
+        // rendered row itself.
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 16,
+                dependencyCount: 17,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 2,
+                        memberIds: ['/repo/src/pair/left.ts', '/repo/src/pair/right.ts'],
+                        exampleCycle: ['/repo/src/pair/left.ts', '/repo/src/pair/right.ts', '/repo/src/pair/left.ts'],
+                    },
+                    {
+                        id: 1,
+                        size: 7,
+                        memberIds: Array.from({ length: 7 }, (_, i) => `/repo/src/ring/ring${i}.ts`),
+                        exampleCycle: [
+                            ...Array.from({ length: 7 }, (_, i) => `/repo/src/ring/ring${i}.ts`),
+                            '/repo/src/ring/ring0.ts',
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const englishBlock = extractEnglishFindingsBlock(html);
+        expect(englishBlock.match(/class="finding-row"/g)).toHaveLength(2);
+        expect(html.match(/class="findings-lang-block"/g)).toHaveLength(1);
+    });
+
+    it('F29: embeds the sorted findings payload once, for client-side re-render on language switch, without the large per-member id list', () => {
+        const html = buildHtmlTemplate({
+            nodes: [],
+            edges: [],
+            findings: {
+                moduleCount: 9,
+                dependencyCount: 9,
+                sccs: [
+                    {
+                        id: 0,
+                        size: 2,
+                        memberIds: ['/repo/small-a.ts', '/repo/small-b.ts'],
+                        exampleCycle: ['/repo/small-a.ts', '/repo/small-b.ts', '/repo/small-a.ts'],
+                    },
+                    {
+                        id: 1,
+                        size: 5,
+                        memberIds: Array.from({ length: 5 }, (_, i) => `/repo/mid${i}.ts`),
+                        exampleCycle: [...Array.from({ length: 5 }, (_, i) => `/repo/mid${i}.ts`), '/repo/mid0.ts'],
+                    },
+                ],
+            },
+        });
+
+        const match = html.match(/const FINDINGS_SCCS = (\[.*?\]);/s);
+        expect(match).toBeTruthy();
+        const embedded = JSON.parse(match![1]!);
+
+        // Biggest-first, same tie-break as the server-rendered rows -
+        // client-side re-render must reproduce the exact same order
+        // without re-sorting (and without a second, possibly-diverging
+        // comparator implementation).
+        expect(embedded).toEqual([
+            { id: 1, size: 5, exampleCycle: [...Array.from({ length: 5 }, (_, i) => `/repo/mid${i}.ts`), '/repo/mid0.ts'] },
+            { id: 0, size: 2, exampleCycle: ['/repo/small-a.ts', '/repo/small-b.ts', '/repo/small-a.ts'] },
+        ]);
+
+        // memberIds can be large (a real SCC's full member list) and is
+        // never read by the row-rendering code (id/size/exampleCycle only)
+        // - re-deriving member ids from the live graph when actually
+        // needed (see openCycleDetailModalForScc/openExploreSccModal) means
+        // this payload doesn't have to carry a second copy of it.
+        expect(embedded.some((f: { memberIds?: unknown }) => 'memberIds' in f)).toBe(false);
     });
 
     it('P1-3: displays findings sorted by SCC size descending, deterministically tie-broken, while preserving each finding\'s original id', () => {
@@ -1749,23 +1840,23 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
         expect(Object.keys(dict).sort()).toEqual([...ALL_LANGUAGES].sort());
     });
 
-    it('English is the default language - rendered visible, all 13 others rendered pre-hidden, in SUPPORTED_LANGUAGES order', () => {
-        let previousIndex = -1;
+    it('F29: the findings view is server-rendered exactly once, in English - no per-language data-lang/hidden duplication', () => {
+        // AUDIT F29: the old design pre-rendered one .findings-lang-block
+        // per SUPPORTED_LANGUAGES entry (14x), tagged data-lang="xx" and
+        // hidden except for English, and applyLanguage() picked one by
+        // toggling `hidden`. There is now exactly one such block,
+        // permanently visible, carrying no data-lang/hidden attributes at
+        // all - language switching re-renders its content client-side
+        // instead (see the FINDINGS_SCCS-driven tests above/below).
+        expect(html).not.toMatch(/data-lang="/);
+        expect(html.match(/class="findings-lang-block"/g)).toHaveLength(1);
 
-        for (const lang of ALL_LANGUAGES) {
-            const index = html.indexOf(`data-lang="${lang}"`);
-            expect(index).toBeGreaterThan(previousIndex);
-            previousIndex = index;
+        const blockStart = html.indexOf('class="findings-lang-block"');
+        const blockTagEnd = html.indexOf('>', blockStart);
+        expect(html.slice(blockStart, blockTagEnd)).not.toContain('hidden');
 
-            const tagEnd = html.indexOf('>', index);
-            const openingTag = html.slice(index, tagEnd);
-
-            if (lang === 'en') {
-                expect(openingTag).not.toContain('hidden');
-            } else {
-                expect(openingTag).toContain('hidden');
-            }
-        }
+        const englishFindingsTitle = escapeHtml(I18N[SUPPORTED_LANGUAGES[0]].findingsTitle);
+        expect(html).toContain(`<h1 data-i18n="findingsTitle">${englishFindingsTitle}</h1>`);
     });
 
     it('renders a persistent header with Findings/Graph tabs and a language select with exactly 14 options', () => {
@@ -1776,33 +1867,46 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
         expect(html.match(/<option value="(en|fi|sv|no|da|is|de|fr|es|pl|pt|ru|ar|ja)">/g)).toHaveLength(14);
     });
 
-    it('every language renders its own findings title - no missing translation falls back to English text under a different data-lang', () => {
-        for (const lang of ALL_LANGUAGES) {
-            const start = html.indexOf(`data-lang="${lang}"`);
-            const nextLangStart = html.indexOf('data-lang="', start + 1);
-            const block = html.slice(start, nextLangStart === -1 ? html.length : nextLangStart);
+    it('F29: the findings title is swapped by the same generic data-i18n mechanism as the rest of the persistent chrome, not a bespoke per-language render', () => {
+        // i18n.test.ts already proves every language's dictionary has a
+        // non-empty findingsTitle - what this needs to prove instead is
+        // that the findings <h1> is wired into applyLanguage()'s existing
+        // generic [data-i18n] sweep, the same mechanism #app-header's own
+        // tab labels already use, rather than a second, parallel
+        // per-language rendering path.
+        expect(html).toMatch(/<h1 data-i18n="findingsTitle">[^<]+<\/h1>/);
+    });
 
-            // Every block has a real, non-empty <h1> title - proof the
-            // dictionary lookup for this language actually resolved to
-            // something, not an empty/undefined string silently rendered.
-            const titleMatch = block.match(/<h1>([^<]+)<\/h1>/);
-            expect(titleMatch).toBeTruthy();
-            expect(titleMatch![1]!.trim().length).toBeGreaterThan(0);
+    it('F29: the client-side findings re-render builds every piece of text from the dict argument it is given, never a hardcoded English string', () => {
+        // Spans renderFindingRowClient (sccLabel/viewCycleButton/
+        // exploreSccButton) through renderFindingsBody (everything else) -
+        // together, the whole client-side re-render pipeline for the
+        // Findings view's dynamic content.
+        const fnStart = html.indexOf('function renderFindingRowClient(finding, dict)');
+        expect(fnStart).toBeGreaterThan(-1);
+        const fnEnd = html.indexOf('function applyLanguage', fnStart);
+        expect(fnEnd).toBeGreaterThan(fnStart);
+        const fnSource = html.slice(fnStart, fnEnd);
+
+        for (const key of [
+            'dict.findingsZeroState',
+            'dict.exploreGraphZero',
+            'dict.findingsCaveatSingular',
+            'dict.findingsCaveatPlural',
+            'dict.findingsCyclesHeading',
+            'dict.exploreFullGraph',
+            'dict.sccLabel',
+            'dict.viewCycleButton',
+            'dict.exploreSccButton',
+        ]) {
+            expect(fnSource).toContain(key);
         }
     });
 
-    it('Arabic\'s findings block carries dir="rtl", server-rendered - every other language\'s does not', () => {
-        for (const lang of ALL_LANGUAGES) {
-            const index = html.indexOf(`data-lang="${lang}"`);
-            const tagEnd = html.indexOf('>', index);
-            const openingTag = html.slice(index, tagEnd);
-
-            if (lang === 'ar') {
-                expect(openingTag).toContain('dir="rtl"');
-            } else {
-                expect(openingTag).not.toContain('dir="rtl"');
-            }
-        }
+    it('F29: the findings view is not pre-rendered with a baked-in dir="rtl" - direction is applied dynamically, like the rest of the localized chrome', () => {
+        const blockStart = html.indexOf('class="findings-lang-block"');
+        const blockTagEnd = html.indexOf('>', blockStart);
+        expect(html.slice(blockStart, blockTagEnd)).not.toContain('dir=');
     });
 
     it('RTL is scoped to the Findings surfaces only - never applied to <html>/<body> or the Graph view, so the dependency graph itself never mirrors', () => {
@@ -1812,7 +1916,7 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
         expect(html).not.toMatch(/id="bottom-hud"[^>]*\bdir=/);
     });
 
-    it('applyLanguage toggles dir="rtl" on #app-header specifically for Arabic - the header is not pre-rendered per language, unlike the findings blocks', () => {
+    it('applyLanguage toggles dir="rtl" on #app-header specifically for Arabic - it is never pre-rendered per language', () => {
         // Full localization task: isRtl is now computed once and reused
         // for #app-header AND the newly-localized Graph chrome panels
         // (#hint/#toolbar/#bottom-hud/both modals) below it, rather than
@@ -1830,11 +1934,15 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
         expect(block).toContain('appHeader.removeAttribute(\'dir\')');
     });
 
-    it('applyLanguage also toggles dir="rtl" on the localized Graph chrome panels, but never on #graph-explorer/#cy or the minimap - the dependency graph itself must never mirror', () => {
+    it('applyLanguage also toggles dir="rtl" on the localized Graph chrome panels and the Findings view, but never on #graph-explorer/#cy or the minimap - the dependency graph itself must never mirror', () => {
         // F25b added 'scc-explore-modal' to this same list - a fifth
         // localized dialog, toggled the exact same way as the other four.
+        // F29 adds 'findings-view' - now that the Findings view is no
+        // longer pre-rendered once per language (each with dir="rtl"
+        // baked in server-side for Arabic only), it needs the same
+        // dynamic dir toggle every other localized panel already gets.
         expect(html).toContain(
-            "['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal', 'scc-explore-modal'].forEach("
+            "['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal', 'scc-explore-modal', 'findings-view'].forEach("
         );
         expect(html).not.toMatch(/\[('|")hint('|")[\s\S]{0,200}'graph-explorer'/);
     });

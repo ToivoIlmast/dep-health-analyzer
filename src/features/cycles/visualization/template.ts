@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { UnresolvedImport } from '@core/graph/types';
 import { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import { CycleFindings, SccFinding } from '../findings/buildCycleFindings';
-import { Dictionary, I18N, LanguageCode, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
+import { Dictionary, I18N, RTL_LANGUAGES, SUPPORTED_LANGUAGES, formatI18n } from './i18n';
 import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
 import { selectFocusCore } from './focusCoreSelection';
@@ -87,6 +87,23 @@ function summarizeExampleCycle(exampleCycle: string[]): string {
     return `${labels[0]} &rarr; ${labels[1]} &rarr; &hellip; &rarr; ${labels[0]}`;
 }
 
+// Biggest-first (the most architecturally significant cycle first), never
+// findSCCs()/buildCycleFindings' own insertion order, which is just
+// whatever order Kosaraju's DFS happened to visit components in and
+// carries no meaning for a reader. Sorted on a COPY: finding.id (a real
+// node's data.sccId - see buildCycleFindings.ts's own comment on why that
+// must never be reassigned) always stays the original findSCCs() index,
+// completely unaffected by this presentation order. Tie-break by id
+// ascending keeps equal-size findings in a fixed, deterministic order
+// across runs/renders instead of depending on Array.prototype.sort's
+// stability guarantee alone being obvious to a future reader. Shared by
+// the server-side row render below and the FINDINGS_SCCS payload embedded
+// in buildHtmlTemplate (F29), so both always agree on the exact same
+// order without a second, possibly-diverging comparator.
+function sortFindingsForDisplay(sccs: SccFinding[]): SccFinding[] {
+    return [...sccs].sort((a, b) => b.size - a.size || a.id - b.id);
+}
+
 // One finding = one non-trivial SCC, never "a cycle" - matches the same
 // distinction the concrete-cycle modal already draws (SCC #N, size, vs.
 // "one concrete cycle through X"). data-finding-scc-id carries the real
@@ -136,74 +153,37 @@ function renderScaleText(dict: Dictionary, moduleCount: number, dependencyCount:
 // finding - that explanation already lives in the concrete-cycle modal and
 // the "What are dependency cycles?" educational modal, both unchanged).
 //
-// Rendered once per supported language (see buildHtmlTemplate below) -
-// all fourteen sit in the page from the start, only one ever visible
-// (data-lang matching the active language; the rest carry a plain
-// `hidden` attribute) - never a single English render re-templated by
-// client JS on language change. This keeps every language's Findings
-// content exactly as real-server-rendered-and-standalone as the English
-// default already was, rather than making translated text depend on the
-// client script successfully re-running a second, parallel template
-// implementation.
-//
-// Arabic (the one entry in RTL_LANGUAGES) gets its own block's dir="rtl"
-// baked in right here, server-side, rather than toggled by client JS -
-// it's simply always correct for that one block regardless of which
-// language is currently visible, the same reasoning already applied to
-// pre-rendering every language's text instead of re-templating it. This
-// is scoped to exactly this wrapper: it never touches <html>/<body> or
-// #graph-explorer/#bottom-hud, so the Graph view (and the dependency
-// graph's own edge direction within it) stays unaffected regardless of
-// the selected language - see applyLanguage() in the script below for
-// the header's own matching (client-side, since there's only one header,
-// not one per language) dir toggle.
-function renderFindingsOverview(findings: CycleFindings, lang: LanguageCode): string {
-    const dict = I18N[lang];
-    const scaleText = renderScaleText(dict, findings.moduleCount, findings.dependencyCount);
-    const hiddenAttr = lang === SUPPORTED_LANGUAGES[0] ? '' : ' hidden';
-    const dirAttr = RTL_LANGUAGES.has(lang) ? ' dir="rtl"' : '';
-
+// F29 fix: rendered exactly ONCE (English, SUPPORTED_LANGUAGES[0]), not
+// once per supported language - AUDIT F29 measured the old "all fourteen
+// sit in the page from the start" design at 4,200 <li> / 3.07MB on a
+// 300-cycle project, ~93% of it invisible translations. A client-side
+// mirror of this same function (renderFindingsBody(dict), see the script
+// below) rebuilds this content from the FINDINGS_SCCS payload (also
+// embedded below) whenever applyLanguage() runs, the same "server-render
+// once, re-render client-side on language change" split already used for
+// #scc-summary/#graph-scale-text (see renderSccSummaryText above) - the
+// only thing genuinely new here is that Findings now has enough dynamic,
+// per-item content (a variable-length list of rows) to be worth its own
+// dedicated render function instead of the simpler data-i18n/textContent
+// swap that suffices for fixed single-value chrome text.
+function renderFindingsBodyHtml(findings: CycleFindings, dict: Dictionary): string {
     if (findings.sccs.length === 0) {
         return `
-            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}${dirAttr}>
-                <header class="findings-header">
-                    <h1>${escapeHtml(dict.findingsTitle)}</h1>
-                    <p class="findings-scale">${scaleText}</p>
-                </header>
-
                 <div class="findings-zero-card">
                     <p class="findings-zero-state">${escapeHtml(dict.findingsZeroState)}</p>
                     <button type="button" class="btn-primary findings-explore-btn" data-action="explore-graph">${escapeHtml(dict.exploreGraphZero)}</button>
-                </div>
-            </div>`;
+                </div>`;
     }
 
     const caveatText =
         findings.sccs.length === 1
             ? dict.findingsCaveatSingular
             : formatI18n(dict.findingsCaveatPlural, { n: findings.sccs.length });
-    // P1-3 fix: display order only - findings are shown biggest-first (the
-    // most architecturally significant cycle first), never in
-    // findSCCs()/buildCycleFindings' own insertion order, which is just
-    // whatever order Kosaraju's DFS happened to visit components in and
-    // carries no meaning for a reader. Sorted on a COPY: finding.id (a
-    // real node's data.sccId - see buildCycleFindings.ts's own comment on
-    // why that must never be reassigned) always stays the original
-    // findSCCs() index, completely unaffected by this presentation order.
-    // Tie-break by id ascending keeps equal-size findings in a fixed,
-    // deterministic order across runs/renders instead of depending on
-    // Array.prototype.sort's stability guarantees alone being obvious to a
-    // future reader.
-    const sortedForDisplay = [...findings.sccs].sort((a, b) => b.size - a.size || a.id - b.id);
-    const rowsHtml = sortedForDisplay.map((finding) => renderSccFindingRow(finding, dict)).join('');
+    const rowsHtml = sortFindingsForDisplay(findings.sccs)
+        .map((finding) => renderSccFindingRow(finding, dict))
+        .join('');
 
     return `
-            <div class="findings-lang-block" data-lang="${lang}"${hiddenAttr}${dirAttr}>
-                <header class="findings-header">
-                    <h1>${escapeHtml(dict.findingsTitle)}</h1>
-                    <p class="findings-scale">${scaleText}</p>
-                </header>
-
                 <section class="findings-cycles-section">
                     <h2>${escapeHtml(dict.findingsCyclesHeading)}</h2>
                     <p class="findings-caveat">${escapeHtml(caveatText)}</p>
@@ -212,16 +192,29 @@ function renderFindingsOverview(findings: CycleFindings, lang: LanguageCode): st
                     </ol>
 
                     <button type="button" class="btn-secondary findings-explore-btn" data-action="explore-graph">${escapeHtml(dict.exploreFullGraph)}</button>
-                </section>
-            </div>`;
+                </section>`;
 }
 
 function renderFindingsView(findings: CycleFindings): string {
-    const blocksHtml = SUPPORTED_LANGUAGES.map((lang) => renderFindingsOverview(findings, lang)).join('\n');
+    const defaultDict = I18N[SUPPORTED_LANGUAGES[0]];
+    const scaleText = renderScaleText(defaultDict, findings.moduleCount, findings.dependencyCount);
 
+    // No dir="rtl" baked in here (unlike the old per-language design) -
+    // there is only ever one server-rendered instance now, and its
+    // language can change client-side, so direction is toggled dynamically
+    // by applyLanguage() instead (see 'findings-view' in the RTL panel
+    // list in the script below), the same mechanism already used for
+    // #hint/#toolbar/#bottom-hud/both modals.
     return `
         <main id="findings-view">
-            ${blocksHtml}
+            <div class="findings-lang-block">
+                <header class="findings-header">
+                    <h1 data-i18n="findingsTitle">${escapeHtml(defaultDict.findingsTitle)}</h1>
+                    <p class="findings-scale" id="findings-scale-text">${scaleText}</p>
+                </header>
+
+                <div id="findings-body">${renderFindingsBodyHtml(findings, defaultDict)}</div>
+            </div>
         </main>`;
 }
 
@@ -312,12 +305,10 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
     const unresolvedImportsHtml = renderUnresolvedImportsNotice(unresolvedImports);
     const findingsViewHtml = renderFindingsView(findings);
 
-    // Raw counts behind #scc-summary/#graph-scale-text, embedded so
-    // renderGraphScaleTexts() (script below) can recompute both strings
-    // for any language on demand - #graph-explorer is not duplicated
-    // per-language the way .findings-lang-block is (14 of those would be
-    // wasteful for a live cytoscape instance), so this content is
-    // client-re-rendered on language change instead of server-pre-rendered.
+    // Raw counts behind #scc-summary/#graph-scale-text/#findings-scale-text,
+    // embedded so renderGraphScaleTexts() (script below) can recompute
+    // these strings for any language on demand instead of pre-rendering
+    // them once per language server-side.
     const graphSccSummaryCounts = {
         sccCount: findings.sccs.length,
         largestSccSize: findings.sccs.length === 0 ? 0 : Math.max(...findings.sccs.map((scc) => scc.size)),
@@ -328,6 +319,20 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
         moduleCount: findings.moduleCount,
         dependencyCount: findings.dependencyCount,
     };
+    // F29: the findings list itself, in the exact order it's displayed in
+    // (sortFindingsForDisplay - shared with the server-side row render
+    // above, so the two never disagree), projected down to only what
+    // renderFindingRowClient (script below) actually reads. memberIds is
+    // deliberately left out - it can be large for a real SCC, and every
+    // client-side consumer that needs a finding's members already derives
+    // them fresh from the live graph (see openCycleDetailModalForScc/
+    // openExploreSccModal's own cy.nodes().filter(...)), never from this
+    // payload.
+    const findingsSccsForClient = sortFindingsForDisplay(findings.sccs).map((finding) => ({
+        id: finding.id,
+        size: finding.size,
+        exampleCycle: finding.exampleCycle,
+    }));
 
     return `
     <!DOCTYPE html>
@@ -798,17 +803,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 openCycleDetailModalForScc(Number(row.dataset.findingSccId));
             });
 
-            // Plain %token substitution, mirroring i18n.ts's own
-            // formatI18n() (server-side) - kept as a small separate copy
-            // rather than an import, the same split already established
-            // for escapeHtml (browser code can't import the Node-side
-            // module). Only used for the header's own tiny static labels
-            // (data-i18n) - the Findings view's own (much larger,
-            // per-finding-dynamic) content is never re-templated
-            // client-side at all; every language's version is already
-            // fully pre-rendered server-side (see renderFindingsOverview
-            // in template.ts) and this only ever toggles which one is
-            // visible.
+            // The full per-language dictionary, embedded once - read by
+            // the generic [data-i18n] sweep below for fixed single-value
+            // chrome text, and by renderFindingsBody() (F29) for the
+            // Findings view's own dynamic, per-finding content, which
+            // (unlike the chrome text) is re-templated client-side from
+            // FINDINGS_SCCS rather than pre-rendered once per language.
             const I18N_DICTIONARIES = ${safeJsonForScript(I18N)};
             const LANGUAGE_STORAGE_KEY = 'dep-health-language';
             const SUPPORTED_LANGUAGE_CODES = ${safeJsonForScript(SUPPORTED_LANGUAGES)};
@@ -816,13 +816,18 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
             // Full localization task. Raw counts behind the Graph view's
             // own #graph-scale-text/#scc-summary-text (see renderSccSummaryText/
-            // the graphScaleCounts computation in template.ts) - unlike
-            // .findings-lang-block, #graph-explorer is never duplicated
-            // per language, so this text is recomputed here on every
-            // language change instead of being one of 14 pre-rendered
-            // server-side blocks.
+            // the graphScaleCounts computation in template.ts) and (F29)
+            // the Findings view's own #findings-scale-text, which shows
+            // the exact same numbers - this text is recomputed here on
+            // every language change instead of being pre-rendered once per
+            // language server-side.
             const GRAPH_SCALE_COUNTS = ${safeJsonForScript(graphScaleCounts)};
             const GRAPH_SCC_SUMMARY_COUNTS = ${safeJsonForScript(graphSccSummaryCounts)};
+            // F29: the findings list, sorted and already trimmed to just
+            // what renderFindingRowClient() reads - see
+            // findingsSccsForClient in template.ts's buildHtmlTemplate for
+            // why memberIds is deliberately not included.
+            const FINDINGS_SCCS = ${safeJsonForScript(findingsSccsForClient)};
 
             // The currently active language and (once the graph exists)
             // whichever dynamic Graph content is on screen right now, so a
@@ -841,28 +846,40 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // for escapeHtml (browser code can't import the Node-side
             // module). Used by every client-side dynamic-content function
             // below (updateSelectedModulePanel, buildCycleContextHtml,
-            // openCycleDetailModal, ...) that has to build translated text
-            // at generation time, since - unlike Findings - that content is
-            // regenerated on every selection/click, not pre-rendered once
-            // per language server-side.
+            // openCycleDetailModal, renderFindingsBody, ...) that has to
+            // build translated text at generation time, rather than a
+            // fixed single-value string a plain dictionary lookup could
+            // serve directly (see the [data-i18n] sweep in applyLanguage()
+            // below for that simpler case).
             function formatI18nClient(template, vars) {
                 return template.replace(/%(\\w+)/g, (match, key) => (key in vars ? String(vars[key]) : match));
             }
 
             function renderGraphScaleTexts(dict) {
+                const modulesText = formatI18nClient(
+                    GRAPH_SCALE_COUNTS.moduleCount === 1 ? dict.scaleModulesSingular : dict.scaleModules,
+                    { n: GRAPH_SCALE_COUNTS.moduleCount }
+                );
+                const dependenciesText = formatI18nClient(
+                    GRAPH_SCALE_COUNTS.dependencyCount === 1
+                        ? dict.scaleDependenciesSingular
+                        : dict.scaleDependencies,
+                    { n: GRAPH_SCALE_COUNTS.dependencyCount }
+                );
+                const scaleText = modulesText + ' \\u00b7 ' + dependenciesText;
+
                 const scaleEl = document.getElementById('graph-scale-text');
                 if (scaleEl) {
-                    const modulesText = formatI18nClient(
-                        GRAPH_SCALE_COUNTS.moduleCount === 1 ? dict.scaleModulesSingular : dict.scaleModules,
-                        { n: GRAPH_SCALE_COUNTS.moduleCount }
-                    );
-                    const dependenciesText = formatI18nClient(
-                        GRAPH_SCALE_COUNTS.dependencyCount === 1
-                            ? dict.scaleDependenciesSingular
-                            : dict.scaleDependencies,
-                        { n: GRAPH_SCALE_COUNTS.dependencyCount }
-                    );
-                    scaleEl.textContent = modulesText + ' \\u00b7 ' + dependenciesText;
+                    scaleEl.textContent = scaleText;
+                }
+
+                // F29: the Findings view's own scale line shows the exact
+                // same moduleCount/dependencyCount - same computed string,
+                // written into its own element rather than duplicating the
+                // formatting logic above a second time.
+                const findingsScaleEl = document.getElementById('findings-scale-text');
+                if (findingsScaleEl) {
+                    findingsScaleEl.textContent = scaleText;
                 }
 
                 const summaryEl = document.getElementById('scc-summary-text');
@@ -889,14 +906,117 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 }
             }
 
+            // F29: client-side mirror of summarizeExampleCycle/
+            // renderSccFindingRow (template.ts), so renderFindingsBody()
+            // below can rebuild the Findings list from FINDINGS_SCCS on
+            // every language switch instead of picking among per-language
+            // pre-rendered copies. Module/file names are identifiers, not
+            // translatable prose (same reasoning as the Node-side
+            // function), so this needs no dict lookup of its own - only
+            // the surrounding label/button text does.
+            const MAX_INLINE_CYCLE_MEMBERS_CLIENT = 4;
+
+            function summarizeExampleCycleClient(exampleCycle) {
+                const labels = exampleCycle.map((id) => {
+                    const lastSlash = id.lastIndexOf('/');
+                    return escapeHtml(lastSlash === -1 ? id : id.slice(lastSlash + 1));
+                });
+                const memberCount = labels.length - 1; // exampleCycle repeats the start at both ends
+
+                if (memberCount <= MAX_INLINE_CYCLE_MEMBERS_CLIENT) {
+                    return labels.join(' &rarr; ');
+                }
+
+                return labels[0] + ' &rarr; ' + labels[1] + ' &rarr; &hellip; &rarr; ' + labels[0];
+            }
+
+            function renderFindingRowClient(finding, dict) {
+                const label = formatI18nClient(dict.sccLabel, { id: finding.id + 1, n: finding.size });
+
+                return (
+                    '<li class="finding-row" data-finding-scc-id="' +
+                    finding.id +
+                    '">' +
+                    '<div class="finding-row-main">' +
+                    '<div class="finding-row-header">' +
+                    label +
+                    '</div>' +
+                    '<div class="finding-cycle-preview">' +
+                    summarizeExampleCycleClient(finding.exampleCycle) +
+                    '</div>' +
+                    '</div>' +
+                    '<button type="button" class="btn-secondary finding-view-cycle-btn">' +
+                    escapeHtml(dict.viewCycleButton) +
+                    '</button>' +
+                    '<button type="button" class="btn-secondary finding-explore-scc-btn" data-action="explore-scc">' +
+                    escapeHtml(dict.exploreSccButton) +
+                    '</button>' +
+                    '</li>'
+                );
+            }
+
+            // F29: rebuilds #findings-body (everything below the Findings
+            // header - the header's own <h1>/scale text are handled by the
+            // generic [data-i18n] sweep and renderGraphScaleTexts() above,
+            // since they're single fixed-shape values, not a variable-length
+            // list) from FINDINGS_SCCS on every language switch. Click
+            // handling is untouched by this: the delegated listener lives on
+            // #findings-view (see the addEventListener call above, in the
+            // Node-side template code), a stable ancestor this function
+            // never replaces, so it keeps matching freshly-rendered rows the
+            // same way it always matched the old per-language ones.
+            function renderFindingsBody(dict) {
+                const container = document.getElementById('findings-body');
+                if (!container) {
+                    return;
+                }
+
+                if (FINDINGS_SCCS.length === 0) {
+                    container.innerHTML =
+                        '<div class="findings-zero-card">' +
+                        '<p class="findings-zero-state">' +
+                        escapeHtml(dict.findingsZeroState) +
+                        '</p>' +
+                        '<button type="button" class="btn-primary findings-explore-btn" data-action="explore-graph">' +
+                        escapeHtml(dict.exploreGraphZero) +
+                        '</button>' +
+                        '</div>';
+                    return;
+                }
+
+                const caveatText =
+                    FINDINGS_SCCS.length === 1
+                        ? dict.findingsCaveatSingular
+                        : formatI18nClient(dict.findingsCaveatPlural, { n: FINDINGS_SCCS.length });
+                const rowsHtml = FINDINGS_SCCS.map((finding) => renderFindingRowClient(finding, dict)).join('');
+
+                container.innerHTML =
+                    '<section class="findings-cycles-section">' +
+                    '<h2>' +
+                    escapeHtml(dict.findingsCyclesHeading) +
+                    '</h2>' +
+                    '<p class="findings-caveat">' +
+                    escapeHtml(caveatText) +
+                    '</p>' +
+                    '<ol class="findings-list">' +
+                    rowsHtml +
+                    '</ol>' +
+                    '<button type="button" class="btn-secondary findings-explore-btn" data-action="explore-graph">' +
+                    escapeHtml(dict.exploreFullGraph) +
+                    '</button>' +
+                    '</section>';
+            }
+
             function applyLanguage(lang) {
                 currentLanguage = lang;
 
-                document.querySelectorAll('.findings-lang-block').forEach((block) => {
-                    block.hidden = block.dataset.lang !== lang;
-                });
-
                 const dict = I18N_DICTIONARIES[lang];
+
+                // F29: replaces the old "toggle which of 14 pre-rendered
+                // blocks is hidden" - there is only one Findings block now,
+                // and its dynamic content is rebuilt from FINDINGS_SCCS for
+                // whichever language is now active.
+                renderFindingsBody(dict);
 
                 document.querySelectorAll('[data-i18n]').forEach((el) => {
                     const text = dict[el.dataset.i18n];
@@ -927,13 +1047,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                 const isRtl = RTL_LANGUAGE_CODES.includes(lang);
 
-                // #app-header is the one localized surface that isn't
-                // pre-rendered per language (see the header's own
-                // data-i18n text-swap above) - unlike each
-                // .findings-lang-block, which already has the right
-                // dir="rtl" baked in server-side for Arabic (see
-                // renderFindingsOverview in template.ts), the header
-                // needs its direction flipped here instead.
+                // #app-header's direction is flipped here rather than
+                // baked in server-side - unlike the old per-language
+                // Findings design (F29 removed that; #findings-view now
+                // gets the same dynamic dir toggle as every other panel in
+                // the list below), there was never more than one
+                // #app-header to begin with.
                 const appHeader = document.getElementById('app-header');
                 if (appHeader) {
                     if (isRtl) {
@@ -955,7 +1074,11 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // protection for the same reason (see the unconditional
                 // dir="ltr" on .cycle-flow in buildCycleFlowHtml below): it
                 // renders one real, ordered dependency path, not prose.
-                ['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal', 'scc-explore-modal'].forEach(
+                // F29 adds 'findings-view' - it used to get its dir="rtl"
+                // baked in server-side per-language-block; now that there's
+                // only one block, it needs the same dynamic toggle as
+                // everything else in this list.
+                ['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal', 'scc-explore-modal', 'findings-view'].forEach(
                     (id) => {
                         const el = document.getElementById(id);
                         if (!el) {

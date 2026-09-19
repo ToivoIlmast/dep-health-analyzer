@@ -11,6 +11,7 @@
 import path from 'node:path';
 import type { CytoscapeEdge, CytoscapeNode } from '../adapters';
 import type { CycleFindings } from '../findings/buildCycleFindings';
+import { I18N } from './i18n';
 import {
     closeAllRenderedReports,
     renderInteractiveReport,
@@ -1193,6 +1194,87 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
             jest.advanceTimersByTime(5000);
 
             expect(finishedSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    // F29 (AUDIT_v0.11.0.md): the Findings view used to pre-render its
+    // entire content once per SUPPORTED_LANGUAGES entry (14x), toggling
+    // `hidden` on whichever block matched the active language - 300
+    // cycles on a real project meant 4,200 <li>/3.07MB, ~93% of it
+    // invisible translations. It is now rendered once and re-templated
+    // client-side (renderFindingsBody(), template.ts) on every language
+    // switch, the same "server-render once, re-render on demand" split
+    // already used for #scc-summary/#graph-scale-text. These tests drive
+    // the real re-render against a real DOM rather than inspecting the
+    // generated source, to prove the runtime behavior it replaces (no
+    // duplication, still fully localized, event delegation and RTL still
+    // work) rather than just its shape.
+    describe('F29: Findings view rendered once, re-templated on language switch', () => {
+        it('renders exactly one .finding-row per SCC - never duplicated', () => {
+            const { nodes, edges, findings } = twoIndependentSccsFixture();
+            const { document } = renderInteractiveReport({ nodes, edges, findings });
+
+            expect(document.querySelectorAll('.finding-row').length).toBe(2);
+        });
+
+        it('the finding count in the DOM stays exactly the SCC count across repeated language switches', () => {
+            const { nodes, edges, findings } = twoIndependentSccsFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            for (const lang of ['ru', 'ar', 'fi', 'en']) {
+                win.applyLanguage(lang);
+                expect(document.querySelectorAll('.finding-row').length).toBe(2);
+            }
+        });
+
+        it('switching language re-renders the findings title, caveat, and per-row button labels from that language\'s dictionary', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            const russianDict = I18N.ru;
+            win.applyLanguage('ru');
+
+            expect(document.querySelector('#findings-view h1')?.textContent).toBe(russianDict.findingsTitle);
+            expect(document.querySelector('.finding-view-cycle-btn')?.textContent).toBe(russianDict.viewCycleButton);
+            expect(document.querySelector('.finding-explore-scc-btn')?.textContent).toBe(russianDict.exploreSccButton);
+        });
+
+        it('"View cycle" and "Explore SCC" on a finding row still work after a language switch - event delegation survives the re-render', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.applyLanguage('ru');
+
+            const exploreBtn = document.querySelector('[data-finding-scc-id="0"] [data-action="explore-scc"]');
+            expect(exploreBtn).toBeTruthy();
+            exploreBtn?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+            expect((document.getElementById('scc-explore-modal') as HTMLDialogElement | null)?.open).toBe(true);
+        });
+
+        it('the zero-findings state re-renders in the new language after a switch, instead of staying stuck in English', () => {
+            const findings: CycleFindings = { moduleCount: 5, dependencyCount: 3, sccs: [] };
+            const { document, win } = renderInteractiveReport({ nodes: [], edges: [], findings });
+
+            expect(document.querySelector('.findings-zero-state')?.textContent).toBe(I18N.en.findingsZeroState);
+
+            win.applyLanguage('ru');
+
+            expect(document.querySelector('.findings-zero-state')?.textContent).toBe(I18N.ru.findingsZeroState);
+            expect(document.querySelector('.findings-list')).toBeNull();
+        });
+
+        it('Arabic sets dir="rtl" on #findings-view; switching back to English removes it', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            expect(document.getElementById('findings-view')?.getAttribute('dir')).toBeNull();
+
+            win.applyLanguage('ar');
+            expect(document.getElementById('findings-view')?.getAttribute('dir')).toBe('rtl');
+
+            win.applyLanguage('en');
+            expect(document.getElementById('findings-view')?.getAttribute('dir')).toBeNull();
         });
     });
 });

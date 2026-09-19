@@ -20,6 +20,16 @@ from release history where a version predates this file.
   never decreases when two cycles merge into one larger one or a new cycle
   appears - only when a real cycle is actually broken.
 
+### Fixed
+- `cycles` HTML report: the Findings view is now rendered once instead of
+  once per supported language. A 300-cycle project used to embed 4,200
+  finding rows (21 per cycle x 14 languages), ~93% of them invisible
+  translations toggled via a hidden attribute - now it embeds one rendered
+  copy plus the findings' own data, and re-renders in the selected
+  language client-side (the same "render once, re-render on demand"
+  pattern the report's scale/summary text already used). No change to what
+  a reader sees or to any other metric.
+
 ## [0.11.0] - 2026-09-17
 
 ### ⚠️ Semantic change: `Cycles detected` now counts real strongly-connected components, not naive DFS cycles
