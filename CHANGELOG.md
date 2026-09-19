@@ -3,6 +3,23 @@
 All notable changes to this project are documented in this file, reconstructed
 from release history where a version predates this file.
 
+## [Unreleased]
+
+### Added
+- `cycles` HTML report: an "Explore SCC" button (finding rows and the graph
+  HUD's SCC context) opens a separate view of an SCC's own structure - size,
+  internal dependency count, and whether it's a single ring or contains more
+  than one cycle (the exact number is never counted). A collapsed What-if
+  section lets you pick one internal dependency and see the exact,
+  recomputed consequence of removing it - unchanged, reduced, split into
+  independent groups, or fully acyclic - plus the resulting whole-project
+  `Modules in cycles` count. Purely observational: no ranking, no
+  "important" dependency, no source code changed.
+- `Modules in cycles: N` - a new headline metric (CLI and HTML report) that
+  sums every real cycle's own member count. Unlike `Cycles detected`, it
+  never decreases when two cycles merge into one larger one or a new cycle
+  appears - only when a real cycle is actually broken.
+
 ## [0.11.0] - 2026-09-17
 
 ### ⚠️ Semantic change: `Cycles detected` now counts real strongly-connected components, not naive DFS cycles

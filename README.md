@@ -182,6 +182,19 @@ Explore dependency graphs, identify SCC clusters, and inspect architectural metr
 
 _Cycles are highlighted automatically. Hover over modules to inspect coupling metrics and instability._
 
+### SCC, example cycle, Explore SCC, and What-if
+
+Four related but distinct concepts, each answering a different question:
+
+| Term | Answers |
+| --- | --- |
+| **SCC** | A group of modules that are all mutually reachable from one another — a fact about the graph's structure. |
+| **Example cycle** | One concrete path that proves an SCC is cyclic. An SCC can contain many such cycles; the example is illustrative, never "the" cycle. |
+| **Explore SCC** | The SCC's own structure as a whole: its size, how many dependencies exist within it, and whether it's a single ring or something denser (multiple overlapping cycles, whose exact number is not counted — see below). |
+| **What-if** | Pick one dependency inside an SCC and see the exact, recomputed consequence of removing it: the SCC stays the same, shrinks, splits into independent groups, or stops being cyclic entirely. |
+
+What-if is a computed fact about the analyzed graph (`--target`/type-only-import settings included), not a suggestion — nothing is ranked, no dependency is singled out, and no source code is changed. The number of simple cycles inside a dense SCC is never computed or estimated: it can grow super-exponentially with the SCC's size, so any such number would be either wrong or misleadingly precise.
+
 ---
 
 # Regression Analysis
