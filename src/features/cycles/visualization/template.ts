@@ -3625,7 +3625,12 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     const notes = [];
 
                     if (currentFocus.isRepresentativeOnly) {
-                        notes.push(formatI18nClient(dict.focusRepresentativeNote, { n: currentFocus.totalSize }));
+                        notes.push(
+                            formatI18nClient(dict.focusRepresentativeNote, {
+                                visible: currentFocus.shownCoreCount,
+                                n: currentFocus.totalSize,
+                            }),
+                        );
                     }
 
                     if (currentFocus.overflowNeighbourIds.size > 0) {

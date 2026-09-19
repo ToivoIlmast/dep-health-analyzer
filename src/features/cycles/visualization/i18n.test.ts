@@ -86,6 +86,22 @@ describe('I18N dictionaries', () => {
         }
     });
 
+    it('focusRepresentativeNote uses %visible and %n - after F25a the Focus core for a large SCC is a partial, counted subset, not a single witness cycle, so the note must be able to say "X of Y"', () => {
+        for (const lang of SUPPORTED_LANGUAGES) {
+            expect(I18N[lang].focusRepresentativeNote).toContain('%visible');
+            expect(I18N[lang].focusRepresentativeNote).toContain('%n');
+        }
+    });
+
+    it('focusRepresentativeNote no longer frames the truncated Focus core as "a representative cycle" - F25a made the core a coverage-budget subset of the SCC, not a witness cycle, so the wording must not imply any single cycle was chosen as special', () => {
+        // English is the source-of-truth string checked verbatim; the other
+        // 13 languages are checked structurally above (%visible/%n) since
+        // asserting the literal absence of a translated phrase per language
+        // would just be re-typing the fix as its own test.
+        expect(I18N.en.focusRepresentativeNote).not.toMatch(/representative cycle/i);
+        expect(I18N.en.focusRepresentativeNote).not.toMatch(/\bcycle\b/i);
+    });
+
     it('the singular/plural scale templates are genuinely different strings per language, not the same text reused for both', () => {
         // Japanese is a deliberate, linguistically correct exception for
         // BOTH pairs - Japanese nouns don't inflect for grammatical

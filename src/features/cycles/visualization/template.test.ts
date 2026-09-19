@@ -680,6 +680,17 @@ describe('buildHtmlTemplate Focused Graph (real subgraph, not viewport-only fade
         expect(html).toMatch(/if \(currentFocus\) \{\s*updateFocusToolbarLabels\(\);/);
     });
 
+    it('F25a follow-up: the Focus SCC-truncation note passes BOTH the shown core count and the SCC total, not just the total - after F25a the core is a counted subset of the SCC (not a single witness cycle), so the wording must be able to say "X of Y" instead of implying one representative cycle was shown', () => {
+        const noteCallStart = html.indexOf('formatI18nClient(dict.focusRepresentativeNote');
+        expect(noteCallStart).toBeGreaterThan(-1);
+
+        const noteCallEnd = html.indexOf('})', noteCallStart) + 2;
+        const noteCallSource = html.slice(noteCallStart, noteCallEnd);
+
+        expect(noteCallSource).toContain('visible: currentFocus.shownCoreCount');
+        expect(noteCallSource).toContain('n: currentFocus.totalSize');
+    });
+
     it('P0-1 honesty fix: currentFocus carries real shown/overflow neighbour counts, not just the core SCC count - the exit label can no longer imply the whole graph is 2 nodes while hundreds more are actually rendered', () => {
         const focusFnStart = html.indexOf('function focusScc(sccId, startId)');
         const focusFnEnd = html.indexOf('function exitFocus()');
