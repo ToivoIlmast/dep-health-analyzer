@@ -1767,8 +1767,10 @@ describe('buildHtmlTemplate Findings/Graph views + language switcher (informatio
     });
 
     it('applyLanguage also toggles dir="rtl" on the localized Graph chrome panels, but never on #graph-explorer/#cy or the minimap - the dependency graph itself must never mirror', () => {
+        // F25b added 'scc-explore-modal' to this same list - a fifth
+        // localized dialog, toggled the exact same way as the other four.
         expect(html).toContain(
-            "['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal'].forEach("
+            "['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal', 'scc-explore-modal'].forEach("
         );
         expect(html).not.toMatch(/\[('|")hint('|")[\s\S]{0,200}'graph-explorer'/);
     });

@@ -16,6 +16,7 @@ import {
     renderInteractiveReport,
     type CyCollection,
     type CyCore,
+    type RenderedReport,
 } from './__fixtures__/browserHarness';
 
 // Focus's own 'cose' layout (runFocusLayout()) animates via a real
@@ -198,6 +199,57 @@ function ringTopology(size: number): SccTopology {
         edges: ids.map((id, i) => edge(id, ids[(i + 1) % size]!)),
         exampleCycle: [...ids, ids[0]!],
     };
+}
+
+// F25b fixtures: a dumbbell SCC (a1<->a2, b1<->b2, joined by a1<->b1) - the
+// exact canonical shape sccEdgeRemoval.test.ts uses for its own domain-level
+// 'reduced'/'split' scenarios. Small enough to name every module by hand in
+// assertions, dense enough (6 internal edges on 4 modules) to exercise both
+// outcomes depending on which edge is removed.
+const DUMBBELL_A1 = `${BIG_SCC_PREFIX}a1.ts`;
+const DUMBBELL_A2 = `${BIG_SCC_PREFIX}a2.ts`;
+const DUMBBELL_B1 = `${BIG_SCC_PREFIX}b1.ts`;
+const DUMBBELL_B2 = `${BIG_SCC_PREFIX}b2.ts`;
+
+function dumbbellFixture(): { nodes: CytoscapeNode[]; edges: CytoscapeEdge[]; findings: CycleFindings } {
+    const ids = [DUMBBELL_A1, DUMBBELL_A2, DUMBBELL_B1, DUMBBELL_B2];
+    const edges = [
+        edge(DUMBBELL_A1, DUMBBELL_A2),
+        edge(DUMBBELL_A2, DUMBBELL_A1),
+        edge(DUMBBELL_B1, DUMBBELL_B2),
+        edge(DUMBBELL_B2, DUMBBELL_B1),
+        edge(DUMBBELL_A1, DUMBBELL_B1),
+        edge(DUMBBELL_B1, DUMBBELL_A1),
+    ];
+    return singleSccFixture(ids, edges, [DUMBBELL_A1, DUMBBELL_A2, DUMBBELL_A1]);
+}
+
+// Same dumbbell shape, but a1/a2 live in one area and b1/b2 in another -
+// used to prove Explore SCC/What-if describe the WHOLE SCC regardless of
+// which area the Area filter currently shows.
+function mixedAreaDumbbellFixture(): { nodes: CytoscapeNode[]; edges: CytoscapeEdge[]; findings: CycleFindings } {
+    const { edges, findings } = dumbbellFixture();
+    const nodes: CytoscapeNode[] = [
+        makeNode(DUMBBELL_A1, { sccId: 0, sccSize: 4, color: '#1b9e77', area: 'areaA' }),
+        makeNode(DUMBBELL_A2, { sccId: 0, sccSize: 4, color: '#1b9e77', area: 'areaA' }),
+        makeNode(DUMBBELL_B1, { sccId: 0, sccSize: 4, color: '#1b9e77', area: 'areaB' }),
+        makeNode(DUMBBELL_B2, { sccId: 0, sccSize: 4, color: '#1b9e77', area: 'areaB' }),
+    ];
+    return { nodes, edges, findings };
+}
+
+function selectFromTo(document: Document, win: RenderedReport['win'], from: string, to: string): void {
+    const fromSelect = document.getElementById('what-if-from-select') as HTMLSelectElement;
+    fromSelect.value = from;
+    fromSelect.dispatchEvent(new win.Event('change', { bubbles: true }));
+
+    const toSelect = document.getElementById('what-if-to-select') as HTMLSelectElement;
+    toSelect.value = to;
+    toSelect.dispatchEvent(new win.Event('change', { bubbles: true }));
+}
+
+function baseName(id: string): string {
+    return id.split('/').pop()!;
 }
 
 function twoIndependentSccsFixture(): { nodes: CytoscapeNode[]; edges: CytoscapeEdge[]; findings: CycleFindings } {
@@ -758,5 +810,260 @@ describe('template.ts client script - real DOM/cytoscape behavioral tests', () =
         // graph-wide - it must never have run.
         expect(cy.edges().filter((e) => e.hasClass('orthogonal-edge-vertical')).length).toBe(cy.edges().length);
         expect(cy.edges().filter((e) => e.hasClass('orthogonal-edge-horizontal')).length).toBe(0);
+    });
+
+    // F25b: Explore SCC / What-if. Domain math (partition/oracle/
+    // determinism/outcome classification) is already exhaustively covered
+    // in sccEdgeRemoval.test.ts - these tests are purely about WIRING: the
+    // right button opens the right modal, event delegation order is
+    // correct, the From/To selects reflect the real graph, the rendered
+    // result matches what the embedded computeSccEdgeRemoval actually
+    // produces, and neither Focus/Area state nor a language switch
+    // corrupts it.
+    describe('F25b: Explore SCC / What-if', () => {
+        it('the finding row\'s "Explore SCC" button opens #scc-explore-modal, not the example-cycle modal (event delegation order)', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            const row = document.querySelector('[data-finding-scc-id="0"]');
+            const exploreBtn = row?.querySelector('[data-action="explore-scc"]');
+            expect(exploreBtn).toBeTruthy();
+
+            exploreBtn?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+            expect((document.getElementById('scc-explore-modal') as HTMLDialogElement | null)?.open).toBe(true);
+            expect((document.getElementById('cycle-detail-modal') as HTMLDialogElement | null)?.open).toBeFalsy();
+        });
+
+        it('clicking the rest of the finding row still opens the example-cycle modal, unaffected by the new button', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            const viewCycleBtn = document.querySelector('.finding-view-cycle-btn');
+            viewCycleBtn?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+            expect((document.getElementById('cycle-detail-modal') as HTMLDialogElement | null)?.open).toBe(true);
+            expect((document.getElementById('scc-explore-modal') as HTMLDialogElement | null)?.open).toBeFalsy();
+        });
+
+        it('the HUD SCC block\'s own "Explore SCC" button opens the same modal for the selected module\'s SCC', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win, cy } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.selectNode(cy.getElementById(DUMBBELL_A1));
+
+            const exploreBtn = document.getElementById('hud-selected-body')?.querySelector('[data-explore-scc-id]');
+            expect(exploreBtn).toBeTruthy();
+
+            exploreBtn?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+            expect((document.getElementById('scc-explore-modal') as HTMLDialogElement | null)?.open).toBe(true);
+        });
+
+        it('shows the exact module count and internal edge count, and the "more than one cycle" fact for a non-ring SCC', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+
+            const body = document.getElementById('scc-explore-body');
+            expect(body?.innerHTML).toContain('4');
+            expect(body?.innerHTML).toContain('6');
+            expect(body?.innerHTML).toContain('more than one cycle');
+        });
+
+        it('a plain ring SCC is reported as a single cycle through all its modules', () => {
+            const { ids, edges: edgesList, exampleCycle } = ringTopology(5);
+            const { document, win } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+
+            win.openExploreSccModal(0);
+
+            expect(document.getElementById('scc-explore-body')?.innerHTML).toContain('single cycle');
+        });
+
+        it('lists every SCC member, not a truncated preview', () => {
+            const { ids, edges: edgesList, exampleCycle } = denseCirculantTopology(49, 5);
+            const { document, win } = renderInteractiveReport(singleSccFixture(ids, edgesList, exampleCycle));
+
+            win.openExploreSccModal(0);
+
+            const body = document.getElementById('scc-explore-body');
+            for (const id of ids) {
+                expect(body?.innerHTML).toContain(baseName(id));
+            }
+        });
+
+        it('"View an example cycle" closes Explore and opens the existing cycle-detail modal for the same SCC', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            const viewBtn = document.getElementById('scc-explore-body')?.querySelector('[data-view-example-cycle-scc-id]');
+            expect(viewBtn).toBeTruthy();
+
+            viewBtn?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+            expect((document.getElementById('scc-explore-modal') as HTMLDialogElement | null)?.open).toBeFalsy();
+            expect((document.getElementById('cycle-detail-modal') as HTMLDialogElement | null)?.open).toBe(true);
+        });
+
+        it('"Focus SCC" inside Explore closes it and focuses the same SCC in the graph, reusing the real focusScc()', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win, cy } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            const focusBtn = document.getElementById('scc-explore-body')?.querySelector('[data-focus-scc-id]');
+            expect(focusBtn).toBeTruthy();
+
+            focusBtn?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+            expect((document.getElementById('scc-explore-modal') as HTMLDialogElement | null)?.open).toBeFalsy();
+            expect(cy.getElementById(DUMBBELL_A1).hasClass('not-in-view')).toBe(false);
+            expect((document.getElementById('show-full-graph-btn') as HTMLElement | null)?.hidden).toBe(false);
+        });
+
+        it('the What-if disclosure starts collapsed - it is never the first thing shown', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+
+            const details = document.getElementById('scc-explore-body')?.querySelector('details');
+            expect(details?.hasAttribute('open')).toBe(false);
+        });
+
+        it('the From select lists exactly the internal-edge source modules, and To updates to the selected From\'s own internal targets', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+
+            const fromSelect = document.getElementById('what-if-from-select') as HTMLSelectElement;
+            const fromValues = Array.from(fromSelect.options).map((option) => option.value).sort();
+            expect(fromValues).toEqual([DUMBBELL_A1, DUMBBELL_A2, DUMBBELL_B1, DUMBBELL_B2].sort());
+
+            selectFromTo(document, win, DUMBBELL_A1, DUMBBELL_B1);
+
+            const toSelect = document.getElementById('what-if-to-select') as HTMLSelectElement;
+            const toValues = Array.from(toSelect.options).map((option) => option.value).sort();
+            expect(toValues).toEqual([DUMBBELL_A2, DUMBBELL_B1].sort());
+        });
+
+        it('selecting the hub edge a1->b1 renders "split" - matching computeSccEdgeRemoval\'s own real output for this exact graph', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            selectFromTo(document, win, DUMBBELL_A1, DUMBBELL_B1);
+
+            const resultEl = document.getElementById('what-if-result');
+            expect(resultEl?.innerHTML).toContain('Split');
+            expect(resultEl?.innerHTML).toContain(baseName(DUMBBELL_A1));
+            expect(resultEl?.innerHTML).toContain(baseName(DUMBBELL_A2));
+            expect(resultEl?.innerHTML).toContain(baseName(DUMBBELL_B1));
+            expect(resultEl?.innerHTML).toContain(baseName(DUMBBELL_B2));
+        });
+
+        it('selecting a1->a2 (not the hub edge) renders "reduced" with a2 as the module no longer in any cycle', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            selectFromTo(document, win, DUMBBELL_A1, DUMBBELL_A2);
+
+            const resultEl = document.getElementById('what-if-result');
+            expect(resultEl?.innerHTML).toContain('Reduced');
+            expect(resultEl?.innerHTML).toContain(baseName(DUMBBELL_A2));
+        });
+
+        it('shows the exact whole-project "Modules in cycles" before -> after delta, matching the F14 count', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            // The whole project is exactly this one 4-module SCC, so
+            // before = 4; removing a1->a2 strands only a2, so after = 3.
+            selectFromTo(document, win, DUMBBELL_A1, DUMBBELL_A2);
+
+            const resultEl = document.getElementById('what-if-result');
+            expect(resultEl?.innerHTML).toContain('4');
+            expect(resultEl?.innerHTML).toContain('3');
+        });
+
+        it('always shows the hypothetical/no-source-change/not-a-recommendation disclaimer once a result is computed', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            selectFromTo(document, win, DUMBBELL_A1, DUMBBELL_A2);
+
+            const resultText = document.getElementById('what-if-result')?.innerHTML ?? '';
+            expect(resultText).toContain('recommendation');
+            expect(resultText).toMatch(/not changed|no.*change/i);
+        });
+
+        it('Explore SCC facts describe the WHOLE SCC regardless of the Area filter - never just the currently visible subset', () => {
+            const { nodes, edges, findings } = mixedAreaDumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            const areaSelect = document.getElementById('area-select') as HTMLSelectElement;
+            areaSelect.value = 'areaA';
+            areaSelect.dispatchEvent(new win.Event('change', { bubbles: true }));
+
+            // b1/b2 are now hidden by the Area filter - Explore must still
+            // report the full SCC, not just the 2 modules currently shown.
+            win.openExploreSccModal(0);
+
+            const body = document.getElementById('scc-explore-body');
+            expect(body?.innerHTML).toContain('4');
+            expect(body?.innerHTML).toContain('6');
+            expect(body?.innerHTML).toContain(baseName(DUMBBELL_B1));
+            expect(body?.innerHTML).toContain(baseName(DUMBBELL_B2));
+
+            const fromSelect = document.getElementById('what-if-from-select') as HTMLSelectElement;
+            const fromValues = Array.from(fromSelect.options).map((option) => option.value).sort();
+            expect(fromValues).toEqual([DUMBBELL_A1, DUMBBELL_A2, DUMBBELL_B1, DUMBBELL_B2].sort());
+        });
+
+        it('opening Explore and computing What-if never changes Focus or the Area filter', () => {
+            const { nodes, edges, findings } = twoIndependentSccsFixture();
+            const { document, win, cy } = renderInteractiveReport({ nodes, edges, findings });
+
+            // Focus a DIFFERENT SCC (the 3-node ring, id 1) first.
+            win.focusScc(1, '/repo/src/ring/b1.ts');
+            expect(cy.getElementById('/repo/src/ring/b1.ts').hasClass('not-in-view')).toBe(false);
+            expect(cy.getElementById('/repo/src/pair/a1.ts').hasClass('not-in-view')).toBe(true);
+
+            // Explore + What-if on the OTHER SCC (the pair, id 0) while
+            // that unrelated Focus is still active.
+            win.openExploreSccModal(0);
+            selectFromTo(document, win, '/repo/src/pair/a1.ts', '/repo/src/pair/a2.ts');
+
+            // Focus on the ring is completely unaffected.
+            expect(cy.getElementById('/repo/src/ring/b1.ts').hasClass('not-in-view')).toBe(false);
+            expect(cy.getElementById('/repo/src/pair/a1.ts').hasClass('not-in-view')).toBe(true);
+            expect((document.getElementById('show-full-graph-btn') as HTMLElement | null)?.hidden).toBe(false);
+        });
+
+        it('switching language re-renders Explore SCC text without recomputing the already-computed What-if result', () => {
+            const { nodes, edges, findings } = dumbbellFixture();
+            const { document, win } = renderInteractiveReport({ nodes, edges, findings });
+
+            win.openExploreSccModal(0);
+            selectFromTo(document, win, DUMBBELL_A1, DUMBBELL_B1);
+            expect(document.getElementById('what-if-result')?.innerHTML).toContain('Split');
+
+            win.applyLanguage('ru');
+
+            const resultText = document.getElementById('what-if-result')?.innerHTML ?? '';
+            // Re-rendered in Russian - the English outcome word is gone...
+            expect(resultText).not.toContain('Split');
+            // ...but the SAME real result (the same split into the same
+            // two module groups) is still shown, not recomputed/reset.
+            expect(resultText).toContain(baseName(DUMBBELL_A1));
+            expect(resultText).toContain(baseName(DUMBBELL_A2));
+            expect(resultText).toContain(baseName(DUMBBELL_B1));
+            expect(resultText).toContain(baseName(DUMBBELL_B2));
+        });
     });
 });

@@ -105,11 +105,14 @@ export type RenderedReport = {
         typeof globalThis & {
             focusScc: (sccId: number, startId?: string | null) => void;
             exitFocus: () => void;
-            selectNode: unknown;
+            selectNode: (node: unknown) => void;
             navigateToSccMember: (nodeId: string) => void;
             openCycleDetailModal: (nodeId: string) => void;
             openCycleDetailModalForScc: (sccId: number) => void;
             switchToView: (view: 'findings' | 'graph') => void;
+            applyLanguage: (lang: string) => void;
+            // F25b
+            openExploreSccModal: (sccId: number) => void;
         };
 };
 

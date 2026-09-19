@@ -113,6 +113,82 @@ describe('I18N dictionaries', () => {
         expect(I18N.en.focusRepresentativeNote).not.toMatch(/\bcycle\b/i);
     });
 
+    // F25b: Explore SCC / What-if. New keys are pure "Label: N" facts
+    // (design review's explicit choice to avoid a new CLDR pluralization
+    // system for ru/pl/ar - F23 stays open) - checked structurally
+    // (placeholders present) across all 14 languages, with the English
+    // source wording checked verbatim for the specific forbidden words
+    // the task named (representative/best/important/recommend/should/fix)
+    // - except in whatIfDisclaimer, which explicitly NEGATES
+    // "recommendation" ("this is not a recommendation") and is checked
+    // separately below for exactly that phrasing.
+    const explorePlaceholderKeys: Array<[key: string, placeholders: string[]]> = [
+        ['exploreInternalEdgesLabel', ['%n']],
+        ['exploreSingleCycleFact', ['%n']],
+        ['whatIfOutcomeUnchanged', ['%n']],
+        ['whatIfOutcomeReduced', ['%n', '%hidden']],
+        ['whatIfOutcomeSplit', ['%n']],
+        ['whatIfOutcomeAcyclic', ['%n']],
+        ['whatIfNoLongerHeading', ['%n']],
+        ['whatIfProjectModulesInCycles', ['%before', '%after']],
+    ];
+
+    it.each(explorePlaceholderKeys)('%s uses its required placeholder(s) in every language', (key, placeholders) => {
+        for (const lang of SUPPORTED_LANGUAGES) {
+            const dict = I18N[lang] as unknown as Record<string, string>;
+            for (const placeholder of placeholders) {
+                expect(dict[key]).toContain(placeholder);
+            }
+        }
+    });
+
+    const NO_NEW_PLACEHOLDER_KEYS = [
+        'exploreSccButton',
+        'exploreMultiCycleFact',
+        'exploreModulesHeading',
+        'whatIfToggleLabel',
+        'whatIfFromLabel',
+        'whatIfToLabel',
+        'whatIfRemainingGroupsHeading',
+        'whatIfDisclaimer',
+    ];
+
+    it('every new Explore SCC / What-if key exists, as a non-empty string, in all 14 languages', () => {
+        const allNewKeys = [...explorePlaceholderKeys.map(([key]) => key), ...NO_NEW_PLACEHOLDER_KEYS];
+
+        for (const lang of SUPPORTED_LANGUAGES) {
+            const dict = I18N[lang] as unknown as Record<string, string>;
+            for (const key of allNewKeys) {
+                const value = dict[key];
+                expect(typeof value).toBe('string');
+                expect(value?.length).toBeGreaterThan(0);
+            }
+        }
+    });
+
+    it('What-if wording never uses representative/best/important/recommend/should/fix - only facts, never a verdict', () => {
+        const wordBannedKeys = [
+            'exploreSingleCycleFact',
+            'exploreMultiCycleFact',
+            'whatIfToggleLabel',
+            'whatIfOutcomeUnchanged',
+            'whatIfOutcomeReduced',
+            'whatIfOutcomeSplit',
+            'whatIfOutcomeAcyclic',
+        ];
+        const dict = I18N.en as unknown as Record<string, string>;
+
+        for (const key of wordBannedKeys) {
+            expect(dict[key]).not.toMatch(/representative|\bbest\b|important|recommend|\bshould\b|\bfix\b/i);
+        }
+    });
+
+    it('whatIfDisclaimer explicitly states this is hypothetical, changes no source code, and is not a recommendation', () => {
+        expect(I18N.en.whatIfDisclaimer).toMatch(/hypothetical/i);
+        expect(I18N.en.whatIfDisclaimer).toMatch(/not changed|no.*change/i);
+        expect(I18N.en.whatIfDisclaimer).toMatch(/not a recommendation/i);
+    });
+
     it('the singular/plural scale templates are genuinely different strings per language, not the same text reused for both', () => {
         // Japanese is a deliberate, linguistically correct exception for
         // BOTH pairs - Japanese nouns don't inflect for grammatical

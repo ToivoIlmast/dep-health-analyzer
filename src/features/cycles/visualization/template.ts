@@ -7,6 +7,7 @@ import { escapeHtml } from '@shared/escapeHtml';
 import { safeJsonForScript } from '@shared/safeJsonForScript';
 import { selectFocusCore } from './focusCoreSelection';
 import { selectFocusNeighbours } from './focusNeighbourSelection';
+import { computeSccEdgeRemoval, describeSccStructure } from '../metrics/sccEdgeRemoval';
 import {
     closestPointOnSegment,
     computeEdgePathSegments,
@@ -103,6 +104,7 @@ function renderSccFindingRow(finding: SccFinding, dict: Dictionary): string {
                             <div class="finding-cycle-preview">${summarizeExampleCycle(finding.exampleCycle)}</div>
                         </div>
                         <button type="button" class="btn-secondary finding-view-cycle-btn">${escapeHtml(dict.viewCycleButton)}</button>
+                        <button type="button" class="btn-secondary finding-explore-scc-btn" data-action="explore-scc">${escapeHtml(dict.exploreSccButton)}</button>
                     </li>`;
 }
 
@@ -623,6 +625,27 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             <button id="cycle-detail-close-btn" type="button" data-i18n="closeButton">Close</button>
         </dialog>
 
+        <!-- F25b: Explore SCC / What-if. A SEPARATE dialog from
+             cycle-detail-modal above, deliberately - that modal answers "a
+             cycle through this module"; this one answers "what is this
+             SCC as a whole, and what would happen if I removed one chosen
+             internal dependency" - two different questions, never folded
+             into one UI element (see docs/notes/DESIGN_F25_SCC_MODEL.ru.md
+             for why). Every fact here (size, internal edge count, member
+             list) describes the WHOLE analyzed graph's SCC, independent of
+             the current Area/Connections filter or Focus - same reasoning
+             already established for cycle-detail-modal. The What-if
+             disclosure starts collapsed (a plain <details>, no JS needed
+             to keep it closed by default) so it never reads as the first,
+             most prominent thing this modal says. -->
+        <dialog id="scc-explore-modal">
+            <div class="cycle-detail-header">
+                <h2 data-i18n="exploreSccButton">Explore SCC</h2>
+            </div>
+            <div id="scc-explore-body"></div>
+            <button id="scc-explore-close-btn" type="button" data-i18n="closeButton">Close</button>
+        </dialog>
+
         <script>
             // Node labels/ids come from file paths, which could in principle
             // contain HTML if a file were named that way - escape before
@@ -745,10 +768,16 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // data-action="explore-graph" (the zero-state and
             // end-of-list buttons) is handled in the same listener, since
             // both live inside the same #findings-view container.
+            // F25b: data-action="explore-scc" (the row's own "Explore SCC"
+            // button) is checked AFTER finding the row (so it still has
+            // the row's sccId available) but BEFORE the fallback below -
+            // otherwise a click on that button would bubble to the row
+            // match and wrongly open the concrete-cycle modal as well/
+            // instead.
             document.getElementById('findings-view')?.addEventListener('click', (event) => {
-                const exploreEl = event.target.closest('[data-action="explore-graph"]');
+                const exploreGraphEl = event.target.closest('[data-action="explore-graph"]');
 
-                if (exploreEl) {
+                if (exploreGraphEl) {
                     switchToView('graph');
                     return;
                 }
@@ -756,6 +785,13 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 const row = event.target.closest('[data-finding-scc-id]');
 
                 if (!row) {
+                    return;
+                }
+
+                const exploreSccEl = event.target.closest('[data-action="explore-scc"]');
+
+                if (exploreSccEl) {
+                    openExploreSccModal(Number(row.dataset.findingSccId));
                     return;
                 }
 
@@ -919,7 +955,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // protection for the same reason (see the unconditional
                 // dir="ltr" on .cycle-flow in buildCycleFlowHtml below): it
                 // renders one real, ordered dependency path, not prose.
-                ['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal'].forEach(
+                ['hint', 'toolbar', 'bottom-hud', 'cycle-info-modal', 'cycle-detail-modal', 'scc-explore-modal'].forEach(
                     (id) => {
                         const el = document.getElementById(id);
                         if (!el) {
@@ -961,6 +997,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
 
                     if (cycleDetailModal && cycleDetailModal.open && currentCycleDetailNodeId) {
                         openCycleDetailModal(currentCycleDetailNodeId);
+                    }
+
+                    // F25b: re-render the Explore SCC modal's TEXT in the
+                    // new language from its already-stored state - never
+                    // recomputes computeSccEdgeRemoval(). The What-if
+                    // answer is a fact about the graph, independent of
+                    // display language; only its wording changes here.
+                    if (sccExploreModal && sccExploreModal.open && currentExploreState) {
+                        renderExploreSccModal();
                     }
 
                     if (currentFocus) {
@@ -3326,6 +3371,14 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                 // just any cycle inside its SCC.
                 const cycleButtonHtml = \`<button type="button" class="hud-cycle-detail-btn" data-show-cycle-node-id="\${escapeAttribute(data.id)}">\${escapeHtml(dict.showDependencyCycleButton)}</button>\`;
 
+                // F25b: same "always available" reasoning as cycleButtonHtml
+                // above - Explore SCC describes the whole SCC's own
+                // structure (size, internal edge count, single/multi-cycle
+                // fact, What-if), a fact about the whole analyzed graph,
+                // never gated on how much of it the current Area/Connections
+                // filter happens to show right now.
+                const exploreButtonHtml = \`<button type="button" class="hud-explore-scc-btn" data-explore-scc-id="\${data.sccId}">\${escapeHtml(dict.exploreSccButton)}</button>\`;
+
                 // Not escapeHtml()'d - dict.sccContextPartOf is trusted,
                 // translator-authored template text, and for French/
                 // Spanish/Portuguese it embeds a real &deg;/&ordm; entity
@@ -3346,6 +3399,7 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                         <br />
                         \${focusButtonHtml}
                         \${cycleButtonHtml}
+                        \${exploreButtonHtml}
                     </span>
                 \`;
             }
@@ -3578,6 +3632,15 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
             // Core subset for an SCC above FOCUS_FULL_SCC_MAX - embedded
             // verbatim, unit-tested in focusCoreSelection.test.ts.
             ${selectFocusCore.toString()}
+
+            // F25b: Explore SCC / What-if - embedded verbatim, unit-tested
+            // (including a parity oracle against findSCCs and a 200k-node
+            // stack-safety check) in sccEdgeRemoval.test.ts. Both are
+            // self-contained (no imports, no module-scope helpers) by
+            // construction - see that file's own header comment for why.
+            ${describeSccStructure.toString()}
+
+            ${computeSccEdgeRemoval.toString()}
 
             // Layout/Area/Connections all describe the FULL graph's own
             // structure/filtering - none of them apply to a deliberately
@@ -4129,6 +4192,13 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     return;
                 }
 
+                const exploreSccEl = event.target.closest('[data-explore-scc-id]');
+
+                if (exploreSccEl) {
+                    openExploreSccModal(Number(exploreSccEl.dataset.exploreSccId));
+                    return;
+                }
+
                 const memberEl = event.target.closest('[data-scc-nav-id]');
 
                 if (!memberEl) {
@@ -4592,6 +4662,279 @@ export function buildHtmlTemplate(args: BuildHtmlTemplate) {
                     openCycleDetailModal(cycleButtonEl.dataset.showCycleNodeId);
                 }
             });
+
+            // F25b: this SCC's own internal edges, straight from the real
+            // graph - never a second, independently-tracked graph model.
+            // Deliberately Area/Focus-independent (no '.area-hidden'/
+            // '.not-in-view' filtering) - same reasoning as
+            // openCycleDetailModal/findCycleThroughNode above: What-if
+            // answers a question about the whole analyzed graph, not
+            // about whatever the current filter happens to show.
+            // isExternalProxy edges never have both endpoints inside the
+            // same SCC by construction, so that exclusion is defensive,
+            // not load-bearing. Sorted (source, then target) for a fixed,
+            // deterministic order the From/To selects below can rely on.
+            function getSccInternalEdgeRefs(sccId) {
+                const memberIds = new Set(
+                    cy.nodes().filter((candidate) => candidate.data('sccId') === sccId).map((candidate) => candidate.id()),
+                );
+
+                return cy
+                    .edges()
+                    .filter(
+                        (edge) =>
+                            !edge.data('isExternalProxy') &&
+                            memberIds.has(edge.data('source')) &&
+                            memberIds.has(edge.data('target')),
+                    )
+                    .map((edge) => ({ source: edge.data('source'), target: edge.data('target') }))
+                    .sort((a, b) => (a.source + '\\u0000' + a.target).localeCompare(b.source + '\\u0000' + b.target));
+            }
+
+            const sccExploreModal = document.getElementById('scc-explore-modal');
+            const sccExploreBody = document.getElementById('scc-explore-body');
+            const sccExploreCloseButton = document.getElementById('scc-explore-close-btn');
+
+            // The SCC this modal currently describes, its own real member/
+            // edge lists (fetched once per open - a fact about the graph,
+            // not the current filter, so it never needs refreshing while
+            // open), and the currently selected candidate edge plus its
+            // already-computed What-if result (never recomputed by a
+            // language switch - see applyLanguage() above). null while
+            // closed, exactly like currentCycleDetailNodeId's own pattern.
+            let currentExploreState = null;
+
+            sccExploreCloseButton?.addEventListener('click', () => sccExploreModal?.close());
+            sccExploreModal?.addEventListener('close', () => {
+                currentExploreState = null;
+            });
+
+            // One fixed, deterministic sentence per outcome - never a
+            // ranking/verdict, only what the recomputed SCC decomposition
+            // actually is. modulesStillInCycles/before/after are plain
+            // arithmetic over already-computed data (computeSccEdgeRemoval's
+            // own result, and the F14 whole-project count already embedded
+            // in GRAPH_SCC_SUMMARY_COUNTS) - never a second cyclicity
+            // computation.
+            function buildWhatIfResultHtml(result, originalSize, dict) {
+                const modulesStillInCycles = result.remainingCycleGroups.reduce((sum, group) => sum + group.length, 0);
+                const before = GRAPH_SCC_SUMMARY_COUNTS.modulesInCycles;
+                const after = before - result.modulesNoLongerInCycles.length;
+
+                let outcomeText;
+                if (result.outcome === 'unchanged') {
+                    outcomeText = formatI18nClient(dict.whatIfOutcomeUnchanged, { n: originalSize });
+                } else if (result.outcome === 'reduced') {
+                    outcomeText = formatI18nClient(dict.whatIfOutcomeReduced, {
+                        n: modulesStillInCycles,
+                        hidden: result.modulesNoLongerInCycles.length,
+                    });
+                } else if (result.outcome === 'split') {
+                    outcomeText = formatI18nClient(dict.whatIfOutcomeSplit, { n: result.remainingCycleGroups.length });
+                } else {
+                    outcomeText = formatI18nClient(dict.whatIfOutcomeAcyclic, { n: originalSize });
+                }
+
+                const groupsHtml =
+                    result.remainingCycleGroups.length > 0
+                        ? \`<p>\${escapeHtml(dict.whatIfRemainingGroupsHeading)}</p><ul class="what-if-groups">\${result.remainingCycleGroups
+                              .map(
+                                  (group) =>
+                                      \`<li>\${group.map((id) => escapeHtml(cy.getElementById(id).data('label'))).join(', ')}</li>\`,
+                              )
+                              .join('')}</ul>\`
+                        : '';
+
+                const noLongerHtml =
+                    result.modulesNoLongerInCycles.length > 0
+                        ? \`<details class="what-if-no-longer"><summary>\${escapeHtml(
+                              formatI18nClient(dict.whatIfNoLongerHeading, { n: result.modulesNoLongerInCycles.length }),
+                          )}</summary><ul>\${result.modulesNoLongerInCycles
+                              .map((id) => \`<li>\${escapeHtml(cy.getElementById(id).data('label'))}</li>\`)
+                              .join('')}</ul></details>\`
+                        : '';
+
+                // whatIfProjectModulesInCycles is NOT escapeHtml()'d - like
+                // sccContextPartOf/detectedSccsSummary elsewhere in this
+                // file, it's trusted translator-authored text embedding a
+                // real &rarr; entity, which escapeHtml() would otherwise
+                // turn into the literal, broken text "&amp;rarr;".
+                return \`
+                    <p>\${escapeHtml(outcomeText)}</p>
+                    \${groupsHtml}
+                    \${noLongerHtml}
+                    <p>\${formatI18nClient(dict.whatIfProjectModulesInCycles, { before, after })}</p>
+                    <p class="what-if-disclaimer">\${escapeHtml(dict.whatIfDisclaimer)}</p>
+                \`;
+            }
+
+            // Rebuilds #scc-explore-body's ENTIRE markup from
+            // currentExploreState - the same "replace the whole panel"
+            // pattern updateSelectedModulePanel/buildCycleContextHtml
+            // already use, so the From/To <select> elements themselves are
+            // freshly rendered with the currently selected value already
+            // marked (never left stale after a re-render). Called on open,
+            // on every From/To change, AND on a language switch while open
+            // (see applyLanguage() above) - the last case reuses
+            // currentExploreState.result as-is, never recomputing it.
+            function renderExploreSccModal() {
+                if (!currentExploreState || !sccExploreBody) {
+                    return;
+                }
+
+                const dict = I18N_DICTIONARIES[currentLanguage];
+                const { sccId, memberIds, internalEdges, selectedFrom, selectedTo, result } = currentExploreState;
+                const structure = describeSccStructure(memberIds, internalEdges);
+                const memberNodes = memberIds.map((id) => cy.getElementById(id));
+
+                const cycleFactText = structure.isSingleCycle
+                    ? formatI18nClient(dict.exploreSingleCycleFact, { n: structure.moduleCount })
+                    : dict.exploreMultiCycleFact;
+
+                const fromSources = internalEdges
+                    .map((edge) => edge.source)
+                    .filter((source, index, all) => all.indexOf(source) === index);
+                const fromOptionsHtml = fromSources
+                    .map((source) => {
+                        const selectedAttr = source === selectedFrom ? ' selected' : '';
+                        const label = escapeHtml(cy.getElementById(source).data('label'));
+                        return \`<option value="\${escapeAttribute(source)}"\${selectedAttr}>\${label}</option>\`;
+                    })
+                    .join('');
+
+                const toTargets = internalEdges.filter((edge) => edge.source === selectedFrom).map((edge) => edge.target);
+                const toOptionsHtml = toTargets
+                    .map((target) => {
+                        const selectedAttr = target === selectedTo ? ' selected' : '';
+                        const label = escapeHtml(cy.getElementById(target).data('label'));
+                        return \`<option value="\${escapeAttribute(target)}"\${selectedAttr}>\${label}</option>\`;
+                    })
+                    .join('');
+
+                const resultHtml = result ? buildWhatIfResultHtml(result, memberIds.length, dict) : '';
+
+                sccExploreBody.innerHTML = \`
+                    <p>\${escapeHtml(formatI18nClient(dict.sccLabel, { id: sccId + 1, n: structure.moduleCount }))}</p>
+                    <p>\${escapeHtml(formatI18nClient(dict.exploreInternalEdgesLabel, { n: structure.internalEdgeCount }))}</p>
+                    <p>\${escapeHtml(cycleFactText)}</p>
+                    <button type="button" class="btn-secondary" data-view-example-cycle-scc-id="\${sccId}">\${escapeHtml(dict.viewCycleButton)}</button>
+                    <button type="button" class="btn-secondary" data-focus-scc-id="\${sccId}" data-focus-start-id="\${escapeAttribute(memberIds[0])}">\${escapeHtml(dict.focusSccButton)}</button>
+                    <h3>\${escapeHtml(dict.exploreModulesHeading)}</h3>
+                    <ol class="cycle-detail-list">\${buildCycleListHtml(memberNodes, dict)}</ol>
+                    <details class="what-if-details">
+                        <summary>\${escapeHtml(dict.whatIfToggleLabel)}</summary>
+                        <label>\${escapeHtml(dict.whatIfFromLabel)} <select id="what-if-from-select">\${fromOptionsHtml}</select></label>
+                        <label>\${escapeHtml(dict.whatIfToLabel)} <select id="what-if-to-select">\${toOptionsHtml}</select></label>
+                        <div id="what-if-result">\${resultHtml}</div>
+                    </details>
+                \`;
+            }
+
+            // Findings-first navigation AND HUD SCC-block navigation both
+            // funnel here (data-action="explore-scc"/data-explore-scc-id -
+            // see their own listeners) - the one entry point, mirroring
+            // openCycleDetailModalForScc's own role for the concrete-cycle
+            // modal. Defaults From/To to the alphabetically first internal
+            // edge (internalEdges is already sorted) so a result is shown
+            // immediately on open, not only after the user interacts with
+            // the selects - the What-if <details> itself still starts
+            // collapsed, so this default never reads as "the answer" until
+            // the user actually opens that section.
+            function openExploreSccModal(sccId) {
+                const memberIds = cy
+                    .nodes()
+                    .filter((candidate) => candidate.data('sccId') === sccId)
+                    .map((candidate) => candidate.id())
+                    .sort();
+
+                if (memberIds.length === 0) {
+                    return;
+                }
+
+                const internalEdges = getSccInternalEdgeRefs(sccId);
+                const defaultEdge = internalEdges[0] ?? null;
+
+                currentExploreState = {
+                    sccId,
+                    memberIds,
+                    internalEdges,
+                    selectedFrom: defaultEdge ? defaultEdge.source : null,
+                    selectedTo: defaultEdge ? defaultEdge.target : null,
+                    result: defaultEdge ? computeSccEdgeRemoval(memberIds, internalEdges, defaultEdge) : null,
+                };
+
+                renderExploreSccModal();
+                sccExploreModal?.showModal();
+            }
+
+            // Changing From repopulates To to ITS OWN internal targets
+            // (never a stale target from the previous From) and defaults
+            // to the first one, so a result is always shown without
+            // requiring a second interaction. Both branches recompute
+            // computeSccEdgeRemoval for the NEWLY selected edge - the only
+            // two places in this whole feature that call it, matching the
+            // task's own "exact recompute on explicit selection" design.
+            sccExploreBody?.addEventListener('change', (event) => {
+                if (!currentExploreState) {
+                    return;
+                }
+
+                if (event.target.id === 'what-if-from-select') {
+                    const newFrom = event.target.value;
+                    const firstTarget =
+                        currentExploreState.internalEdges.find((edge) => edge.source === newFrom)?.target ?? null;
+
+                    currentExploreState.selectedFrom = newFrom;
+                    currentExploreState.selectedTo = firstTarget;
+                    currentExploreState.result = firstTarget
+                        ? computeSccEdgeRemoval(currentExploreState.memberIds, currentExploreState.internalEdges, {
+                              source: newFrom,
+                              target: firstTarget,
+                          })
+                        : null;
+
+                    renderExploreSccModal();
+                    return;
+                }
+
+                if (event.target.id === 'what-if-to-select') {
+                    const newTo = event.target.value;
+
+                    currentExploreState.selectedTo = newTo;
+                    currentExploreState.result = computeSccEdgeRemoval(
+                        currentExploreState.memberIds,
+                        currentExploreState.internalEdges,
+                        { source: currentExploreState.selectedFrom, target: newTo },
+                    );
+
+                    renderExploreSccModal();
+                }
+            });
+
+            // "View an example cycle"/"Focus SCC" inside this modal reuse
+            // the exact existing functions unchanged (openCycleDetailModalForScc/
+            // focusScc) - never a second implementation of either. Both
+            // close this modal first, mirroring cycleDetailBody's own
+            // "Show in graph" pattern above, so the action they trigger is
+            // never left happening invisibly behind this dialog's backdrop.
+            sccExploreBody?.addEventListener('click', (event) => {
+                const viewCycleEl = event.target.closest('[data-view-example-cycle-scc-id]');
+
+                if (viewCycleEl) {
+                    sccExploreModal?.close();
+                    openCycleDetailModalForScc(Number(viewCycleEl.dataset.viewExampleCycleSccId));
+                    return;
+                }
+
+                const focusEl = event.target.closest('[data-focus-scc-id]');
+
+                if (focusEl) {
+                    sccExploreModal?.close();
+                    focusScc(Number(focusEl.dataset.focusSccId), focusEl.dataset.focusStartId);
+                    switchToView('graph');
+                }
+            });
+
 
             // Clicking a module in the cycle's own ordered list, or the
             // "Show in graph" button above it, both close the modal before
