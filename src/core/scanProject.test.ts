@@ -61,7 +61,21 @@ describe('scanProject', () => {
         let root: string;
 
         beforeEach(() => {
-            root = fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-scanproject-abs-vs-rel-'));
+            // fs.realpathSync: os.tmpdir() itself is a symlink on macOS
+            // (/var/folders/... -> /private/var/folders/...), and
+            // process.chdir()/process.cwd() (used by the relative branch
+            // below) resolve that at the OS level while path.resolve()
+            // (used by the absolute branch) doesn't - so without
+            // canonicalizing here first, this fixture's own two branches
+            // would disagree on this test's macOS CI leg for a reason
+            // that has nothing to do with the invariant under test
+            // (scanProject's actual node-identity scheme is untouched -
+            // see F3's own resolveWorktreeTarget fix for the real,
+            // production-facing instance of "the path's form changes the
+            // result").
+            root = fs.realpathSync(
+                fs.mkdtempSync(path.join(os.tmpdir(), 'dep-health-scanproject-abs-vs-rel-'))
+            );
             fs.writeFileSync(path.join(root, 'a.ts'), `import { b } from './b';\nexport const a = b;\n`);
             fs.writeFileSync(path.join(root, 'b.ts'), `export const b = 1;\n`);
         });
