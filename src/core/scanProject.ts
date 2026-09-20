@@ -5,6 +5,7 @@ import { extractImports } from './scanner/extract';
 import { loadTsConfig } from './scanner/loadTsConfig';
 import { resolveImport } from './scanner/resolve';
 import { minimatch } from 'minimatch';
+import fs from 'node:fs';
 import path from 'node:path';
 
 type ScanProjectArgsType = {
@@ -36,9 +37,35 @@ function isExcludedPath(file: string, root: string, exclude: string[]): boolean 
     return exclude.some((pattern) => minimatch(relativePath, pattern, { nonegate: true }));
 }
 
+// `path.resolve()` is pure string arithmetic - it never touches the
+// filesystem, so it doesn't collapse a symlink into its real target. On
+// macOS, `os.tmpdir()` itself is a symlink (`/var/folders/...` ->
+// `/private/var/folders/...`), and `process.chdir()`/`process.cwd()`
+// resolve it at the OS level - so scanning the exact same directory via
+// an absolute path (`path.resolve(root)`, symlink preserved) vs a
+// relative one from inside it (`.`, resolved by chdir) previously
+// produced two DIFFERENT sets of node ids for the identical files - the
+// same "the path's form changes the result" defect class this file's own
+// F3 fix already closed one instance of (resolveWorktreeTarget's
+// absolute-vs-relative --target). realpathSync collapses both forms to
+// the one real path first, so node identity depends only on which files
+// exist, never on which of several equivalent spellings reached them.
+// Falls back to the plain resolved path if it doesn't exist yet (a
+// nonexistent target already scans 0 files today - a separate, known gap,
+// not one this fix changes).
+function resolveRealScanRoot(scanRoot: string): string {
+    const resolved = path.resolve(scanRoot);
+
+    try {
+        return fs.realpathSync(resolved);
+    } catch {
+        return resolved;
+    }
+}
+
 export async function scanProject(args: ScanProjectArgsType): Promise<ScanResult> {
     const { projectRoot, scanRoot, includeTypeOnlyImports, exclude = [] } = args;
-    const normalizedRoot = path.resolve(scanRoot);
+    const normalizedRoot = resolveRealScanRoot(scanRoot);
 
     const files = await discoverFiles(normalizedRoot, exclude);
     const graph = createGraph();
