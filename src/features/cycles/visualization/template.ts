@@ -282,7 +282,18 @@ function renderUnresolvedImportsNotice(unresolvedImports: UnresolvedImport[]): s
             // analyzeCycles.ts's own CLI unresolved-imports warning, both
             // already using path.relative(process.cwd(), file)) - reused
             // here rather than inventing a second path-formatting scheme.
-            const file = escapeHtml(path.relative(process.cwd(), entry.file));
+            //
+            // Unlike those two CLI call sites (which intentionally print
+            // the platform-native separator, matching their own tests'
+            // `path.join(...)` expectations), this is an HTML report -
+            // every other path this report already normalizes for display
+            // (dependencyDelta.ts's normalizePath, scanProject.ts's
+            // isExcludedPath) uses forward slashes regardless of host OS,
+            // so a report generated on Windows reads the same as one
+            // generated on Linux/macOS. Without this, path.relative()
+            // returns backslashes on win32 and this list becomes the one
+            // part of the report that isn't cross-platform-deterministic.
+            const file = escapeHtml(path.relative(process.cwd(), entry.file).replaceAll('\\', '/'));
             const specifier = escapeHtml(entry.specifier);
 
             return `<li><code>${file}</code> &rarr; <code>${specifier}</code></li>`;
